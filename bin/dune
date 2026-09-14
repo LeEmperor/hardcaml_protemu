@@ -1,0 +1,4 @@
+(executable
+ (public_name hardcaml_protemu)
+ (name main)
+ (libraries hardcaml_protemu))

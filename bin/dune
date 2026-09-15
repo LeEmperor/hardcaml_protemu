@@ -12,8 +12,8 @@
   hardcaml_protemu)
  (modules generate)
  (flags
-  (:standard -w -27-57-33-34-35-40-63-47-26))
+  (:standard -w -27-57-33-34-35-40-63-47-26-37-32))
  (preprocess
-  (pps ppx_jane))
+  (pps ppx_hardcaml ppx_jane))
  (lint
   (pps ppx_js_style)))

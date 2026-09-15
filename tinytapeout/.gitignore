@@ -1,0 +1,11 @@
+# Local flow environments and caches
+/.venv/
+/pdk/
+/tt/
+
+# Generated physical-design runs and export packages
+/build/
+/runs/
+/artifacts/
+/tt_submission/
+/gds_render.*

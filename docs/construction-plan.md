@@ -1,0 +1,343 @@
+# Protocol emulator construction plan
+
+Status: initial architecture proposal, 2026-09-14. Sizes, rates, and instruction
+names below are study parameters, not implemented capabilities or a frozen ISA.
+
+## 1. Direction and scope
+
+Build a small programmable protocol machine in Hardcaml: a deterministic control
+core, reusable I/O engines, and reloadable firmware. UART, SPI, and I2C should be
+programs over the same mechanisms. The starting rationale is the repository's
+[architecture brief](protemu.pdf), especially sections 3, 6, and 8.
+
+The first useful system should load a program, exchange bytes over protocol pins,
+and report what happened. Prioritize UART TX/RX, SPI controller/target, and I2C
+controller/target in stages. Preserve room for low-speed USB and 10 Mbit Ethernet
+by defining bitstream and timing interfaces now; add their expensive engines only
+after baseline measurements justify them. A Bonsai web interface or TUI comes
+later, on top of the same host API used by a CLI and simulator.
+
+The competition currently specifies IHP 130 nm CMOS5L, a maximum of 6x4 Tiny
+Tapeout tiles, and a January 18, 2027 submission deadline. Jane Street is studying
+a possible expansion to 8x4 and will announce it if it becomes available. Start
+with 6x4 and do not assume the expansion. The competition links the template's
+**`cmos5l` branch**. Treat its actual floorplan and flow checks as the area
+authority; approximate tile or gate counts are only planning aids.
+[Competition announcement](https://blog.janestreet.com/protocol-emulator-asic-competition/)
+
+## 2. What exists today
+
+- `lib/protocol_core.ml`: an Idle/Fetch/Decode/Execute scaffold, an 8-bit PC,
+  a declared 256x8 memory with asynchronous read, and an output bank tied to zero.
+  The memory is not connected to an implemented instruction decoder or loader.
+- `lib/protemu_types.ml`: candidate pin/configure/transfer instruction variants.
+- `bin/generate.ml`: a placeholder command whose invocation is commented out;
+  it does not yet emit a circuit.
+- `test/test_hardcaml_protemu.ml`: empty; protocol verification remains to be built.
+- Dune, Hardcaml dependencies, and `scripts/with-switch.sh` are already present.
+
+Keep developing this scaffold, but do not let the current 8-bit instruction memory
+or fetch/decode sequence determine the final ISA. In particular, byte-addressed
+storage and instruction width are separate decisions.
+
+## 3. Initial architecture
+
+```mermaid
+flowchart LR
+    Host[CLI / later Bonsai or TUI] <--> Transport[Host transport and loader]
+    Transport <--> State[Program storage / data queues / status]
+    State <--> Core[Deterministic control core]
+    Core --> Timing[Timing and event unit]
+    Core --> Shift[Bidirectional shifter / sampler]
+    Core --> Pins[Atomic pin bank and ownership]
+    Timing --> Shift
+    Shift <--> Pins
+    Pins <--> IO[Protocol pins]
+    Pins --> Timing
+    Shift -. future bitstream interface .-> Coding[Line transforms and CRC]
+```
+
+Start with one control core and one transfer engine. The transfer engine can
+shift TX and RX together, but that does not imply two independently timed serial
+channels. Measure whether UART full duplex requires a second small timing/shift
+lane. Keep that replication possible without changing the host or pin interfaces.
+
+Use one system clock initially. Dividers generate clock-enable pulses and output
+pin transitions, not new internal clock domains. External SPI clocks are observed
+as synchronized inputs, with a documented maximum rate and minimum pulse widths.
+
+### Primitive contracts
+
+| Primitive | Initial contract | Why it matters |
+| --- | --- | --- |
+| Pin bank | `pin_in`, registered `pin_out`, registered `pin_oe`; masked atomic updates of value and enable | Push-pull SPI/UART, I2C drive/release, later bus turnaround |
+| Input front end | Two-stage synchronization baseline, coherent registered snapshots, rise/fall detection; configurable filtering considered separately | External edges are asynchronous; filtering changes latency |
+| Timing | Countdown, periodic tick, level/edge wait with timeout; phase restart from an observed event | Baud timing, clock generation, receive alignment, stretching |
+| Transfer | Configurable bit count/order, separate input/output pin selection, initial output preload, launch/sample phases, internal or observed-edge pacing | Repetitive shifting without a control instruction per bit |
+| Event/status | Latched completion/error/timeout, explicit acknowledge, overflow indication | Events remain visible while the core is busy |
+| Buffering | Small TX/RX FIFOs with explicit full/empty and ready/valid behavior | Decouple host/core work from a transfer already on the wire |
+| Control/storage | Branches, loop counter, small registers, program load/readback, bounded instruction timing | Protocol semantics remain firmware-controlled |
+
+The primitive interfaces should describe mechanisms such as launch edge, sample
+edge, and drive mask. Protocol names belong in firmware builders and tests.
+
+### Pins, reset, and ownership
+
+Use eight bidirectional protocol pins as the first logical bank. Represent
+tri-state behavior with separate data and output-enable signals inside the core;
+the Tiny Tapeout wrapper connects them to the pad-facing interface.
+
+For open drain, always drive a zero: `pin_out = 0`, `pin_oe = drive_low`.
+Releasing a pin is `pin_oe = 0`; a board pull-up supplies the high level. Sample
+the actual input while driving or releasing. Do not infer a high bus level from
+the value we intended to transmit.
+
+A transfer claims its configured output pins until completion or abort. Reject
+overlapping software writes or another engine's claim with a sticky ownership
+fault. Inputs may be observed by several consumers. Change ownership only at a
+defined clock boundary, and commit output value and enable together.
+
+On reset, release protocol pins, clear queue validity and event state, and halt
+execution. Do not depend on uninitialized program/data memory. Load and verify a
+program before allowing RUN. Define wrapper reset polarity conversion and
+synchronized reset release explicitly. Disabling the design should abort work
+and release protocol pins; ordinary core waits must leave active engines running.
+
+### Timing and event semantics
+
+Write these rules into the reference model before implementing the ISA:
+
+1. Commands are accepted on a rising system-clock edge when ready and valid are
+   both asserted. Their parameters are latched at acceptance.
+2. Pin writes take effect at a documented commit edge. A timed command accepted
+   at edge `k` with delay `n >= 1` fires at `k+n`. Reject zero delay initially.
+   Timed transfer phases must remain independent of instruction-fetch overhead.
+3. A level wait may complete immediately if the synchronized condition is already
+   true. An edge wait arms for subsequent observed edges, avoiding stale events.
+   If a matching event and timeout occur together, the event wins.
+4. Completion and error status remain set until acknowledged. Define simultaneous
+   set/ack behavior as set-wins, so a new event cannot be erased accidentally.
+5. An engine may wait for a FIFO before starting. Once a wire operation starts,
+   it may pause only at an explicitly allowed boundary. Otherwise underrun or
+   overrun reports a fault and invokes a configured safe abort action.
+6. Distinguish core single-step from engine execution. For initial debugging,
+   single-step only with engines idle; STOP requests a boundary stop, while ABORT
+   releases pins promptly and marks the transaction incomplete.
+
+Two synchronizer stages are a starting implementation, not a guarantee of a
+fixed external-edge latency. Clock phase, synchronizer behavior, filtering, edge
+detection, control dispatch, and output registers all contribute. Measure the
+normal digital latency range and assess metastability reliability separately.
+Do not independently synchronize a data bus and assume its bits remain coherent.
+For SPI sampling, align SCK, CS, and data pipelines and verify the device's setup
+and hold requirements over all relevant input phases.
+
+Record two latency paths: event-to-engine response and event-to-core-decision-to-
+pin response. Target modes may need the first even when controller modes work
+with the second. A sticky bit records occurrence, not event multiplicity; use an
+event counter or queue if a workload must distinguish successive events.
+
+### Transfer descriptor, before opcode encoding
+
+Model descriptors as typed OCaml values first. Candidate fields are TX value,
+bit count, bit order, input pin, output pin, optional clock pin, idle output/clock
+values, initial delay, launch phase, sample phase, and internal/external pacing.
+Validate pin conflicts and impossible phase combinations on issue.
+
+Start with a 32-bit shift register and lengths 1..32 as an experiment. Support
+TX-only, RX-only, and simultaneous TX/RX. UART framing can be assembled into a
+shift word or sequenced around a data transfer. SPI mode configuration maps to
+preload and launch/sample phases. For I2C, begin with explicit drive/sample/wait
+steps; a blind eight-bit transfer is insufficient for stretching or arbitration.
+
+Allow an observed event to arm or start a preconfigured operation without a
+software round trip. This generic facility is a candidate for UART start-bit
+alignment and externally clocked shifts. Add a second descriptor slot only if
+gap-free traffic measurements show that software cannot refill in time.
+
+## 4. Minimum control ISA and memory study
+
+| Family | Candidate operations | Initial decision |
+| --- | --- | --- |
+| State | Load immediate, move, add/subtract, AND/OR/XOR, compare | Small register set, simple flags; omit multiply/divide |
+| Flow | Jump, branch on flag/event/pin snapshot, decrement-and-branch, halt | Publish cycle counts for every path |
+| Pins | Masked value/enable write, read snapshot | One atomic pin commit |
+| Time | Wait cycles, wait level/edge with timeout | Wait stalls control, not engines |
+| Engine | Configure, issue transfer, wait completion, read result/status | Configuration can take several instructions |
+| Data | FIFO push/pop and status | Specify blocking and nonblocking forms before encoding |
+
+Use an OCaml assembler/library with labels and validation before designing a
+textual DSL. Firmware helpers such as `uart_tx` should expand into this ISA.
+Keep the instruction specification shared by assembler and decoder, while the
+reference execution model stays independent of the Hardcaml implementation.
+
+Compare fixed 16-bit instructions with occasional extension words against a
+simple fixed 32-bit encoding. Start the study with eight 16-bit registers,
+128/256 instruction words, and 4/8/16-entry byte FIFOs. These are sweep points.
+Record firmware size, cycles per operation, and mapped area for each choice.
+
+For perspective, 256x16 program bits plus two 16x8 FIFOs already total 4,352
+storage bits before registers and metadata. That can dominate a small design if
+implemented in flip-flops. First use a synchronous-read memory abstraction with
+an explicit latency; later evaluate an approved CMOS5L SRAM macro behind it.
+Check macro dimensions, ports, timing, power pins, simulation model, Liberty,
+LEF, and GDS availability. An RTL memory does not automatically become SRAM.
+
+Avoid bulk reset on program RAM. Reset its validity instead. Permit host program
+writes only while halted with engines idle; use readback and a load-complete
+handshake. Any ROM is a deliberate hardware implementation, not an assumed
+power-up file load.
+
+## 5. Protocol milestones and acceptance tests
+
+The rates below are proposed test targets, conditional on routed timing and the
+board interface. Support one selected protocol at a time initially.
+
+| Protocol | First demonstration | Baseline completion | Important failure/timing tests |
+| --- | --- | --- | --- |
+| UART | Programmable 8N1 TX at 115,200 baud, then RX | Back-to-back TX/RX; sweep toward 1 Mbaud; evaluate simultaneous independent TX/RX | Start detection at varying clock phases, false start, framing error, baud mismatch sweep, FIFO faults |
+| SPI controller | Mode 0 byte exchange | All four CPOL/CPHA modes, both bit orders, selected widths 1..32, CS across multiple words; study 1 MHz then 5 MHz | First/last-bit placement, CS timing, pause boundaries, unequal half-periods |
+| SPI target | Preloaded response at a conservative clock | All four modes within a measured external-clock envelope | CS assertion/abort, first-bit preload, minimum SCK high/low time, setup/hold, underrun; target cannot stretch SCK |
+| I2C controller | 100 kbit/s, 7-bit address, write/read with ACK/NACK | Repeated START, final-read NACK, STOP, clock-stretch wait and timeout; evaluate 400 kbit/s | Released SCL still low, stuck bus, NACK paths, arbitration loss injection and release |
+| I2C target | Address match and one-byte response | Read/write sequences, repeated START/STOP, ACK/NACK, intentional stretching | SDA stability while SCL high, external STOP during waits, response latency, read termination |
+
+I2C terminology, bus behavior, and timing should follow
+[NXP UM10204](https://www.nxp.com/docs/en/user-guide/UM10204.pdf).
+Model the pull-up and multiple open-drain drivers in the testbench. Full
+multi-controller clock synchronization/arbitration, 10-bit addressing, and faster
+I2C modes are later coverage; detecting a forced arbitration loss alone is not
+complete multi-controller support.
+
+UART full duplex is an explicit architecture decision after the single-lane
+measurements. A duplex SPI shifter uses one shared bit clock; two UART directions
+can have unrelated frame starts and require independent schedules.
+
+## 6. Keeping USB and Ethernet possible
+
+Reserve a logical bitstream boundary with data, valid/ready, stream boundaries,
+and error metadata. Future transform stages must distinguish a logical bit
+consumed from a physical symbol emitted: stuffing changes the relationship.
+Backpressure inside the chip must never silently stretch an in-progress waveform.
+Define buffer sizing and abort behavior before claiming continuous streaming.
+
+Candidate later primitives:
+
+- Bit-serial configurable CRC/LFSR, initially widths up to 32. Specify polynomial
+  representation, shift direction, initialization, reflection, and final XOR.
+  Start with one logical bit per tick; compare byte-parallel area only if needed.
+- Stateful invert/XOR/NRZI and Manchester transforms; configurable run-length
+  insertion/removal. Compare a small set of reusable operations against a LUT/FSM
+  implementation using measured area and achievable symbol rates.
+- Edge-interval capture and phase correction for receive clock recovery.
+- Descriptor chaining and sustained FIFO service where packet timing requires it.
+
+For USB low speed, first model logical line states, NRZI, stuffing, CRC5/CRC16,
+and packet boundaries, then test receive recovery and response deadlines. A
+packet loopback test is distinct from a usable device with enumeration, reset,
+control requests, and turnaround handling. Keep protocol semantics in firmware.
+Use the [USB 2.0 specification](https://www.usb.org/document-library/usb-20-specification)
+as the reference when fixing those requirements.
+
+For Ethernet, choose the electrical boundary before promising 10BASE-T support:
+a digital connection to an external PHY and generating/recovering Manchester at
+a line interface are different projects. Start with a modeled bitstream, CRC32,
+and framing throughput. A direct line-interface study must also cover receive
+clock recovery, link behavior, and any required collision behavior. Budget pins
+and host bandwidth for whichever boundary is selected.
+
+Illustrative arithmetic, assuming a *hypothetical* 48 MHz system clock:
+
+| Workload | Available clock budget | Implication to investigate |
+| --- | --- | --- |
+| 1 Mbaud UART | 48 cycles/bit | Plenty of bit time, but RX phase and dispatch latency still matter |
+| 5 MHz SPI | 4.8 cycles/half-period on average | Exact uniform half-periods need a compatible clock/divider; phase-dependent target response is tight |
+| 1.5 Mbit/s USB low speed | 32 cycles/bit | Plausible study point for autonomous timing; not a compliance result |
+| 10 Mbit/s Manchester stream | 4.8 cycles/bit, 2.4 cycles/half-bit on average | Receive recovery and non-integer timing are major constraints |
+
+48 MHz is not an achieved ASIC clock. Compare suitable external clock choices
+and integer/fractional schedules; quantify jitter before using fractional ticks.
+Neither generic GPIO nor successful digital simulation establishes a compliant
+USB or Ethernet electrical interface. Board transceivers, pull-ups, line drivers,
+termination/magnetics as applicable, voltage levels, and Tiny Tapeout I/O delay
+belong in the feasibility study. Extensibility before fabrication still requires
+real hardware resources; a future firmware update cannot add a missing PHY.
+
+## 7. Host control now, application later
+
+Define a transport-independent OCaml host API: identify/version/capabilities,
+load/read program, configure pins, enqueue/dequeue data, run/stop/abort, inspect
+registers and engine status, and retrieve bounded trace events. Make protocol
+examples runnable through a simulator backend before real hardware exists.
+
+A proposed first physical loader is a slow clocked serial debug link using
+dedicated Tiny Tapeout inputs and an output. It must operate with the protocol
+core halted so an empty or broken program remains recoverable. Its fixed loader
+logic is infrastructure, separate from the programmable protocol bank. Specify
+framing, maximum host clock, command acknowledgement, length/error checks, and
+flow control before implementation. Start without concurrent program writes.
+
+Keep register addresses and binary transport versioned; expose capabilities for
+memory depth, pin count, engines, and ISA version. A CLI should load firmware,
+send/receive bytes, and export timestamped traces. Later a Bonsai web app can
+call a local service using that API; a TUI can share the same library. Defer UI
+framework and browser hardware-access choices until the device workflow works.
+
+## 8. Construction sequence
+
+| Stage | Deliverables | Exit evidence |
+| --- | --- | --- |
+| 0. Make the tool path real | Minimal observable Hardcaml pin/timer circuit, working Verilog emitter, Tiny Tapeout wrapper and first flow setup | Generated RTL passes simulation; a small design completes CMOS5L hardening/precheck, establishing the toolchain |
+| 1. Define execution | Cycle model, typed instructions/descriptors, pin/timing contracts, assembler helpers | UART/SPI/I2C examples execute in the model; latency and program-size report |
+| 2. Implement primitives | Pin bank, synchronization/events, timer, shifter, small FIFOs, unit tests | Model/RTL agreement and edge-case properties; mapped area per block |
+| 3. Make it reloadable | Control core, program store, independent loader, CLI simulator/device API | Load/readback/run two different protocol programs without regenerating RTL |
+| 4. Complete baseline | Firmware and independent peers for UART, SPI controller/target, I2C controller/target | Coverage matrix with rates, timing margins, faults, and concurrency limits; FPGA exercise if available |
+| 5. Select physical architecture | Memory/FIFO/engine sweeps; repeated place and route; USB/Ethernet feasibility experiments | Chosen configuration fits the authorized 6x4 allocation with routed timing and resource margin; stretch limits documented |
+| 6. Prepare tapeout | Reproducible flow, gate-level regression, physical checks, pinout and bring-up guide | Complete submission artifacts with tool/PDK revisions, timing results, clean required checks, and recovery procedure |
+| Later. Application | Bonsai web app or TUI, program editor, waveform/event inspection | Same operations and errors as the established CLI/API |
+
+Stages 0 and 1 should interleave: a small early physical-flow experiment gives
+useful evidence while the model prevents premature commitment to a large ISA.
+Do not wait for USB/Ethernet or a finished CPU to discover memory/routing costs.
+The flow directory and required tools are described in
+[`tinytapeout/README.md`](../tinytapeout/README.md).
+
+## 9. Verification and measurements
+
+Use three layers: an independent cycle-level model, Hardcaml simulation, and
+tests of emitted Verilog through the Tiny Tapeout wrapper. Use external protocol
+peer models with assertions on wire timing; self-loopback alone can hide a
+matching encoder/decoder bug. Randomize asynchronous phase, bounded jitter,
+resets, CS interruptions, stretch length, and queue starvation.
+
+Apply formal properties where they add value: no double pin ownership, open-drain
+never drives high, bounded FIFO occupancy, no loss/duplication at handshakes,
+reset releases pins, waits terminate on a qualifying event or configured timeout.
+Write down environmental assumptions, especially minimum external pulse widths.
+
+Per architecture candidate, record instruction/data storage bits, firmware words
+per protocol, mapped sequential/combinational area, routed utilization, worst
+setup/hold slack, clock target, min/max observed edge response, maximum verified
+protocol rate, FIFO service budget, and errors under overload. A B-byte FIFO at
+R bits/s absorbs only about `8*B/R` seconds without service, before framing and
+other overhead. Sustained host throughput must be measured separately.
+
+Retain source/configuration hashes, random seeds, tool/PDK revisions, constraints,
+and links to logs with every physical result. Use
+[`tinytapeout/reports/README.md`](../tinytapeout/reports/README.md) for the record format.
+
+## 10. Decisions to resolve with evidence
+
+| Decision | Proposed starting point | Evidence needed before committing |
+| --- | --- | --- |
+| Core and engine count | One core, one duplex shift lane | Independent UART RX/TX and target-mode reaction measurements |
+| ISA encoding | Compare 16-bit plus extensions with 32-bit fixed | Program sizes, decoder area, and instruction timing |
+| Program storage | Small synchronous abstraction, writable while halted | CMOS5L macro availability and total placed area versus standard cells |
+| Clock/rates | Sweep clocks in simulation and physical constraints | Routed timing, pad/board path, and protocol jitter budgets |
+| Filtering | Synchronization first; per-input filtering if required | Glitch rejection versus latency and protocol pulse widths |
+| Host link/pin map | Dedicated inputs/output for debug; eight `uio` protocol pins | Loader complexity, bandwidth, and bring-up wiring |
+| Stretch boundary | Modeled USB/Ethernet bitstreams first | Actual electrical interface and continuous service budget |
+| Flow integration | All design-specific ASIC material under `tinytapeout/` | Root-relative upstream action behavior and reproducible staging |
+
+The first implementation slice should be **pin bank + timer + cycle model +
+working RTL emitter**, exercised by a programmable UART transmit sequence. Then
+add receive/event behavior and SPI shifting before expanding the control core.

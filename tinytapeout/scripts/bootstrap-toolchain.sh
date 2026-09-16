@@ -103,6 +103,10 @@ readonly lock_file="$tt_dir/toolchain.lock"
 # through TT. Keeping it at the root keeps this a dune/Hardcaml project that
 # uses TT for tooling, rather than a TT project with OCaml in it.
 readonly venv_dir="$repo_root/.venv"
+# Precheck cannot share the main environment: precheck/pyproject.toml pins
+# klayout >=0.28.17.post1,<0.29.0 while the top-level requirements pin 0.29.12,
+# and gdstk differs too. Two environments is not a preference, it is forced.
+readonly precheck_venv_dir="$repo_root/.venv-precheck"
 readonly pdk_dir="$tt_dir/pdk"
 readonly managed_tt_dir="$tt_dir/tt"
 readonly stage_dir="$tt_dir/build/p0-staged"
@@ -115,6 +119,7 @@ assert_writable_path() {
     local path=$1
     case $path in
         "$repo_root"/.venv|"$repo_root"/.venv/*) ;;
+        "$repo_root"/.venv-precheck|"$repo_root"/.venv-precheck/*) ;;
         "$tt_dir"/pdk|"$tt_dir"/pdk/*) ;;
         "$tt_dir"/tt|"$tt_dir"/tt/*) ;;
         "$tt_dir"/build|"$tt_dir"/build/*) ;;
@@ -527,6 +532,75 @@ install_python_packages() {
 }
 
 # ---------------------------------------------------------------------------
+# 6b. Precheck environment. Separate by necessity, not by taste: its klayout and
+#     gdstk pins conflict with the top-level requirements.
+#
+#     Precheck also shells out to native `magic` and `klayout` binaries, which
+#     pip cannot supply (there is no magic wheel at all). Upstream ships
+#     precheck/default.nix pinning nixpkgs for exactly those two. Their absence
+#     is reported rather than fatal: precheck is a later step than bootstrap.
+# ---------------------------------------------------------------------------
+precheck_binaries_present=""
+
+install_precheck_environment() {
+    step "Preparing the precheck environment"
+
+    local requirements="$support_tools_dir/precheck/requirements.txt"
+    [[ -f $requirements ]] || die "$EX_MISMATCH" \
+        "precheck requirements not found: $requirements"
+
+    if [[ ! -d $precheck_venv_dir ]]; then
+        if [[ $offline -eq 1 ]] || ! mutating; then
+            warn "no precheck environment at $precheck_venv_dir"
+            warn "rerun without --offline/--check to create it"
+            return
+        fi
+        assert_writable_path "$precheck_venv_dir"
+        if ! python3 -m venv "$precheck_venv_dir"; then
+            rm -rf "$precheck_venv_dir"
+            die "$EX_TOOL" "failed to create $precheck_venv_dir"
+        fi
+        info "created $precheck_venv_dir"
+    fi
+
+    if [[ $offline -eq 0 ]] && mutating; then
+        net "installing precheck requirements"
+        "$precheck_venv_dir/bin/python" -m pip install --quiet --upgrade pip >/dev/null \
+            || die "$EX_NETWORK" "could not upgrade pip inside $precheck_venv_dir"
+        "$precheck_venv_dir/bin/python" -m pip install --quiet -r "$requirements" \
+            || die "$EX_NETWORK" "failed to install $requirements"
+    fi
+
+    # The conflicting pin is the whole reason this environment exists, so confirm
+    # it actually resolved the way precheck expects.
+    local klayout_version
+    klayout_version=$("$precheck_venv_dir/bin/python" -c \
+        'from importlib.metadata import version; print(version("klayout"))' 2>/dev/null || true)
+    if [[ -n $klayout_version ]]; then
+        case $klayout_version in
+            0.28.*) info "klayout python module $klayout_version" ;;
+            *) warn "precheck environment has klayout $klayout_version; precheck pins 0.28.x" ;;
+        esac
+    elif [[ $offline -eq 0 ]] && mutating; then
+        die "$EX_TOOL" "klayout did not install into $precheck_venv_dir"
+    fi
+
+    # Native binaries, reported but not required at bootstrap time.
+    local tool found=() absent=()
+    for tool in klayout magic; do
+        if command -v "$tool" >/dev/null 2>&1; then found+=("$tool"); else absent+=("$tool"); fi
+    done
+    [[ ${#found[@]} -gt 0 ]] && info "precheck binaries present: ${found[*]}"
+    if [[ ${#absent[@]} -gt 0 ]]; then
+        warn "precheck binaries missing: ${absent[*]}"
+        warn "precheck runs them from PATH; there is no pip package for magic."
+        warn "upstream pins them in $support_tools_dir/precheck/default.nix:"
+        warn "  nix-shell $support_tools_dir/precheck/default.nix"
+    fi
+    precheck_binaries_present="${found[*]:-none}"
+}
+
+# ---------------------------------------------------------------------------
 # 7. PDK. Fetched at the exact pinned revision, then verified for the views the
 #    flow and the gate-level test actually consume.
 # ---------------------------------------------------------------------------
@@ -565,6 +639,21 @@ ensure_pdk() {
             "Remove $pdk_dir yourself and rerun, or correct toolchain.lock."
     fi
     info "revision $head"
+
+    # The upstream repository does not contain SOURCES. The pinned action's
+    # install_sg13cmos5l.sh writes it immediately after the same checkout:
+    #   echo "IHP-Open-PDK $IHP_PDK_REV" > "$PDK_ROOT/ihp-sg13cmos5l/SOURCES"
+    # It is reproduced here from the verified HEAD, never from free text, and
+    # repaired if an earlier run fetched the PDK without writing it.
+    local process_dir="$pdk_dir/$(lock pdk)"
+    local sources="$process_dir/SOURCES" record="IHP-Open-PDK $head"
+    if [[ -d $process_dir ]] && { [[ ! -f $sources ]] || [[ $(<"$sources") != "$record" ]]; }; then
+        if mutating; then
+            assert_writable_path "$sources"
+            printf '%s\n' "$record" >"$sources"
+            info "wrote $sources (as tt-gds-action install_sg13cmos5l.sh does)"
+        fi
+    fi
 }
 
 verify_pdk() {
@@ -583,13 +672,22 @@ verify_pdk() {
 
     # Paths the gate-level target in tinytapeout/test/Makefile already consumes,
     # plus the collateral synthesis and place-and-route require.
+    #
+    # libs.ref is what synthesis and place-and-route consume. libs.tech holds the
+    # rule decks and startup files that precheck invokes by absolute path:
+    #   magic  -rcfile $PDK_ROOT/$PDK/libs.tech/magic/$PDK.magicrc
+    #   klayout -b -r   $PDK_ROOT/$PDK/libs.tech/klayout/tech/drc/$PDK.drc
+    # A PDK missing either half is incomplete for this project.
     local missing=() rel
     for rel in \
         "libs.ref/sg13cmos5l_stdcell/verilog/sg13cmos5l_stdcell.v" \
         "libs.ref/sg13cmos5l_io/verilog/sg13cmos5l_io.v" \
         "libs.ref/sg13cmos5l_stdcell/lib" \
         "libs.ref/sg13cmos5l_stdcell/lef" \
-        "libs.ref/sg13cmos5l_stdcell/gds"
+        "libs.ref/sg13cmos5l_stdcell/gds" \
+        "libs.tech/klayout/tech" \
+        "libs.tech/klayout/tech/drc/${pdk_name}.drc" \
+        "libs.tech/magic/${pdk_name}.magicrc"
     do
         [[ -e "$root/$rel" ]] || missing+=("$rel")
     done
@@ -606,22 +704,19 @@ verify_pdk() {
     # tt-support-tools reads this at harden time:
     #   Tech.read_pdk_version -> parse_openpdks_pdk_version(<root>/SOURCES, "IHP-Open-PDK")
     # A missing or differently-shaped SOURCES file crashes harden() after the
-    # LibreLane run, so it is checked here instead.
-    local sources="$root/SOURCES"
+    # LibreLane run, so it is checked here instead. ensure_pdk writes it; the
+    # full record is compared so it cannot silently describe another revision.
+    local sources="$root/SOURCES" want_record
+    want_record="IHP-Open-PDK $(lock pdk_revision)"
     [[ -f $sources ]] || die "$EX_PDK" \
         "PDK identity record not found: $sources" \
-        "tt-support-tools reads it during harden via Tech.read_pdk_version and" \
-        "expects a single line: 'IHP-Open-PDK <version>'." \
-        "If the pinned CMOS5L action generates this file during installation," \
-        "this step must adopt that mechanism. Do not hand-write the file: it is" \
-        "an identity record, not configuration."
+        "tt-support-tools reads it during harden via Tech.read_pdk_version." \
+        "Rerun without --check so it can be written from the verified revision."
 
-    local source_name
-    source_name=$(awk 'NR==1 {print $1}' "$sources")
-    [[ $source_name == "IHP-Open-PDK" ]] || die "$EX_PDK" \
+    [[ $(<"$sources") == "$want_record" ]] || die "$EX_PDK" \
         "unexpected PDK identity in $sources" \
-        "found first field: $source_name" \
-        "expected: IHP-Open-PDK"
+        "found:    $(<"$sources")" \
+        "expected: $want_record"
 
     info "views present; identity $(cat "$sources")"
 }
@@ -647,8 +742,12 @@ create_user_config() {
 
     # create_merged_config() reads "src/config" as a path relative to the
     # process working directory, so tt_tool.py must run from the project dir.
+    #
+    # tt_tool.py shells out by bare name (`yowasp-yosys`, `python -m librelane`),
+    # so invoking the venv's interpreter is not enough: its bin/ must lead PATH.
     ( cd "$stage_dir" \
-      && PDK_ROOT="$pdk_dir" "$venv_dir/bin/python" "$support_tools_dir/tt_tool.py" \
+      && PATH="$venv_dir/bin:$PATH" PDK_ROOT="$pdk_dir" \
+         "$venv_dir/bin/python" "$support_tools_dir/tt_tool.py" \
            --project-dir "$stage_dir" --create-user-config --ihp ) \
         || die "$EX_TOOL" "tt_tool.py --create-user-config failed"
 }
@@ -748,6 +847,9 @@ export TT_SUPPORT_TOOLS_DIR=$support_tools_dir
 
 # Activate the project-local Python environment with:
 #   source $venv_dir/bin/activate
+#
+# Precheck uses a separate environment (its klayout/gdstk pins conflict):
+#   source $precheck_venv_dir/bin/activate
 EOF
     info "$env_file"
 }
@@ -766,6 +868,8 @@ Environment ready.
   PDK_ROOT          $pdk_dir
                     $(lock pdk_revision)
   python env        $venv_dir
+  precheck env      $precheck_venv_dir
+  precheck binaries ${precheck_binaries_present:-not checked}
   staged project    $stage_dir
 
 Activate:
@@ -806,6 +910,7 @@ main() {
     resolve_support_tools
     verify_floorplan
     install_python_packages
+    install_precheck_environment
     ensure_pdk
     verify_pdk
     stage_project

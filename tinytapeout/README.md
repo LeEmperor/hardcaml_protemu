@@ -1,10 +1,38 @@
 # Tiny Tapeout ASIC flow
 
-This directory owns the project's ASIC wrapper, flow configuration, testbench,
-and physical-design results. The phase-P0 RTL generation, wrapper simulation,
-lint, generic synthesis smoke test, and staging paths are working; there is no
+This directory currently contains the emulator's ASIC wrapper, integration
+scripts/configuration, testbench, and physical-design records. The phase-P0 RTL
+generation, wrapper simulation, lint, generic synthesis smoke test, and staging
+paths are working; there is no
 completed CMOS5L hardening run or generated GDS yet.
 See the [construction plan](../docs/construction-plan.md) for the architecture.
+
+## Ownership and migration to `hardcaml_asic`
+
+The [accepted ASIC architecture](../../hardcaml_asic/docs/architecture.md) supplies
+project declaration/elaboration, resource selection, target resolution, and
+build/flow artifacts. [P0.6/P0.7](../docs/phase_plan.md#3-p0--make-the-tool-path-real)
+adopt that path here. It is planned integration; the current scripts and files
+below still implement the original P0 path.
+
+The emulator owns its design constructor, wrapper logic and reset/disable tests,
+requested TT/CMOS5L target, clocks/I/O assumptions, pin meanings, and implementation
+policies. The helper's harness validates ports and resolves target requirements;
+it does not implement the emulator's reset, loader, or pin-ownership behavior.
+The helper's adapter generates metadata, source lists, constraints, configuration,
+and staging from one immutable build. Keep protected target/source/collateral
+facts authoritative and reject conflicting overrides. Preserve reasons for raw
+flow settings that are not yet represented by typed fields.
+
+Keep bootstrap and hardening commands usable while adopting emitted bundles.
+Environment setup stays explicit; emission does not install a PDK or require
+Workbench. A script may run LibreLane against the bundle without a library runner.
+Record execution separately from immutable build provenance. Full physical,
+precheck, and gate-level evidence remains required after migration.
+
+Start registered program-memory integration with an explicitly selected flop
+implementation. An SRAM requires availability, complete collateral, exact behavior,
+target permission, and flow compatibility before backend work; see P5.1a.
 
 ## Target and upstream starting point
 
@@ -36,15 +64,17 @@ the general IHP guide's `ihp-sg13g2` setting is a different target.
 ## From Hardcaml to silicon layout
 
 ```text
-OCaml source + parameters
-  -> Dune builds the Hardcaml generator
-  -> generator emits synthesizable Verilog RTL
+OCaml source + ASIC project declaration (planned adoption)
+  -> Dune builds the project generator
+  -> hardcaml_asic resolves target/resources and emits an immutable build bundle
+  -> adapter stages RTL, constraints, collateral, and TT/LibreLane inputs
   -> Yosys/ABC maps logic to cells from the selected PDK
   -> OpenROAD places cells, builds the clock tree, and routes wires
   -> timing analysis and physical verification check the result
   -> GDS layout + netlist + reports + Tiny Tapeout submission package
 ```
 
+The current P0 generator emits RTL directly; P0.6 migrates to the bundle path.
 LibreLane coordinates these tools. The PDK (process design kit) supplies the
 foundry-specific cell models, timing libraries, geometry, and physical rules.
 Hardcaml's simulator verifies digital behavior; it does not establish that the
@@ -122,14 +152,14 @@ simulation, timing analysis, and DRC/LVS are distinct checks, all with useful ro
 
 ## Directory ownership
 
-The implemented P0 paths are:
+The current P0 layout is shown below; ignored output directories may be absent
+until their commands run. Generated bundle paths remain adapter-design work:
 
 ```text
 tinytapeout/
   README.md                 this flow plan
-  .gitignore                generated outputs and local tool/PDK caches
   reports/                  experiment format and P0 record
-  info.yaml                 project metadata and explicit source list
+  info.yaml                 current metadata/source list; generated after adoption
   src/                      generated RTL, thin wrapper, and flow configuration
   test/                     wrapper HDL test
   docs/info.md              Tiny Tapeout user documentation
@@ -145,6 +175,10 @@ Keep Hardcaml source in `lib/` and its emitter in `bin/`. Generated RTL is
 reproducible output: never hand-edit it. Decide whether CI regenerates it or a
 submission snapshot tracks it, and check generated-source consistency either way.
 Large layouts and logs belong in build artifacts; commit small experiment records.
+The root `.gitignore` governs generated outputs/caches. `tinytapeout/` remains the
+consumer integration area; reusable adapter/backend logic belongs in the helper.
+Choose emitted paths with the adapter rather than requiring all generic ASIC
+artifacts to live under this TT-specific directory.
 
 ### Local support-tools checkout
 
@@ -167,10 +201,11 @@ The inspected upstream composite action also assumes root-relative `src/`,
 `info.yaml`, `tt/`, and `runs/` paths. Merely placing its workflow under
 `tinytapeout/.github/` or setting a shell default working directory is insufficient.
 
-Proposed integration: maintain design inputs here, generate a self-contained
-template-shaped staging project under `tinytapeout/build/`, and run the pinned
-support tools there. A future root workflow calls our staging/run script and
-uploads results explicitly. If submission requires a template-root repository,
+Current integration stages a template-shaped project under `tinytapeout/build/`
+and runs the pinned support tools there. During P0.6, the ASIC adapter takes over
+rendering this shape from the immutable build; scripts consume its inputs.
+A future root workflow calls our staging/run script and uploads results explicitly.
+If submission requires a template-root repository,
 export the same staged project to that shape. Validate GDS, precheck, and
 gate-level test paths together before calling CI complete.
 
@@ -182,28 +217,35 @@ has `ui_in[7:0]`, `uo_out[7:0]`, `uio_in[7:0]`, `uio_out[7:0]`,
 Use a unique `tt_um_...` top name and assign every output.
 
 Proposed allocation: the eight `uio` pins form the programmable protocol bank;
-some dedicated `ui`/`uo` pins carry the host loader and status. Document each bit
-in `info.yaml` after the loader format is decided. Connect output enables
-explicitly so I2C can release lines and the device can recover safely from reset.
+some dedicated `ui`/`uo` pins carry the host loader and status. Declare each bit
+in project metadata after the loader format is decided; after adoption the TT
+adapter generates `info.yaml`. Until then, maintain the current file explicitly.
+Connect output enables explicitly so I2C can release lines and the device can
+recover safely from reset.
 
 Use the official floorplan, pin placement, power connections, and constraint
 defaults. Add a realistic system clock and I/O assumptions for the chosen board.
 Review asynchronous input paths, synchronizer constraints, reset release, and
 output delays. A broad false-path exception can hide an actual timing problem.
-Keep clock values consistent across `info.yaml`, timing constraints, firmware,
-and tests. Do not infer a maximum protocol frequency from core clock alone.
+After adoption derive `info.yaml` and timing constraints from one clock
+declaration, with explicit unit conversions, and use that clock in firmware and
+tests. During migration check the hand-maintained values for consistency.
+Do not infer a maximum protocol frequency from core clock alone.
 
-## First flow work items
+## Work tracking and evidence
 
-- [ ] Select and record exact CMOS5L template/action/support-tool revisions.
-- [ ] Make `bin/generate.ml` emit an observable pin/timer circuit.
-- [ ] Add wrapper, actual source list, pinout metadata, and a reset/output test.
-- [x] Confirm the chosen 6x4 floorplan exists and matches the pinned flow inputs.
-- [ ] Stage and run emitted-RTL tests, then synthesis with the selected libraries.
-- [ ] Run full placement/routing, timing analysis, physical checks, and precheck.
-- [ ] Run the gate-level wrapper test using the flow-generated netlist/models.
-- [ ] Save a first experiment record with the real area and timing results.
-- [ ] Automate generation/staging/build with deterministic inputs and artifact paths.
+Use [P0 in the phase plan](../docs/phase_plan.md#3-p0--make-the-tool-path-real)
+as the single completion checklist. P0.1–P0.3 have recorded RTL-path evidence;
+P0.4/P0.5 still need mapped/physical results. P0.6/P0.7 separately track adoption
+and registered flop-memory integration; existing script success does not close them.
+P5.1a tracks the conditional SRAM capability investigation.
+
+Use the [experiment format](reports/README.md) to link an immutable build manifest
+to each actual execution. Preserve source/dependency/collateral content and hashes,
+selection/override reasons, actual tools, logs, output hashes, and missing checks.
+Generated TT metadata and flow inputs become outputs to reproduce and review,
+rather than a second source of project decisions. P6 controls final export and
+submission-candidate validation.
 
 Run `tinytapeout/scripts/check-p0.sh` for deterministic generation, Hardcaml
 tests, wrapper RTL simulation, Verilator lint, generic Yosys synthesis, and

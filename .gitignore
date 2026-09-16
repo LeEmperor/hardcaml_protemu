@@ -22,8 +22,9 @@ _opam/
 env.sh
 *.vcd
 
-# ASIC flow python environment (created by tinytapeout/scripts/bootstrap-toolchain.sh)
+# ASIC flow python environments (created by tinytapeout/scripts/bootstrap-toolchain.sh)
 /.venv/
+/.venv-precheck/
 
 # release staging (build products; regenerated per release)
 MANIFEST.txt

@@ -1,8 +1,11 @@
 # ASIC toolchain bootstrap plan
 
-Status: implementation specification, 2026-09-15. The bootstrap script described
-here does not exist yet. [`tinytapeout/toolchain.lock`](../tinytapeout/toolchain.lock)
-is the version authority; examples in this document must not override it.
+Status: specification, 2026-09-15. Implemented the same day as
+[`tinytapeout/scripts/bootstrap-toolchain.sh`](../tinytapeout/scripts/bootstrap-toolchain.sh).
+No machine has yet completed a full run: the acceptance criteria in section 10
+remain open, and the PDK install mechanism in step 8 is still unconfirmed.
+[`tinytapeout/toolchain.lock`](../tinytapeout/toolchain.lock) is the version
+authority; examples in this document must not override it.
 
 ## 1. Purpose
 

@@ -44,8 +44,8 @@ The default local layout should be:
 
 ```text
 scaf/
+  .venv/                   ignored Python environment for the ASIC flow
   tinytapeout/
-    .venv/                 ignored Python environment
     pdk/                   ignored IHP Open PDK checkout
     tt/                    ignored pinned support-tools checkout
     build/p0-staged/       ignored generated Tiny Tapeout project
@@ -107,14 +107,18 @@ The default command should perform these steps in order:
    current directory.
 2. Parse and validate `toolchain.lock`.
 3. Check host prerequisites without making changes.
-4. Create `tinytapeout/.venv` if absent and verify that an existing environment
-   uses a compatible Python.
+4. Create `.venv` at the repository root if absent and verify that an existing
+   environment uses a compatible Python. It lives at the root, not under
+   `tinytapeout/`, because LibreLane and precheck are ASIC-flow tools rather than
+   Tiny Tapeout ones.
 5. Obtain support tools:
    - Use `TT_SUPPORT_TOOLS_DIR` when supplied.
    - Otherwise clone into `tinytapeout/tt`.
    - Fetch and check out the exact locked revision in detached-HEAD state.
    - Reject unexpected tracked or untracked changes before use.
-6. Install the support-tools Python requirements inside `.venv`.
+6. Install the support-tools Python requirements inside `.venv`. Note that
+   `precheck/requirements.txt` pins `klayout` and `gdstk` differently and cannot
+   share this environment; precheck needs its own.
 7. Install the exact locked LibreLane version inside `.venv` and verify the
    resolved installed version.
 8. Obtain the IHP Open PDK under `tinytapeout/pdk` using the installer and revision

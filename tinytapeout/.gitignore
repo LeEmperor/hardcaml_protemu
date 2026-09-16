@@ -1,5 +1,4 @@
-# Local flow environments and caches
-/.venv/
+# Local flow environments and caches (the python env lives at the repo root)
 /pdk/
 /tt/
 

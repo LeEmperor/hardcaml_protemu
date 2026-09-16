@@ -98,18 +98,23 @@ readonly script_dir repo_root
 
 readonly tt_dir="$repo_root/tinytapeout"
 readonly lock_file="$tt_dir/toolchain.lock"
-readonly venv_dir="$tt_dir/.venv"
+# The Python environment belongs to the repository, not to the Tiny Tapeout
+# subtree: LibreLane and precheck are ASIC-flow tools that happen to be reached
+# through TT. Keeping it at the root keeps this a dune/Hardcaml project that
+# uses TT for tooling, rather than a TT project with OCaml in it.
+readonly venv_dir="$repo_root/.venv"
 readonly pdk_dir="$tt_dir/pdk"
 readonly managed_tt_dir="$tt_dir/tt"
 readonly stage_dir="$tt_dir/build/p0-staged"
 readonly env_file="$tt_dir/build/toolchain-env.sh"
 
 # Section 9: resolve and validate a path before creating or replacing anything
-# under it. Only ignored subtrees of tinytapeout/ are writable.
+# under it. Only the ignored toolchain subtrees are writable: the root .venv
+# and the ignored directories beneath tinytapeout/.
 assert_writable_path() {
     local path=$1
     case $path in
-        "$tt_dir"/.venv|"$tt_dir"/.venv/*) ;;
+        "$repo_root"/.venv|"$repo_root"/.venv/*) ;;
         "$tt_dir"/pdk|"$tt_dir"/pdk/*) ;;
         "$tt_dir"/tt|"$tt_dir"/tt/*) ;;
         "$tt_dir"/build|"$tt_dir"/build/*) ;;

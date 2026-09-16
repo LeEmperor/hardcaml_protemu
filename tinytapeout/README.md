@@ -68,11 +68,47 @@ The exact verification tools enabled depend on the process/flow configuration;
 inspect the CMOS5L run rather than requiring every tool manually.
 [LibreLane step reference](https://librelane.readthedocs.io/en/stable/reference/step_config_vars.html)
 
+### Host prerequisites
+
+These must be installed by the user or an administrator. The bootstrap script
+checks for them and refuses to continue without them; it never installs host
+packages, never uses `sudo`, and never configures a container daemon.
+
+```sh
+sudo apt install git make gawk python3 python3-venv \
+                 docker.io libcairo2 \
+                 iverilog verilator yosys
+sudo usermod -aG docker "$USER"   # then log out and back in
+```
+
+| Package | Why it is needed | Required |
+| --- | --- | --- |
+| `git` | every checkout and revision check | yes |
+| `python3` >= 3.11 | support tools, LibreLane, flow scripts | yes |
+| `python3-venv` | `ensurepip`; without it `python3 -m venv` fails partway | yes |
+| `make`, `gawk`, `grep`, `coreutils` | scripts and `test/Makefile` | yes |
+| `docker.io` or `podman` | LibreLane runs dockerized by default | yes, unless a native LibreLane is supplied |
+| `libcairo2` | `cairocffi`/`cairosvg` in the support-tools requirements | yes |
+| `iverilog` | RTL and gate-level wrapper simulation | yes |
+| `verilator` | lint in `check-p0.sh` | yes |
+| `yosys` | the generic synthesis smoke test only | no; the authoritative Yosys comes from LibreLane |
+
+Do **not** install `openroad`, `magic`, `netgen`, or `opensta` from the host
+package manager. The pinned flow supplies them, and a separately installed copy
+would be an unpinned version that does not match what fabricates the design.
+
+OCaml, Dune and Hardcaml come from the `5.2.0+ox` opam switch, not from apt.
+Python packages come from the repository-root `.venv` created by
+[`scripts/bootstrap-toolchain.sh`](scripts/bootstrap-toolchain.sh). Precheck
+needs a second environment: `precheck/requirements.txt` pins `klayout` and
+`gdstk` differently from the top-level requirements, and upstream supplies
+`precheck/default.nix` for the native `klayout` and `magic` binaries it shells
+out to.
+
 A PATH inspection on this machine found `opam`, `dune`, `yosys`, `verilator`, and
 `iverilog`. It did not find `openroad`, `klayout`, `magic`, `netgen`, `docker`, or
 `nix`. This is only executable discovery, not version validation or an inventory
-of all installed environments. LibreLane, Python dependencies, solver, and PDK
-availability still need checking. No tools were installed for this planning pass.
+of all installed environments.
 
 The pinned CMOS5L support-tools revision contains the competition's current
 `6x4` tile-size entry and `tt_block_6x4_pgvdd.def`. The staging script validates

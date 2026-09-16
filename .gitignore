@@ -22,6 +22,9 @@ _opam/
 env.sh
 *.vcd
 
+# ASIC flow python environment (created by tinytapeout/scripts/bootstrap-toolchain.sh)
+/.venv/
+
 # release staging (build products; regenerated per release)
 MANIFEST.txt
 SHA256SUMS

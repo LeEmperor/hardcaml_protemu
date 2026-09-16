@@ -207,6 +207,11 @@ export TT_SUPPORT_TOOLS_DIR=/absolute/path/to/scaf/tinytapeout/tt
 Users would activate the Python environment and flow variables with an explicit
 command printed by the bootstrap. Do not modify shell startup files.
 
+Implemented as the tracked root `env.sh`, which sources this file, selects the opam
+switch, and puts `.venv/bin` on `PATH`. The repository-level entry point
+`./bootstrap.sh` (or `dune exec protemu -- bootstrap`) checks the OCaml layer and
+then runs this script; see [environment.md](environment.md).
+
 ## 8. Follow-on commands
 
 After bootstrap succeeds, provide repository scripts rather than requiring users
@@ -217,7 +222,8 @@ tinytapeout/scripts/check-p0.sh          existing RTL/model/generic synthesis ch
 tinytapeout/scripts/harden-cmos5l.sh     written; mapped synthesis, place-and-route,
                                          and the pipeline's only timing gate
 tinytapeout/scripts/test-gates.sh        future flow-netlist wrapper simulation
-tinytapeout/scripts/precheck.sh          future required Tiny Tapeout checks
+tinytapeout/scripts/precheck.sh          written; tt_submission from the current run,
+                                         upstream precheck in the Nix-pinned shell
 tinytapeout/scripts/report-run.sh        future artifact hashes and experiment summary
 ```
 

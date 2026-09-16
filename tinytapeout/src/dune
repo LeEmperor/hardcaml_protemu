@@ -1,0 +1,37 @@
+; p0_observable.v is generated but committed, because the Tiny Tapeout flow reads
+; src/ directly. `dune runtest` fails when it is stale or when generation is not
+; deterministic; `dune promote` refreshes it.
+
+(rule
+ (targets p0_observable.generated.v)
+ (action
+  (with-stdout-to
+   %{null}
+   (run
+    %{exe:../../bin/generate.exe}
+    -output
+    %{targets}
+    -module-name
+    p0_observable))))
+
+(rule
+ (targets p0_observable.regenerated.v)
+ (action
+  (with-stdout-to
+   %{null}
+   (run
+    %{exe:../../bin/generate.exe}
+    -output
+    %{targets}
+    -module-name
+    p0_observable))))
+
+(rule
+ (alias runtest)
+ (action
+  (diff p0_observable.v p0_observable.generated.v)))
+
+(rule
+ (alias runtest)
+ (action
+  (run cmp p0_observable.generated.v p0_observable.regenerated.v)))

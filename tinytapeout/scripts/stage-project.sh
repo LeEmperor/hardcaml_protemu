@@ -41,6 +41,23 @@ cp "$repo_root/tinytapeout/test/Makefile" "$stage_dir/test/Makefile"
 cp "$repo_root/tinytapeout/test/tb.v" "$stage_dir/test/tb.v"
 cp "$repo_root/tinytapeout/docs/info.md" "$stage_dir/docs/info.md"
 
+# tt-support-tools' Project.harden() reads the project's git remote and HEAD
+# commit (for runs/wokwi/final/commit_id.json) before LibreLane starts, and
+# raises InvalidGitRepositoryError on a plain directory. In CI the project is a
+# GitHub checkout; here it is a staged copy, so it gets a one-commit repository
+# whose origin is this repository's and whose message names the source commit.
+# The staging commit hash is not the source commit: harden-summary.json records
+# that.
+source_commit=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)
+source_dirty=$(test -n "$(git -C "$repo_root" status --porcelain 2>/dev/null)" && echo " (dirty)" || true)
+source_remote=$(git -C "$repo_root" remote get-url origin 2>/dev/null || echo "file://$repo_root")
+git -C "$stage_dir" init --quiet
+git -C "$stage_dir" remote add origin "$source_remote"
+git -C "$stage_dir" add -A
+git -C "$stage_dir" -c user.name=stage-project -c user.email=stage-project@localhost \
+    -c commit.gpgsign=false -c core.hooksPath=/dev/null \
+    commit --quiet -m "staged from $source_commit$source_dirty"
+
 if test -d "$support_tools_dir"; then
     support_tools_dir=$(realpath "$support_tools_dir")
     actual_revision=$(git -C "$support_tools_dir" rev-parse HEAD)

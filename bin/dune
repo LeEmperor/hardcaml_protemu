@@ -17,3 +17,20 @@
   (pps ppx_hardcaml ppx_jane))
  (lint
   (pps ppx_js_style)))
+
+; Repository command front door: `dune exec protemu -- <command>`. The name is
+; bound by the env stanza in the root dune file, so nothing is installed.
+
+(executable
+ (name protemu)
+ (libraries
+  core
+  core_unix
+  core_unix.command_unix
+  core_unix.filename_unix
+  core_unix.sys_unix)
+ (modules protemu)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))

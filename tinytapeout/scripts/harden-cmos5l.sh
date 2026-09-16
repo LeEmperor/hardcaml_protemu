@@ -249,13 +249,16 @@ report_and_gate() {
 
     local summary="$run_dir/harden-summary.json"
 
+    # Captured with || rather than $? afterwards: under set -e a bare non-zero
+    # exit would end the script before the verdict below could be reported.
+    local rc=0
     RUN_TAG="$run_tag" \
     LOCK_PDK="$(lock pdk)" \
     LOCK_TILES="$(lock tiles)" \
     LOCK_LIBRELANE="$(lock librelane_version)" \
     SOURCE_COMMIT="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" \
     SOURCE_DIRTY="$(test -n "$(git -C "$repo_root" status --porcelain 2>/dev/null)" && echo true || echo false)" \
-    "$venv_dir/bin/python" - "$metrics" "$summary" <<'PY'
+    "$venv_dir/bin/python" - "$metrics" "$summary" <<'PY' || rc=$?
 import csv, json, os, sys
 
 metrics_path, summary_path = sys.argv[1], sys.argv[2]
@@ -364,7 +367,6 @@ if violations:
         print(f"       {v}", file=sys.stderr)
     sys.exit(2)
 PY
-    local rc=$?
     case $rc in
         0) info "timing and physical checks pass" ;;
         2) die "$EX_TIMING" "the flow completed but the design does not close" \
@@ -391,8 +393,7 @@ Next:
   Record the result:   tinytapeout/reports/  (see reports/README.md)
   Gate-level test:     make -C tinytapeout/test gate PDK_ROOT=$PDK_ROOT \\
                          NETLIST=$run_dir/final/nl/*.nl.v
-  Precheck:            not yet scripted; needs the .venv-precheck environment
-                       and native klayout/magic
+  Precheck:            tinytapeout/scripts/precheck.sh  (needs Nix)
 
 This ran the physical flow and checked timing. It did not run DRC or LVS:
 src/config.json sets RUN_KLAYOUT_DRC=0 and RUN_KLAYOUT_XOR=0, so design-rule

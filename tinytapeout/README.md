@@ -133,7 +133,13 @@ Python packages come from the repository-root `.venv` created by
 needs a second environment: `precheck/requirements.txt` pins `klayout` and
 `gdstk` differently from the top-level requirements, and upstream supplies
 `precheck/default.nix` for the native `klayout` and `magic` binaries it shells
-out to.
+out to. [`scripts/precheck.sh`](scripts/precheck.sh) runs inside that Nix shell
+and checks the provided versions against `precheck/tool-versions.json`, so Nix
+is a host prerequisite for precheck (not for hardening). Do not install
+`klayout` from apt for this. With Ubuntu's `nix-bin` package, your user must be
+in the `nix-users` group (`sudo usermod -aG nix-users $USER`, then log in
+again). For `ihp-sg13cmos5l`, precheck runs KLayout checks only; no check
+invokes `magic`.
 
 A PATH inspection on this machine found `opam`, `dune`, `yosys`, `verilator`, and
 `iverilog`. It did not find `openroad`, `klayout`, `magic`, `netgen`, `docker`, or
@@ -247,7 +253,7 @@ Generated TT metadata and flow inputs become outputs to reproduce and review,
 rather than a second source of project decisions. P6 controls final export and
 submission-candidate validation.
 
-Run `tinytapeout/scripts/check-p0.sh` for deterministic generation, Hardcaml
+Run `dune exec protemu -- check` (`tinytapeout/scripts/check-p0.sh`) for deterministic generation, Hardcaml
 tests, wrapper RTL simulation, Verilator lint, generic Yosys synthesis, and
 staging. Generic synthesis does not satisfy P0.4: the official CMOS5L flow still
 needs to reach synthesis using the intended PDK libraries.

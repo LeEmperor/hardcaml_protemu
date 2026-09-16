@@ -535,12 +535,11 @@ install_python_packages() {
 # 6b. Precheck environment. Separate by necessity, not by taste: its klayout and
 #     gdstk pins conflict with the top-level requirements.
 #
-#     Precheck also shells out to native `magic` and `klayout` binaries, which
-#     pip cannot supply (there is no magic wheel at all). Upstream ships
-#     precheck/default.nix pinning nixpkgs for exactly those two. Their absence
-#     is reported rather than fatal: precheck is a later step than bootstrap.
+#     Precheck also shells out to native `klayout` (and, for other processes,
+#     `magic`), which pip cannot supply. Upstream ships precheck/default.nix
+#     pinning nixpkgs for exactly those two, and precheck.sh runs inside it.
 # ---------------------------------------------------------------------------
-precheck_binaries_present=""
+precheck_tools=""
 
 install_precheck_environment() {
     step "Preparing the precheck environment"
@@ -585,25 +584,119 @@ install_precheck_environment() {
         die "$EX_TOOL" "klayout did not install into $precheck_venv_dir"
     fi
 
-    # Native binaries, reported but not required at bootstrap time.
-    local tool found=() absent=()
-    for tool in klayout magic; do
-        if command -v "$tool" >/dev/null 2>&1; then found+=("$tool"); else absent+=("$tool"); fi
-    done
-    [[ ${#found[@]} -gt 0 ]] && info "precheck binaries present: ${found[*]}"
-    if [[ ${#absent[@]} -gt 0 ]]; then
-        warn "precheck binaries missing: ${absent[*]}"
-        warn "precheck runs them from PATH; there is no pip package for magic."
-        warn "upstream pins them in $support_tools_dir/precheck/default.nix:"
-        warn "  nix-shell $support_tools_dir/precheck/default.nix"
+    prepare_precheck_tools
+}
+
+# The native tools come from upstream's precheck/default.nix, never from PATH:
+# a host-installed klayout is an unpinned version. Nix is a host prerequisite
+# this script does not install, and precheck is a later step than bootstrap,
+# so every problem here is reported rather than fatal. precheck.sh re-verifies
+# and refuses to run on any of them.
+prepare_precheck_tools() {
+    local nix_file="$support_tools_dir/precheck/default.nix"
+    local pins="$support_tools_dir/precheck/tool-versions.json"
+
+    if ! command -v nix-shell >/dev/null 2>&1; then
+        warn "nix-shell not found; precheck.sh needs Nix for its pinned KLayout"
+        precheck_tools="nix not installed"
+        return
     fi
-    precheck_binaries_present="${found[*]:-none}"
+
+    # With a daemon install, a user outside the daemon's allowed group gets
+    # "Permission denied" on every command, so installed is not enough.
+    if ! nix-instantiate --eval --expr 'builtins.nixVersion' >/dev/null 2>&1; then
+        warn "Nix is installed but this user cannot use it (daemon permission denied)"
+        warn "Ubuntu's nix-bin package limits the daemon to the nix-users group:"
+        warn "  sudo usermod -aG nix-users \$USER   # then log out and back in"
+        precheck_tools="nix not usable by $USER"
+        return
+    fi
+
+    # Realizing the shell downloads KLayout and Magic into /nix/store. The
+    # nixpkgs pin is a fetchTarball, which may touch the network, so this is
+    # skipped offline and under --check.
+    if [[ $offline -eq 1 ]] || ! mutating; then
+        info "nix usable; pinned precheck tools not realized (offline)"
+        precheck_tools="nix usable, not realized"
+        return
+    fi
+
+    net "realizing $nix_file (first run downloads KLayout and Magic)"
+    local versions
+    if ! versions=$(nix-shell "$nix_file" --run 'klayout -v; magic --version 2>&1 || true' </dev/null); then
+        warn "nix-shell could not provide the precheck tools; precheck.sh will retry"
+        precheck_tools="nix realization failed"
+        return
+    fi
+
+    local want have
+    want=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["klayout"])' "$pins")
+    have=$(printf '%s\n' "$versions" | awk '$1 == "KLayout" { print $2; exit }')
+    if [[ $have == "$want" ]]; then
+        info "klayout $have from Nix (pinned $want)"
+        precheck_tools="klayout $have via nix"
+    else
+        warn "Nix provided KLayout '${have:-unknown}'; tool-versions.json pins $want"
+        precheck_tools="klayout ${have:-unknown} via nix (pin $want)"
+    fi
 }
 
 # ---------------------------------------------------------------------------
 # 7. PDK. Fetched at the exact pinned revision, then verified for the views the
 #    flow and the gate-level test actually consume.
 # ---------------------------------------------------------------------------
+# Tracked or untracked changes in the PDK checkout, less the SOURCES record that
+# ensure_pdk writes itself (upstream does not track it).
+pdk_local_changes() {
+    git -C "$pdk_dir" status --porcelain | grep -vxF "?? $(lock pdk)/SOURCES" || true
+}
+
+# The PDK is always a checkout this script created, never one supplied by the
+# user, so a lockfile change moves it rather than requiring manual removal. The
+# rules match the managed support-tools checkout: only when clean, only to the
+# exact locked revision, detached. Only that revision is fetched (IHP-Open-PDK is
+# large, so a full clone is avoided), and earlier revisions stay in the object
+# store: switching back to a branch with an older lockfile works offline.
+move_pdk() {
+    local head=$1 want=$2
+    local from=${head:-"no revision"}
+
+    if [[ -n $head ]]; then
+        local changes=()
+        mapfile -t changes < <(pdk_local_changes)
+        if [[ ${#changes[@]} -gt 0 ]]; then
+            local shown=("${changes[@]:0:10}")
+            die "$EX_MISMATCH" "PDK checkout is at $head, lockfile wants $want, and it has local changes" \
+                "${shown[@]/#/  }" \
+                "This script never discards local changes. If they are your edits, resolve" \
+                "them yourself. If an earlier move was interrupted, finish it with:" \
+                "  git -C $pdk_dir checkout --force --detach $want"
+        fi
+    fi
+    mutating || die "$EX_MISMATCH" "PDK checkout is at $from, lockfile wants $want" \
+        "Rerun without --check to move it."
+
+    if ! git -C "$pdk_dir" cat-file -e "$want^{commit}" 2>/dev/null; then
+        [[ $offline -eq 0 ]] || die "$EX_NETWORK" \
+            "PDK checkout is at $from, lockfile wants $want, and --offline was given" \
+            "That revision has never been fetched into $pdk_dir."
+        local repo; repo=$(lock pdk_repository)
+        git -C "$pdk_dir" remote set-url origin "$repo" 2>/dev/null \
+            || git -C "$pdk_dir" remote add origin "$repo"
+        net "fetching $repo at $want"
+        git -C "$pdk_dir" fetch --quiet --depth 1 origin "$want" \
+            || die "$EX_NETWORK" "could not fetch $want from $repo" \
+                   "Some servers refuse fetch-by-SHA. If so, record a reachable tag or" \
+                   "branch in toolchain.lock and rerun."
+    fi
+
+    git -C "$pdk_dir" -c advice.detachedHead=false checkout --quiet --detach "$want" \
+        || die "$EX_MISMATCH" "could not check out $want in $pdk_dir" \
+               "git reported the reason above. The checkout is unchanged or partly moved;" \
+               "rerunning will say which."
+    info "moved PDK from $from to $want"
+}
+
 ensure_pdk() {
     step "Preparing the $(lock pdk) PDK"
 
@@ -618,25 +711,28 @@ ensure_pdk() {
         mutating || die "$EX_PDK" "no PDK at $pdk_dir"
 
         assert_writable_path "$pdk_dir"
-        # Fetch exactly the pinned revision. IHP-Open-PDK is large; a full clone
-        # is avoided deliberately.
-        net "fetching $(lock pdk_repository) at $want"
         mkdir -p "$pdk_dir"
         git -C "$pdk_dir" init --quiet
         git -C "$pdk_dir" remote add origin "$(lock pdk_repository)"
-        git -C "$pdk_dir" fetch --quiet --depth 1 origin "$want" \
-            || die "$EX_NETWORK" "could not fetch $want from $(lock pdk_repository)" \
-                   "Some servers refuse fetch-by-SHA. If so, record a reachable tag or" \
-                   "branch in toolchain.lock and rerun."
-        git -C "$pdk_dir" checkout --quiet --detach FETCH_HEAD
     fi
 
-    local head; head=$(git -C "$pdk_dir" rev-parse HEAD)
+    # Empty only when an earlier first fetch was interrupted after `git init`:
+    # nothing is checked out, so there is nothing to lose.
+    local head
+    head=$(git -C "$pdk_dir" rev-parse --verify --quiet HEAD) || head=""
+
     if [[ $head != "$want" ]]; then
-        die "$EX_MISMATCH" "PDK checkout is at the wrong revision" \
-            "found:    $head" \
-            "expected: $want" \
-            "Remove $pdk_dir yourself and rerun, or correct toolchain.lock."
+        move_pdk "$head" "$want"
+        head=$want
+    else
+        local changes=()
+        mapfile -t changes < <(pdk_local_changes)
+        if [[ ${#changes[@]} -gt 0 ]]; then
+            # A warning rather than a refusal until a hardening run has shown
+            # whether the flow itself writes beneath PDK_ROOT.
+            warn "the PDK checkout has local changes; results may not match the lockfile:"
+            printf '      %s\n' "${changes[@]:0:10}" >&2
+        fi
     fi
     info "revision $head"
 
@@ -674,9 +770,10 @@ verify_pdk() {
     # plus the collateral synthesis and place-and-route require.
     #
     # libs.ref is what synthesis and place-and-route consume. libs.tech holds the
-    # rule decks and startup files that precheck invokes by absolute path:
-    #   magic  -rcfile $PDK_ROOT/$PDK/libs.tech/magic/$PDK.magicrc
+    # rule decks and layer properties that precheck reads by absolute path:
     #   klayout -b -r   $PDK_ROOT/$PDK/libs.tech/klayout/tech/drc/$PDK.drc
+    # The magicrc is kept in the list because precheck.py references it
+    # generically, although no ihp-sg13cmos5l check currently runs magic.
     # A PDK missing either half is incomplete for this project.
     local missing=() rel
     for rel in \
@@ -845,11 +942,9 @@ export PDK=$(lock pdk)
 export PDK_ROOT=$pdk_dir
 export TT_SUPPORT_TOOLS_DIR=$support_tools_dir
 
-# Activate the project-local Python environment with:
-#   source $venv_dir/bin/activate
-#
-# Precheck uses a separate environment (its klayout/gdstk pins conflict):
-#   source $precheck_venv_dir/bin/activate
+# Scripts source this file directly. For an interactive shell, source the
+# repository's env.sh instead: it loads this file, the opam switch, and .venv.
+# Precheck's separate $precheck_venv_dir is never activated.
 EOF
     info "$env_file"
 }
@@ -858,7 +953,7 @@ summary() {
     cat <<EOF
 
 ================================================================================
-Environment ready.
+$(mutating && echo "Environment ready." || echo "Environment valid (--check: nothing was changed).")
 
   process           $(lock pdk)
   tiles             $(lock tiles)
@@ -869,20 +964,19 @@ Environment ready.
                     $(lock pdk_revision)
   python env        $venv_dir
   precheck env      $precheck_venv_dir
-  precheck binaries ${precheck_binaries_present:-not checked}
+  precheck tools    ${precheck_tools:-not checked}
   staged project    $stage_dir
 
-Activate:
-  source $env_file
-  source $venv_dir/bin/activate
+Activate (each new shell):
+  source $repo_root/env.sh
 
 Next commands:
-  tinytapeout/scripts/check-p0.sh     RTL regression: generation, tests, lint,
-                                      generic synthesis, staging
+  dune exec protemu -- check      RTL regression: generation, tests, lint,
+                                  generic synthesis, staging
+  dune exec protemu -- harden     mapped synthesis and place-and-route
+  dune exec protemu -- precheck   required Tiny Tapeout checks (needs Nix)
   (not yet written)
-  tinytapeout/scripts/harden-cmos5l.sh   mapped synthesis and place-and-route
   tinytapeout/scripts/test-gates.sh      gate-level wrapper simulation
-  tinytapeout/scripts/precheck.sh        required Tiny Tapeout checks
   tinytapeout/scripts/report-run.sh      artifact hashes and experiment summary
 
 This prepared an environment. It did not run hardening, timing analysis,

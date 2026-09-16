@@ -349,6 +349,12 @@ PY
 }
 
 main() {
+    # The submission and reports are written inside the staged project; a
+    # re-stage mid-run would delete them.
+    # shellcheck source=stage-lock.sh
+    source "$script_dir/stage-lock.sh"
+    acquire_stage_lock "$repo_root" || exit "$EX_GENERAL"
+
     load_environment
     verify_environment
     check_nix

@@ -179,6 +179,11 @@ packages unnecessarily.
   it and ask the user to select the required revision themselves.
 - A managed checkout under `tinytapeout/tt` may fetch missing objects and move to
   the locked detached revision only when it is clean.
+- The PDK under `tinytapeout/pdk` is always managed, so the same rule applies: a
+  lockfile revision change fetches only the new revision (depth 1) and moves the
+  clean checkout to it. Earlier revisions stay in its object store, so returning to
+  an older lockfile works offline. Local changes, apart from the generated `SOURCES`
+  record, block a move; at the locked revision they are reported as a warning.
 - Do not update to branch heads implicitly. Updating tools is a reviewed change to
   `toolchain.lock`, followed by a clean bootstrap and regression.
 - Do not delete PDKs, environments, runs, or caches automatically. A separate
@@ -245,7 +250,8 @@ The implementation must:
 - Avoid `sudo`, global `pip`, global environment changes, and implicit Docker
   configuration.
 - Never overwrite a dirty checkout, existing non-virtual-environment directory,
-  or mismatched PDK installation.
+  or non-git PDK directory. A clean managed checkout moving to its locked revision
+  is not an overwrite.
 - Verify downloaded Git objects by revision and physical inputs by hash.
 - Distinguish a missing host prerequisite, network failure, revision mismatch,
   unsupported floorplan, incomplete PDK, flow failure, and design failure.

@@ -7,6 +7,11 @@ default_support_tools_dir="$repo_root/../tt-support-tools-cmos5l"
 support_tools_dir=${TT_SUPPORT_TOOLS_DIR:-$default_support_tools_dir}
 lock_file="$repo_root/tinytapeout/toolchain.lock"
 
+# The rm -rf below would destroy a hardening or precheck run in progress.
+# shellcheck source=stage-lock.sh
+source "$repo_root/tinytapeout/scripts/stage-lock.sh"
+acquire_stage_lock "$repo_root" || exit 1
+
 lock_value() {
     key=$1
     awk -F= -v key="$key" '$1 == key { print substr($0, length(key) + 2); found = 1 }

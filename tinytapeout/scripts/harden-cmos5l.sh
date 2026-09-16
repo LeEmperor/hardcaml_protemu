@@ -21,6 +21,10 @@
 #     fail the build on negative slack, and tt-support-tools checks no timing
 #     metric anywhere. The timing gate here is the only one in the pipeline.
 #   * An experiment record needs machine-readable results, not scrollback.
+#   * The run directory lives inside the staged project, which stage-project.sh
+#     deletes. This script holds the staging lock (stage-lock.sh) for its whole
+#     run, and copies its output to a log under build/logs/, outside the staged
+#     project, so tracebacks from tt_tool.py survive even if the run does not.
 #
 # Run tinytapeout/scripts/bootstrap-toolchain.sh first.
 
@@ -69,6 +73,7 @@ Exit codes:
   8  the flow completed but the design does not meet timing
 
 Artifacts are preserved on every outcome, including a timing failure.
+All output is also written to tinytapeout/build/logs/harden-<tag>.log.
 USAGE
 }
 
@@ -95,6 +100,33 @@ readonly runs_archive="$tt_dir/runs"
 readonly run_dir="$stage_dir/runs/wokwi"
 
 : "${run_tag:=$(date +%Y%m%d-%H%M%S)}"
+readonly log_file="$tt_dir/build/logs/harden-$run_tag.log"
+
+# ---------------------------------------------------------------------------
+# 0. Logging and the staging lock
+# ---------------------------------------------------------------------------
+# Output still reaches the terminal. Both streams are closed and the tee
+# processes waited for on exit, so the final error is in the log and printed
+# before the shell prompt returns. Started before the lock is taken, so the tee
+# processes do not inherit it.
+start_log() {
+    mkdir -p "$(dirname "$log_file")"
+    [[ ! -e $log_file ]] || die "$EX_GENERAL" \
+        "log already exists: $log_file" "Choose another --tag."
+    exec > >(tee -a "$log_file")
+    local out_pid=$!
+    exec 2> >(tee -a "$log_file" >&2)
+    local err_pid=$!
+    # shellcheck disable=SC2064  # the pids are expanded now, deliberately
+    trap "exec >&- 2>&-; wait $out_pid $err_pid 2>/dev/null || true" EXIT
+    info "logging to $log_file"
+}
+
+take_stage_lock() {
+    # shellcheck source=stage-lock.sh
+    source "$script_dir/stage-lock.sh"
+    acquire_stage_lock "$repo_root" || exit "$EX_GENERAL"
+}
 
 # ---------------------------------------------------------------------------
 # Lockfile, parsed as data rather than sourced.
@@ -225,7 +257,8 @@ harden() {
            --project-dir "$stage_dir" --ihp --harden "${extra[@]}" ) \
         || die "$EX_TOOL" "hardening failed" \
                "The run directory is preserved at $run_dir" \
-               "Inspect the failing step's log there."
+               "Inspect the failing step's log there." \
+               "Full output, including any Python traceback: $log_file"
 }
 
 # ---------------------------------------------------------------------------
@@ -388,6 +421,7 @@ Hardening complete.
   run directory     $run_dir
   summary           $run_dir/harden-summary.json
   archived previous $runs_archive/$run_tag
+  log               $log_file
 
 Next:
   Record the result:   tinytapeout/reports/  (see reports/README.md)
@@ -403,6 +437,8 @@ EOF
 }
 
 main() {
+    start_log
+    take_stage_lock
     load_environment
     verify_environment
     archive_previous_run

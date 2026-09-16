@@ -825,6 +825,12 @@ stage_project() {
     step "Staging the Tiny Tapeout project"
     mutating || { info "would run stage-project.sh"; return; }
 
+    # Held for the rest of the script, which also writes the user configuration
+    # into the staged project. stage-project.sh inherits it.
+    # shellcheck source=stage-lock.sh
+    source "$script_dir/stage-lock.sh"
+    acquire_stage_lock "$repo_root" || exit "$EX_GENERAL"
+
     # Pass the resolved checkout explicitly so this script and stage-project.sh
     # can never disagree about which support tools were validated.
     TT_SUPPORT_TOOLS_DIR="$support_tools_dir" "$script_dir/stage-project.sh" \

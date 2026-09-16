@@ -10,7 +10,17 @@
 # tools; it is for running dune, python, librelane, etc. by hand. Precheck's
 # separate .venv-precheck is never activated: precheck.sh calls it directly.
 
-_protemu_root=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)
+# Sourced into an interactive shell, where the user's aliases and functions are
+# live: a `paste`, `grep` or `cd` of their own would run in place of the real
+# command. So this file uses only shell builtins and parameter expansion, never
+# external text tools, and `builtin cd`/`builtin pwd`.
+_protemu_src=${BASH_SOURCE[0]:-$0}
+case $_protemu_src in
+    */*) _protemu_root=${_protemu_src%/*} ;;
+    *) _protemu_root=. ;;
+esac
+_protemu_root=$(CDPATH='' builtin cd -- "$_protemu_root" && builtin pwd)
+unset _protemu_src
 
 # 1. OCaml
 if command -v opam >/dev/null 2>&1; then
@@ -31,13 +41,20 @@ fi
 #    one from an earlier source) is removed from PATH first, so re-sourcing
 #    switches rather than stacks, and .venv always leads the opam bin.
 if [ -x "$_protemu_root/.venv/bin/python" ]; then
-    for _protemu_old in "${VIRTUAL_ENV:-}" "$_protemu_root/.venv"; do
-        [ -n "$_protemu_old" ] || continue
-        PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$_protemu_old/bin" | paste -sd: -)
+    _protemu_path=
+    _protemu_rest=$PATH:
+    while [ -n "$_protemu_rest" ]; do
+        _protemu_entry=${_protemu_rest%%:*}
+        _protemu_rest=${_protemu_rest#*:}
+        if [ -n "$_protemu_entry" ] \
+            && { [ -z "${VIRTUAL_ENV:-}" ] || [ "$_protemu_entry" != "$VIRTUAL_ENV/bin" ]; } \
+            && [ "$_protemu_entry" != "$_protemu_root/.venv/bin" ]; then
+            _protemu_path=${_protemu_path:+$_protemu_path:}$_protemu_entry
+        fi
     done
     export VIRTUAL_ENV="$_protemu_root/.venv"
-    export PATH="$VIRTUAL_ENV/bin:$PATH"
-    unset PYTHONHOME _protemu_old
+    export PATH="$VIRTUAL_ENV/bin:$_protemu_path"
+    unset PYTHONHOME _protemu_path _protemu_rest _protemu_entry
 fi
 
 unset _protemu_root

@@ -47,7 +47,7 @@ you type yourself.
 | Fresh clone, machine already set up | Layer 2, possibly new opam packages | `./bootstrap.sh`. Add `--install-deps` if it reports missing packages. |
 | New worktree | Layer 2 again: it is per checkout (about 1.3 GB PDK and 600 MB of environments) | `./bootstrap.sh`, then `source env.sh` in that worktree. Sourcing switches `PATH` from the previous worktree rather than stacking. |
 | New terminal or reboot | Layer 3 only | `source env.sh`. If something still fails, `dune exec protemu -- doctor`. |
-| Pull or branch switch changed `toolchain.lock` or the opam file | Layer 1 or 2 out of date | `dune exec protemu -- bootstrap`. A changed PDK revision is refused rather than overwritten, so remove `tinytapeout/pdk` yourself when told. |
+| Pull or branch switch changed `toolchain.lock` or the opam file | Layer 1 or 2 out of date | `dune exec protemu -- bootstrap`. A changed PDK revision is fetched and checked out in place, and switching back to an older lockfile works offline. It stops only if the PDK checkout has local changes. |
 | OS upgrade, new python3 minor, or group membership lost | Layer 0 drift breaks layer 2 | `doctor` reports it. Recreating a venv means removing it yourself and rerunning; the bootstrap never deletes. |
 | Interrupted bootstrap | Partial layer 2 | Rerun. Anything it will not repair is named with the path to remove. |
 | Offline | Nothing may be fetched | `./bootstrap.sh --offline` validates and reuses what exists. |

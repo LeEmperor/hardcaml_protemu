@@ -1,6 +1,7 @@
-# ASIC toolchain bootstrap plan
+# CMOS5L toolchain bootstrap plan
 
-Status: specification, 2026-09-15. Implemented the same day as
+Status: specification implemented 2026-09-15; ownership clarified 2026-09-16.
+The implementation is
 [`tinytapeout/scripts/bootstrap-toolchain.sh`](../tinytapeout/scripts/bootstrap-toolchain.sh).
 No machine has yet completed a full run: the acceptance criteria in section 10
 remain open, and the PDK install mechanism in step 8 is still unconfirmed.
@@ -15,7 +16,7 @@ supported machine should be able to fetch and validate the pinned support tools,
 Python environment, LibreLane release, and IHP PDK without copying physical files
 into tracked design directories.
 
-Proposed entry point:
+Current entry point:
 
 ```sh
 tinytapeout/scripts/bootstrap-toolchain.sh
@@ -25,15 +26,32 @@ Bootstrapping prepares the environment; it does not prove that the design passes
 hardening or submission checks. Keep hardening, gate-level testing, physical
 verification, and precheck as explicit later commands with their own results.
 
+### Relationship to `hardcaml_asic`
+
+Environment provisioning remains an explicit project command during the migration
+in [P0.6/P0.7](phase_plan.md#3-p0--make-the-tool-path-real). Ordinary ASIC project
+elaboration must not install tools, fetch a PDK, or mutate this environment.
+`hardcaml_asic` owns target validation and generated RTL/source sets, constraints,
+TT metadata, flow configuration, and build provenance. The emulator owns the
+declaration and its physical acceptance. Existing scripts consume the generated
+bundle once adoption passes; an optional library runner is not required.
+
+The procedure below describes the current script contract. Its staging/config
+steps are transitional integration work, not a second permanent generator. Move
+them to bundle consumption as part of P0.6, preserving lock/environment validation
+and equivalent checks. No reusable provisioning package or new cache layout is
+required by that milestone; decide their long-term home from actual use.
+
 ## 2. Ownership model
 
-Keep three categories separate:
+Keep provisioning, design inputs, and generated artifacts separate:
 
 | Category | Examples | Ownership |
 | --- | --- | --- |
 | Host prerequisites | Git, Python, a container runtime, basic shell utilities | Installed by the user or operating-system administrator |
-| Project-local toolchain | Python virtual environment, support-tools checkout, IHP PDK | Ignored paths under `tinytapeout/` |
-| Tracked design inputs | Hardcaml source, wrapper, metadata, flow configuration, lockfile, scripts | This repository |
+| Project-local toolchain | Python virtual environment, support-tools checkout, IHP PDK | Root `.venv` and ignored paths under `tinytapeout/` |
+| Tracked design inputs | Hardcaml source, wrapper, ASIC project declaration, lockfile, integration scripts | This repository; current hand-maintained metadata/configuration migrate to generated outputs |
+| Generated project bundle | RTL, source sets, constraints, TT metadata/configuration, immutable manifest | Emitted by `hardcaml_asic` from the declared project after adoption |
 
 The bootstrap must not install host packages with `sudo`, modify global Python
 packages, or silently configure a container daemon. Host setup varies across
@@ -196,14 +214,17 @@ to reconstruct long commands:
 
 ```text
 tinytapeout/scripts/check-p0.sh          existing RTL/model/generic synthesis checks
-tinytapeout/scripts/harden-cmos5l.sh     future mapped synthesis and place-and-route
+tinytapeout/scripts/harden-cmos5l.sh     written; mapped synthesis, place-and-route,
+                                         and the pipeline's only timing gate
 tinytapeout/scripts/test-gates.sh        future flow-netlist wrapper simulation
 tinytapeout/scripts/precheck.sh          future required Tiny Tapeout checks
 tinytapeout/scripts/report-run.sh        future artifact hashes and experiment summary
 ```
 
-Each command must consume the same lockfile and activation data. The hardening
-script should preserve the complete LibreLane run directory and return a failing
+Each command must consume the same lockfile and activation data. After adoption,
+commands also identify the immutable ASIC bundle and produce separate execution
+records with actual tool versions; they must not rewrite the original manifest.
+The hardening script should preserve the complete LibreLane run directory and return a failing
 status when required steps or timing checks fail. Gate-level testing must use the
 IHP unpowered netlist and PDK Verilog models expected by the selected flow.
 
@@ -211,8 +232,9 @@ IHP unpowered netlist and PDK Verilog models expected by the selected flow.
 
 The implementation must:
 
-- Restrict writes to ignored paths beneath `tinytapeout/` unless the user supplies
-  an external checkout explicitly.
+- Restrict managed writes to the repository-root `.venv` and ignored paths
+  beneath `tinytapeout/`. Validate any explicitly supplied external checkout
+  without changing it.
 - Resolve and validate paths before any recursive removal or replacement.
 - Avoid `sudo`, global `pip`, global environment changes, and implicit Docker
   configuration.
@@ -247,6 +269,8 @@ The bootstrap implementation is complete when all of these are demonstrated:
   untracked manual setup.
 - A reproduction record identifies the source revision, lockfile hash, generated
   RTL hash, support-tools/PDK/LibreLane revisions, commands, and artifact paths.
+  After P0.6, it also links the build manifest, resolved dependency/collateral
+  inputs, and separate execution record. Preserve input content as well as hashes.
 
 ## 11. Work not delegated to bootstrap
 
@@ -256,7 +280,8 @@ Keep these decisions and actions outside the bootstrap command:
 - Selecting a different tile allocation, PDK, template, or clock target.
 - Accepting future `8x4` support before an explicit competition update and a
   reviewed lockfile change.
-- Editing RTL, wrapper pins, timing constraints, or flow configuration.
+- Choosing or editing RTL, wrapper pins, timing assumptions, or flow overrides.
+  The current staging step renders selected inputs; after migration the ASIC
+  adapter owns configuration generation and conflicts are errors.
 - Deleting physical runs or submission artifacts.
 - Uploading artifacts, enabling CI, or submitting the design.
-

@@ -3,9 +3,9 @@
 | Document | What it covers |
 | --- | --- |
 | [protemu.pdf](protemu.pdf) | Architecture planning brief: problem framing for the protocol emulator ASIC, proposed cores and primitives, protocol mapping (UART, SPI, I²C, USB, Ethernet), and open architecture questions. Start here for the "why". |
-| [construction-plan.md](construction-plan.md) | Construction plan built on the brief: scope, what exists today, initial architecture and primitive contracts, minimum control ISA and memory study, protocol milestones, host control, build sequence, verification, and open decisions. |
-| [phase_plan.md](phase_plan.md) | Actionable breakdown of the construction plan: stable work-item IDs, phase dependencies, deliverables, completion evidence, and the first working UART transmit slice. Use this to select and track implementation work. |
-| [bootstrap-toolchain-plan.md](bootstrap-toolchain-plan.md) | Specification for a future reproducible CMOS5L bootstrap script: host prerequisites, project-local dependencies, pinned inputs, staging, safety, idempotence, and completion checks. |
+| [construction-plan.md](construction-plan.md) | Construction plan built on the brief: scope, what exists today, stack ownership, primitive and shared-port memory contracts, ISA study, protocol milestones, host control, ASIC/Workbench integration, build sequence, verification, and open decisions. |
+| [phase_plan.md](phase_plan.md) | Actionable breakdown of the construction plan: stable work-item IDs, phase dependencies, deliverables, completion evidence, the first working UART transmit slice, and the parallel ASIC project/memory adoption track. Use this to select and track implementation work. |
+| [bootstrap-toolchain-plan.md](bootstrap-toolchain-plan.md) | Contract and open acceptance checks for the implemented CMOS5L bootstrap script: host prerequisites, project-local dependencies, pinned inputs, staging, safety, idempotence, and completion checks. |
 | [formatting_guide.md](formatting_guide.md) | Source of truth for coding style: file headers, `_i`/`_o` port naming, module layout, the `I_Regs`/`I_Wires` paradigm, the `Always` vs `Signal` split, and (later) testbench architecture. |
 
 ## Reading order
@@ -15,5 +15,22 @@
 3. **phase_plan.md** — select the next implementation slice and its completion checks.
 4. **bootstrap-toolchain-plan.md** — before implementing or reproducing the local ASIC flow.
 5. **formatting_guide.md** — before writing or editing any Hardcaml module.
+
+## Related project authorities
+
+- [`hardcaml_asic` architecture](../../hardcaml_asic/docs/architecture.md): accepted
+  project/resource/target ownership, generated build bundles, and flow integration.
+- [Program-memory contract](../../hardcaml_asic/docs/program-memory-contract.md):
+  authoritative `Single_port_ram` behavior and backend verification obligations.
+- [Workbench architecture](../../workbench/docs/hardcaml_workbench_architecture.md):
+  independent projects, optional versioned driver integration, jobs, and artifacts.
+- [Tiny Tapeout integration guide](../tinytapeout/README.md) and
+  [experiment record format](../tinytapeout/reports/README.md): current scripts,
+  migration to ASIC-generated inputs, and build/execution evidence.
+
+These sibling links refer to the current workspace checkout names; standalone
+clones may need the related repositories opened separately. They are not build
+paths. The protocol brief PDF and historical experiment records retain their
+original scope; current decisions and execution status live in the Markdown plans.
 
 When adding a document to `docs/`, add a row to the table above.

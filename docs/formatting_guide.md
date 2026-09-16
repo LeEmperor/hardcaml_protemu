@@ -375,8 +375,20 @@ names. When a port is renamed, update:
 
 ### 10.1 Testbench architecture
 
-_To be defined._ This section will cover testbench file layout, shared driver/monitor
-helpers, expect-test versus waveform tests, and VCD output locations.
+Concrete harness layout and APIs remain P1.6 work in the [phase plan](phase_plan.md).
+The [construction plan](construction-plan.md#9-verification-and-measurements)
+already defines the verification boundaries: independent emulator model,
+Hardcaml checks, and emitted-RTL/wrapper tests with independent protocol peers.
+
+`hardcaml_asic` owns resource/backend conformance. Emulator tests own shared-port
+load/readback/fetch arbitration, program validity, loaded-image bounds, and
+recovery. Do not require physical memory outputs to match simulation poison;
+compare contract-defined values across backends and check disabled-output hold
+within each backend. Keep diagnostic models separate from synthesis source sets.
+
+P1.6 will choose shared driver/monitor helpers, expect-test versus waveform
+conventions, seeds/failure artifacts, and VCD paths. Optional Workbench views
+consume those artifacts; they do not replace the CLI tests or independent model.
 
 ## 11. Formatting and verification
 

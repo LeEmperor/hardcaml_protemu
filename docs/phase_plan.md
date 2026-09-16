@@ -1,7 +1,8 @@
 # Protocol emulator phase plan
 
-Status: working execution draft, 2026-09-14. Implementation items are unchecked;
-the presence of a scaffold or planning document is not completion evidence.
+Status: working execution plan, updated 2026-09-16 for ASIC library adoption.
+P0.1–P0.3 retain their recorded completion; new integration items are unchecked.
+A scaffold, accepted architecture, or emitted build is not completion evidence.
 
 ## 1. Purpose and use
 
@@ -33,23 +34,44 @@ locations are `lib/` for hardware, `bin/` for executables, `test/` for tests, an
 `tinytapeout/` for ASIC integration. New model, assembler, host, and firmware
 locations should be chosen when their first real implementation lands.
 
+### Ownership and external prerequisites
+
+Follow the construction plan's [stack ownership](construction-plan.md#stack-ownership-and-document-authority).
+The emulator owns behavioral logic, firmware, host operations, and application
+verification. `hardcaml_asic` owns project/resource/target/flow infrastructure;
+Workbench owns optional development jobs and views. Library implementation work
+belongs in those repositories, with dependency evidence linked here.
+
+P0.6/P0.7 consume APIs and backends developed within the ASIC library's
+[first milestone](../../hardcaml_asic/docs/architecture.md#8-first-implementation-milestone):
+project/context/build APIs, TT/CMOS5L resolution/emission, and behavioral/flop
+`Single_port_ram` implementations with conformance tests. Emulator adoption helps
+close that library milestone; it need not already be complete before integration
+starts. These are planned, not available APIs at this review. Ordinary elaboration
+must not bootstrap tools or fetch a PDK. Track dependency revisions and reproduction instructions when
+adopting the library; a sibling checkout path alone is not dependency management.
+
 ## 2. Phase map and first working slice
 
 | Phase | Outcome | Main prerequisites | Architecture source |
 | --- | --- | --- | --- |
-| P0 — Tool path | Observable RTL and a proven small physical-flow run | Existing scaffold | [§8](construction-plan.md#8-construction-sequence), [flow plan](../tinytapeout/README.md) |
+| P0 — Tool path | Observable RTL, adopted ASIC bundle, registered flop memory, and a proven small physical-flow run | Existing P0 path; ASIC project/resource APIs for P0.6/P0.7 | [§8](construction-plan.md#8-construction-sequence), [flow plan](../tinytapeout/README.md) |
 | P1 — Execution model | Executable contracts, typed programs, and encoding study | Can begin alongside P0 | [§3](construction-plan.md#3-initial-architecture), [§4](construction-plan.md#4-minimum-control-isa-and-memory-study) |
 | P2 — Reusable primitives | Verified pins, timing, events, transfers, and queues | Relevant P1 contracts; P0 emitter for RTL checks | [§3](construction-plan.md#3-initial-architecture), [§9](construction-plan.md#9-verification-and-measurements) |
-| P3 — Reloadable system | Core, storage, loader, and CLI execute replaceable programs | P1 execution specification and relevant P2 blocks | [§4](construction-plan.md#4-minimum-control-isa-and-memory-study), [§7](construction-plan.md#7-host-control-now-application-later) |
+| P3 — Reloadable system | Core, storage, loader, and CLI execute replaceable programs | P1 execution specification, relevant P2 blocks, P0.6/P0.7 storage integration | [§4](construction-plan.md#4-minimum-control-isa-and-memory-study), [§7](construction-plan.md#7-host-control-now-application-later) |
 | P4 — Baseline protocols | UART, SPI, and I2C firmware with independent peer tests | P3 integration; early tests can start on P1/P2 | [§5](construction-plan.md#5-protocol-milestones-and-acceptance-tests) |
 | P5 — Physical selection | Measured configuration and explicit stretch decisions | P0 flow; P2/P3 candidates; P4 workloads | [§6](construction-plan.md#6-keeping-usb-and-ethernet-possible), [§10](construction-plan.md#10-decisions-to-resolve-with-evidence) |
 | P6 — Tapeout preparation | Reproducible, checked submission package and bring-up procedure | P4 baseline and P5 configuration decision | [§8](construction-plan.md#8-construction-sequence), [§9](construction-plan.md#9-verification-and-measurements) |
-| Later — Application | Bonsai or TUI using the established host API | Working P3 host workflow and stable capabilities | [§7](construction-plan.md#7-host-control-now-application-later) |
+| Later — Application | Optional Workbench integration and operator workflow over the host API | Driver/artifact support for development; P3 for device operations | [§7](construction-plan.md#7-host-control-now-application-later) |
 
 Phases are gates, not a requirement to finish every item before starting any work
 in the next phase. P0 and P1 interleave. Primitive and memory measurements begin
 as soon as candidates exist, then accumulate toward P5. Target-mode latency
-experiments should start before the complete baseline is finished.
+experiments should start before the complete baseline is finished. Run ASIC
+adoption alongside the UART slice; full P0 closure is not a prerequisite for
+model or primitive work. P0.6 precedes P0.7; both precede P3 hardware storage
+integration. P5.1a macro investigation starts early but does not block the explicit
+flop path. Workbench integration is optional throughout.
 
 ### First working slice: programmable UART transmit
 
@@ -59,16 +81,21 @@ Use this sequence as the initial implementation queue:
    reset, and timed waits in a small executable model.
 2. `P2.1` and the countdown portion of `P2.3`: implement atomic pin updates and
    timing with focused model/Hardcaml comparisons.
-3. `P0.1`–`P0.3`: emit that observable circuit, wrap it, and test its outputs.
+3. Reuse `P0.1`–`P0.3`'s completed tool path for the evolving observable circuit;
+   rerun its checks without treating the original P0 tests as UART evidence.
 4. `P1.3` and `P2.7`: drive a typed UART 8N1 transmit sequence through a test
    harness and check the waveform with an independent receiver/timing monitor.
 5. `P0.4`–`P0.5`: harden the same small design and record its physical cost.
+   P0.6 adopts the ASIC-generated bundle and revalidates the path; P0.7 adds a
+   separate small program-memory integration without requiring a full CPU.
 
 The slice is complete when model, Hardcaml, and emitted RTL agree on the UART
 frame and reset/disable release behavior, and the small physical run has recorded
 results. Simulation work can progress while the physical environment is prepared.
 The harness may issue typed commands directly; runtime loading and a full control
 core are P3 deliverables. This early demonstration does not complete baseline UART.
+Its functional work does not wait for the ASIC APIs, an SRAM macro, or Workbench;
+full P0 closure also requires the adoption evidence below.
 
 ## 3. P0 — Make the tool path real
 
@@ -100,7 +127,9 @@ with the first pin/timer work in P1/P2.
 - [ ] **P0.4 — Establish the physical environment.** Select exact CMOS5L template,
   action, support-tool, container, and PDK revisions; validate the requested
   floorplan with that flow. Implement the staging layout described in the
-  [flow plan](../tinytapeout/README.md). Evidence: a reproducible staged project
+  [flow plan](../tinytapeout/README.md). Keep explicit environment preparation
+  separate from elaboration and execution; existing bootstrap/staging scripts
+  remain usable during adapter migration. Evidence: a reproducible staged project
   reaches synthesis with the intended libraries and source files. The official
   `6x4` floorplan and pinned support-tools checkout are validated during staging;
   mapped CMOS5L synthesis remains to be run. Revisions and staging are recorded in
@@ -110,10 +139,33 @@ with the first pin/timer work in P1/P2.
   required physical checks, precheck, and a gate-level wrapper test for the small
   circuit. Save an [experiment record](../tinytapeout/reports/README.md) with
   commands, exact inputs, artifacts, results, and any remaining limitations.
+  Preserve scripts as consumers of the bundle; no library runner is required.
+  After P0.6, validate this run against the adopted bundle, including source sets
+  and generated configuration, before closing the phase.
+- [ ] **P0.6 — Adopt the ASIC project declaration.** Integrate the planned
+  `Project`/`Elaboration_context`/`Build` path with the observable circuit and
+  emulator-owned wrapper. Declare TT harness plus CMOS5L technology, clocks,
+  metadata/pin meanings, resource policies, and reasoned flow overrides. Resolve
+  dependency versions without relying on a particular sibling directory.
+  Evidence: repeatable bundle emission, validated top-level interface, generated
+  TT metadata/constraints/configuration, separate simulation/synthesis source
+  lists, immutable manifest, and rerun P0 wrapper regression. Conflicting clock,
+  source-list, or target-derived overrides produce diagnostic errors. Preserve
+  P0.1–P0.3 as evidence for the original path, not proof of this migration.
+- [ ] **P0.7 — Exercise registered program memory.** After P0.6 and library
+  backend conformance, elaborate a small load/readback design using context-
+  registered `Single_port_ram` and an explicitly selected flop implementation.
+  Evidence: latency-one read, disabled-output hold, whole-word writes, consumer
+  validity/access gating, and independence from unspecified outputs pass model/
+  RTL integration checks; the manifest records shape, identity, and selection.
+  Consume the emitted bundle with the pinned flow and record mapped synthesis
+  cost. This fixture does not complete P3's loader or instruction execution.
 
-**Exit gate:** a small observable design has passed generated-RTL simulation and
-the required CMOS5L hardening/precheck flow. Tool availability or synthesis alone
-does not close P0.
+**Exit gate:** P0.1–P0.7 have evidence. A small observable design from the adopted
+ASIC bundle passes generated-RTL simulation, CMOS5L hardening, required physical
+checks, precheck, and gate-level wrapper testing; the small registered-memory
+design passes integration and mapped synthesis. Tool availability, an emitted
+bundle, or synthesis alone does not establish physical closure.
 
 ## 4. P1 — Define execution before committing to an ISA
 
@@ -123,7 +175,9 @@ does not close P0.
   state and one-cycle advancement. Cover command acceptance, parameter latching,
   commit edges, delays, wait arming, event/timeout precedence, set/ack precedence,
   reset, disable, STOP, ABORT, and idle-only single-step. Evidence: small examples
-  assert exact edge behavior, including simultaneous-event cases.
+  assert exact edge behavior, including simultaneous-event cases. Model the
+  program store's shared port, latency-one reads, disabled-output hold, and
+  fetch validity; unspecified memory results cannot be accepted as instructions.
 - [ ] **P1.2 — Model the mechanism interfaces.** Add typed pin commands, timing
   requests, transfer descriptors, events, and FIFO operations. Define validation,
   ownership, blocking/nonblocking behavior, and safe abort results before opcode
@@ -135,10 +189,11 @@ does not close P0.
   operation counts and response latency. No textual DSL is required.
 - [ ] **P1.4 — Compare instruction and storage candidates.** Evaluate 16-bit
   instructions with extensions against fixed 32-bit instructions using the same
-  examples. Define synchronous program-read latency, register/flag semantics,
-  branch paths, and invalid-instruction behavior. Evidence: an initial report of
-  encoded program sizes and cycle counts; leave physical area columns unmeasured
-  until P5 supplies results.
+  examples. Use the settled 1RW latency-one memory contract; record memory-word
+  width, instruction packing, byte order, extension fetches, register/flag
+  semantics, branch paths, and invalid-instruction behavior. Evidence: an initial
+  report of encoded program sizes and cycle counts; leave physical area columns
+  unmeasured until P5 supplies results.
 - [ ] **P1.5 — Establish shared encoding and independent execution.** Choose a
   provisional encoding through a recorded architecture decision, implement the
   assembler with validation, and expose one instruction specification for the
@@ -150,7 +205,10 @@ does not close P0.
   in the formatting guide. Reserve the logical bitstream boundary and metadata
   from architecture section 6 without implementing stretch engines. Evidence:
   at least one model/Hardcaml comparison uses the harness and a failing case
-  can be reproduced from its recorded inputs.
+  can be reproduced from its recorded inputs. Link ASIC backend conformance
+  separately from emulator consumer checks; compare only defined memory outputs
+  across backends and check held outputs within each backend. Simulation poison
+  must not become synthesized logic or a required physical output value.
 
 **Exit gate:** UART/SPI/I2C examples execute in the model, execution contracts are
 testable, and program sizes and path timing are recorded. The chosen encoding is
@@ -159,7 +217,9 @@ usable for P3 while remaining subject to physical evaluation in P5.
 ## 5. P2 — Implement and verify reusable primitives
 
 **Entry:** the relevant P1 contracts, incrementally. Use P0 generation for emitted
-RTL checks and its physical environment for per-block measurements.
+RTL checks and its physical environment for per-block measurements. These are
+emulator primitives; small FIFOs/registers remain flop logic, not v0.1 ASIC RAM
+resources. Behavioral implementation can proceed before ASIC adapter availability.
 
 - [ ] **P2.1 — Atomic pin bank.** Implement eight logical pins with registered
   value/enable, masked commits, ownership, and sticky conflict reporting.
@@ -197,6 +257,8 @@ RTL checks and its physical environment for per-block measurements.
   and combinational area per block/configuration using P0's flow. Exercise pin
   ownership, open-drain, FIFO, handshake, reset, and wait invariants; apply formal
   checks where useful and record environmental assumptions and checks not run.
+  Use declared configurations and link costs to build/selection and execution
+  identities; label legacy pre-adoption measurements explicitly.
 
 **Exit gate:** primitives agree with the model on normal and fault paths, the
 first UART TX slice works, and initial per-block area and latency evidence exists.
@@ -204,19 +266,24 @@ Filtering, extra descriptor slots, and extra lanes remain measured decisions.
 
 ## 6. P3 — Make the system reloadable
 
-**Entry:** P1 execution/encoding and the required P2 primitives. Model host work
-can begin before the complete hardware integration.
+**Entry:** P1 execution/encoding and the required P2 primitives; hardware storage
+uses P0.6/P0.7's adopted ASIC path. Model host work can begin before that path or
+the complete hardware integration is ready.
 
 - [ ] **P3.1 — Program store and load validity.** Replace the scaffold's memory
-  assumptions with the synchronous-read abstraction. Add halted-and-engines-idle
-  write gating, readback, load-complete validity, and RUN rejection before a
-  verified load. Evidence: partial loads, reset, invalid accesses, and attempted
-  writes during execution cannot start or corrupt a running program; RAM contents
-  are not bulk-reset or assumed initialized.
+  with context-registered `hardcaml_asic.Single_port_ram` (1RW, latency one).
+  Keep program/loaded-image validity and bounds enforcement in the emulator.
+  Gate both host writes and readback on halted-and-engines-idle; reject requests
+  during execution without consuming a fetch cycle. Require verified load-complete
+  before RUN. Evidence: partial loads, reset, out-of-image/out-of-range fetches,
+  and attempted live accesses cannot start or corrupt execution; post-write and
+  unwritten outputs are never valid instructions. RAM is not bulk-reset or assumed
+  initialized; selection and any allowed fallback are recorded in the build.
 - [ ] **P3.2 — Minimal control execution.** Implement fetch/decode, registers,
   flags, state operations, branches/loops, and halt for the provisional ISA.
   Evidence: independent-model comparisons cover each implemented instruction,
-  taken/untaken paths, memory latency, invalid instructions, and cycle counts.
+  taken/untaken paths, latency-one fetches, stalled fetch/output hold, pipeline
+  validity, extension-word fetches, invalid instructions, and cycle counts.
 - [ ] **P3.3 — Core-to-engine integration.** Connect pin, time, transfer, event,
   and FIFO instructions. Add boundary STOP, prompt ABORT, and single-step with
   engines idle. Evidence: engines continue through ordinary core waits; completion,
@@ -226,10 +293,14 @@ can begin before the complete hardware integration.
   control, register/engine inspection, and bounded timestamped trace retrieval.
   Add CLI operations over a simulator backend. Evidence: a scripted CLI workflow
   loads, verifies, runs, exchanges data, and retrieves status; trace overflow is
-  observable and capability/ISA mismatches have defined errors.
+  observable and capability/ISA mismatches have defined errors. Advertise memory
+  width/depth and image format; active-execution program-access requests have a
+  defined rejection. Keep ordinary status/data-queue operations separate.
 - [ ] **P3.5 — Independent hardware loader.** Specify the dedicated serial link's
   framing, pin allocation, host clock envelope, acknowledgement, length/error
-  checks, and flow control before implementation. Add fixed loader logic and
+  checks, byte order/word assembly, and flow control before implementation.
+  Issue only complete configured memory words; reject incomplete trailing words
+  without declaring the image valid. Add fixed loader logic and
   wrapper integration independent of firmware execution. Evidence: malformed or
   interrupted loads are rejected and a halted/broken program remains recoverable.
 - [ ] **P3.6 — Device backend and reload demonstration.** Implement the physical
@@ -278,7 +349,9 @@ a time initially; do not infer concurrent protocols or independent UART duplex.
   reproduction commands/seeds, tested configurations, rates, external timing
   assumptions, min/max response latency, queue/host service budgets, fault results,
   and concurrency limits. Include wrapper-level regression and FPGA/board exercise
-  if available, distinguishing modeled, RTL, routed, and board evidence.
+  if available, distinguishing modeled, RTL, routed, and board evidence. Link
+  firmware/image hashes, hardware configuration, selected memory implementation,
+  and ASIC build/run identities so coverage survives configuration sweeps.
 
 **Exit gate:** each baseline mode has firmware and independent-peer evidence for
 its normal, interruption, and failure paths. Unsupported rates/features are
@@ -291,18 +364,28 @@ I2C support. Rate claims remain conditional on P5 timing and the board boundary.
 early; use P4's full workloads before making the final configuration decision.
 
 - [ ] **P5.1 — Compare storage and encoding costs.** Sweep the construction plan's
-  instruction widths/depths, register configuration, and FIFO depths with identical
-  workloads. Evaluate standard-cell storage and any approved CMOS5L SRAM option,
-  checking dimensions, ports, timing, power pins, and model/Liberty/LEF/GDS views.
-  Evidence: firmware size, cycle counts, storage bits, mapped area, and placed
-  feasibility; record an explicit fallback if no suitable macro is available.
+  instruction encodings, memory widths/depths, register configuration, and FIFO
+  depths with identical workloads through ASIC project declarations. Start with explicit flop storage;
+  compare a macro only after P5.1a and helper-library backend conformance pass.
+  Evidence: firmware size, packing/fetch counts, storage bits, mapped area, and
+  placed feasibility, linked to resource policies/selections and build/run records.
+  Never silently round dimensions, compose macros, or substitute implementations.
+- [ ] **P5.1a — Resolve the CMOS5L SRAM capability gate.** Begin alongside P0
+  environment preparation. Record candidate existence, exact shape/latency/hold
+  compatibility, complete model/Liberty/LEF/GDS and power views, target permission,
+  and flow compatibility. Coordinate backend work in `hardcaml_asic` only after
+  these prerequisites are established. Evidence: a supported-candidate decision
+  with linked evidence or an explicit unavailable/deferred decision. PDK presence
+  alone is insufficient. The explicit flop path proceeds either way.
 - [ ] **P5.2 — Compare timing and engine configurations.** Measure one lane
   against any justified independent lane or second descriptor slot. Evaluate
   filtering only with glitch/pulse-width evidence. Sweep clock choices and
   integer/fractional schedules where relevant. Evidence: response latency, jitter,
   FIFO refill budget, sustained host throughput, and protocol results per candidate.
 - [ ] **P5.3 — Repeat full physical evaluation.** Place and route promising
-  configurations with reviewed clock, I/O, synchronizer, and reset constraints.
+  configurations from emitted ASIC bundles with reviewed clock, I/O, synchronizer,
+  and reset constraints. Use the adapter's protected derived settings and justified
+  overrides; avoid independent hand-maintained TT/source/clock configuration.
   Evidence: utilization, routing, worst setup/hold slack, unconstrained paths,
   reviewed exceptions, and required physical checks, linked to exact source and
   tool/PDK revisions. Reconcile protocol timing with pad and board assumptions.
@@ -315,8 +398,9 @@ early; use P4's full workloads before making the final configuration decision.
   in construction-plan.md using P4/P5 reports: core/lane count, ISA, memory, clock,
   filters, loader/pins, stretch boundary, and flow integration. Define and record
   resource/timing margin and supported operating limits. Evidence: the selected
-  configuration fits the target floorplan with routed timing and stated margin;
-  rerun affected regressions after any selection-driven implementation changes.
+  declared configuration and explicit resource policy fit the resolved target
+  floorplan with routed timing and stated margin. Rerun affected regressions
+  after any selection-driven implementation changes.
 
 ### Conditional stretch experiments under P5.4
 
@@ -349,8 +433,10 @@ cannot supply missing hardware resources after fabrication.
 any explicitly retained stretch work.
 
 - [ ] **P6.1 — Reproduce from a clean checkout.** Pin final tool/PDK/configuration
-  inputs and automate generation, staging, checks, and artifact collection.
-  Decide generated-RTL snapshot/regeneration policy and verify consistency.
+  inputs, including `hardcaml_asic` and collateral dependencies, and automate
+  bundle emission/export, staging, checks, and artifact collection. Resolve them
+  without developer-local sibling paths. Decide generated-output snapshot/
+  regeneration policy and verify RTL, metadata, constraints, and source sets.
   Evidence: a clean-checkout run produces the intended submission layout without
   relying on untracked local inputs.
 - [ ] **P6.2 — Run final functional and gate-level regression.** Run model,
@@ -360,7 +446,8 @@ any explicitly retained stretch work.
   tied to the final generated RTL/netlist and firmware versions.
 - [ ] **P6.3 — Close physical and submission checks.** Run final routed timing,
   required physical checks, and Tiny Tapeout precheck with the pinned flow.
-  Review constraints, source list, top name, pin metadata, and package contents.
+  Review emitted constraints, distinct source sets, top/interface, resource
+  collateral, pin metadata, and package contents against the declared build.
   Evidence: required checks are clean and reports identify exact final artifacts.
 - [ ] **P6.4 — Write the bring-up and recovery guide.** Document pinout, clock,
   reset/enable, electrical assumptions, host wiring, loading, example commands,
@@ -368,9 +455,10 @@ any explicitly retained stretch work.
   Evidence: the procedure is exercised against the final simulator/wrapper and
   available hardware, with unavailable board validation labeled explicitly.
 - [ ] **P6.5 — Assemble the submission candidate.** Bundle design, metadata,
-  required layout/netlist outputs, documentation, revision/hash manifest, and
-  links to validation records. Evidence: package completeness and reproduction
-  checks pass. Track actual submission separately from preparation of this plan.
+  required layout/netlist outputs, documentation, immutable build manifest and
+  separate execution records, preserved inputs/collateral, and validation links.
+  Evidence: package completeness and reproduction checks pass. Track actual
+  submission separately from preparation of this plan.
 
 **Exit gate:** a complete, reproducible submission candidate has the required
 functional and physical evidence, documented operating limits, and a tested
@@ -378,16 +466,32 @@ recovery procedure.
 
 ## 10. Later — Application on the existing host API
 
-- [ ] **L.1 — Choose the interaction surface.** Use the working CLI/device
-  workflow to decide Bonsai versus TUI and, where needed, local-service/browser
-  access. Evidence: the chosen approach supports the established transport/API
-  operations and error model.
+Development Workbench integration and device operation are separate deliverables.
+Generic Dune use can start when Workbench supports it; neither track gates P0–P6.
+
+- [ ] **L.1 — Choose the operator interaction surface.** Use the working P3
+  CLI/device workflow to decide a Workbench device extension versus a separate
+  client and any local-service/browser access. Reuse supported development views;
+  Workbench already selects Bonsai Web, but its emulator device extension is not
+  specified. Evidence: a recorded placement decision supporting the established
+  host API/errors without a second device-control implementation.
 - [ ] **L.2 — Implement the operator workflow.** Add program editing/loading,
   capability discovery, data exchange, execution control, and status inspection.
+  Use the P3 API and existing source-editing tools for firmware editing.
   Evidence: the same load/run/stop/abort/recovery scenarios as the CLI pass.
 - [ ] **L.3 — Add trace inspection.** Present timestamped events/waveforms and
   export, including bounded-trace overflow. Evidence: displayed data agrees with
-  CLI exports and failure cases remain visible.
+  CLI exports and failure cases remain visible. Reuse Workbench waveform/event
+  views only where their supported formats and semantics fit the emulator trace.
+- [ ] **L.4 — Optionally integrate the development Workbench.** After compatible
+  Workbench manifest/driver support and P0.6, expose project-owned target discovery,
+  generation/check commands, and ASIC build/run artifacts through a small versioned
+  manifest/driver in this project's environment. Extend to typed simulation when
+  supported. Derive target facts from the ASIC declaration; keep SDK/application
+  dependencies out of synthesizable libraries. Evidence: CLI/Dune use still works
+  independently; UI jobs reference the same build/execution identities and artifact
+  contents, version errors are explicit, and unknown ASIC measurements stay unknown.
+  This may close with an explicit deferral and does not gate L.1–L.3.
 
 **Exit gate:** the application exposes the proven host workflow and its errors.
 It is not a prerequisite for baseline hardware or tapeout preparation.
@@ -402,7 +506,10 @@ tests for emitted RTL and integration; self-loopback alone is insufficient.
 
 Use [tinytapeout/reports/README.md](../tinytapeout/reports/README.md) for physical
 experiments. Preserve input/configuration hashes, random seeds, constraints,
-tool/PDK revisions, reproduction commands, and artifact links. Mark missing
+tool/PDK revisions, reproduction commands, and artifact links. Use immutable
+build manifests plus separate execution records after adoption; retain input
+content, dependency/collateral identity, firmware versions, and selection/override
+reasons. Label earlier records as legacy rather than inventing manifests. Mark missing
 measurements `not run` or `unknown`; do not turn estimates into verified limits.
 
 When selecting the next slice, prefer the earliest unmet prerequisite for the

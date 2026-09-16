@@ -1,7 +1,8 @@
 # Protocol emulator construction plan
 
-Status: initial architecture proposal, 2026-09-14. Sizes, rates, and instruction
-names below are study parameters, not implemented capabilities or a frozen ISA.
+Status: architecture and integration plan, updated 2026-09-16 for the accepted
+`hardcaml_asic` ownership and memory contracts. Sizes, rates, and instruction
+names remain study parameters, not implemented capabilities or a frozen ISA.
 
 ## 1. Direction and scope
 
@@ -14,8 +15,9 @@ The first useful system should load a program, exchange bytes over protocol pins
 and report what happened. Prioritize UART TX/RX, SPI controller/target, and I2C
 controller/target in stages. Preserve room for low-speed USB and 10 Mbit Ethernet
 by defining bitstream and timing interfaces now; add their expensive engines only
-after baseline measurements justify them. A Bonsai web interface or TUI comes
-later, on top of the same host API used by a CLI and simulator.
+after baseline measurements justify them. Optional Hardcaml Workbench integration
+provides development views; a later operator interface uses the same emulator
+host API as the CLI and simulator.
 
 The competition currently specifies IHP 130 nm CMOS5L, a maximum of 6x4 Tiny
 Tapeout tiles, and a January 18, 2027 submission deadline. Jane Street is studying
@@ -25,15 +27,68 @@ with 6x4 and do not assume the expansion. The competition links the template's
 authority; approximate tile or gate counts are only planning aids.
 [Competition announcement](https://blog.janestreet.com/protocol-emulator-asic-competition/)
 
+### Stack ownership and document authority
+
+This repository is the first reference application for
+[`hardcaml_asic`](../../hardcaml_asic/docs/architecture.md). Its accepted architecture
+owns ASIC project/resource/flow contracts; the
+[program-memory contract](../../hardcaml_asic/docs/program-memory-contract.md)
+owns `Single_port_ram` behavior. This document owns emulator semantics and the
+consumer's integration choices. The [phase plan](phase_plan.md) tracks their
+implementation; it does not duplicate the helper library's implementation backlog.
+
+| Owner | Responsibilities |
+| --- | --- |
+| `hardcaml_protemu` | Core, ISA, assembler, firmware, pin ownership, timing/events/transfers, small FIFOs/register file, loader, host API, reference model, and protocol tests |
+| Emulator project declaration | Design constructor, requested harness/technology, clocks and I/O assumptions, metadata/pin meanings, resource policies, and justified flow overrides |
+| `hardcaml_asic` | Resource contracts/backends, temporary elaboration context, target resolution, immutable build description, constraints/configuration emission, source sets, collateral, and build/run provenance |
+| ASIC Tiny Tapeout integration | Required top-level interface validation, metadata schema/generation, target-derived floorplan/power requirements, and flow staging conventions |
+| `hardcaml_workbench` | Optional project sessions, supervised jobs, logs, artifact inspection, and development UI through project-owned commands/driver |
+
+The emulator still implements and verifies its wrapper wiring, reset/disable
+logic, and loader. Harness validation does not implement these behaviors. P2's
+reusable protocol mechanisms remain emulator logic; they do not become ASIC
+resources merely because several protocols use them.
+
+The intended ASIC lifecycle is an immutable project declaration, target
+resolution, a fresh `Elaboration_context` for the design constructor, resource
+registration/selection, validation, and an immutable `Build`. Constructors
+discover resources; the project supplies policies rather than a duplicate memory
+inventory. Initial builds explicitly select synthesizable flop program storage.
+Unsupported requests fail unless an exact supported implementation or explicit
+fallback is allowed. Shape, latency, and behavior must not change silently.
+
+Generated RTL source lists, constraints, flow configuration, and TT metadata come
+from that build. Protected target/resource facts cannot be replaced by conflicting
+raw settings; permitted overrides carry reasons. Clocks have one declaration with
+defined conversions to metadata/SDC units. Existing scripts may consume the bundle;
+the optional library runner is not required. Tool/PDK preparation remains an
+explicit operation outside ordinary elaboration. Migration preserves the current
+P0 path until the replacement passes equivalent checks.
+
+The [Workbench architecture](../../workbench/docs/hardcaml_workbench_architecture.md)
+keeps this project independently buildable. Workbench integration is optional and
+does not gate emulator hardware, ASIC integration, or tapeout. Sibling links use
+this workspace's `scaf`, `hardcaml_asic`, and `workbench` checkout names; they are
+documentation references, not build dependencies. Reproduction must resolve and
+pin dependencies without requiring those developer-local paths.
+
 ## 2. What exists today
 
 - `lib/protocol_core.ml`: an Idle/Fetch/Decode/Execute scaffold, an 8-bit PC,
   a declared 256x8 memory with asynchronous read, and an output bank tied to zero.
   The memory is not connected to an implemented instruction decoder or loader.
 - `lib/protemu_types.ml`: candidate pin/configure/transfer instruction variants.
-- `bin/generate.ml`: a placeholder command whose invocation is commented out;
-  it does not yet emit a circuit.
-- `test/test_hardcaml_protemu.ml`: empty; protocol verification remains to be built.
+- `lib/p0_observable.ml` and `bin/generate.ml`: an observable pin/timer circuit
+  and working parameterized Verilog emitter, separate from the control scaffold.
+- `test/test_hardcaml_protemu.ml` and `tinytapeout/test/tb.v`: focused P0
+  Hardcaml/wrapper tests. They do not establish complete pin-bank or UART support.
+- `tinytapeout/`: wrapper, metadata, pinned flow inputs, staging and local checks;
+  bootstrap/hardening scripts exist, but no completed mapped/physical run is
+  recorded. See the [P0 record](../tinytapeout/reports/2026-09-14-p0-tool-path.md).
+- `hardcaml_asic`: memory configuration validation exists, but `Single_port_ram.create`
+  and the context/project/build path remain unimplemented at this review. The
+  accepted architecture is a dependency plan, not an available API.
 - Dune, Hardcaml dependencies, and `scripts/with-switch.sh` are already present.
 
 Keep developing this scaffold, but do not let the current 8-bit instruction memory
@@ -173,20 +228,44 @@ reference execution model stays independent of the Hardcaml implementation.
 
 Compare fixed 16-bit instructions with occasional extension words against a
 simple fixed 32-bit encoding. Start the study with eight 16-bit registers,
-128/256 instruction words, and 4/8/16-entry byte FIFOs. These are sweep points.
+128/256 memory words, and 4/8/16-entry byte FIFOs. These are sweep points.
+Instruction width and physical memory-word width are separate choices: record
+packing, extension-word layout, byte order, and fetch count for each encoding.
 Record firmware size, cycles per operation, and mapped area for each choice.
 
 For perspective, 256x16 program bits plus two 16x8 FIFOs already total 4,352
 storage bits before registers and metadata. That can dominate a small design if
-implemented in flip-flops. First use a synchronous-read memory abstraction with
-an explicit latency; later evaluate an approved CMOS5L SRAM macro behind it.
-Check macro dimensions, ports, timing, power pins, simulation model, Liberty,
-LEF, and GDS availability. An RTL memory does not automatically become SRAM.
+implemented in flip-flops. Use `hardcaml_asic.Single_port_ram` through the planned
+elaboration context. Its normative contract is single-port 1RW with one shared
+address, latency one, held output when disabled, unspecified output after a
+write, and no initialization/reset. An enabled operation is a read or a write;
+the primitive supplies neither byte enables nor a second read port. Out-of-range
+accesses are outside its contract. Small FIFOs and the multi-port register file
+remain emulator-owned flop logic in the initial implementation.
 
-Avoid bulk reset on program RAM. Reset its validity instead. Permit host program
-writes only while halted with engines idle; use readback and a load-complete
-handshake. Any ROM is a deliberate hardware implementation, not an assumed
-power-up file load.
+The loader assembles complete configured memory words before issuing writes;
+this does not select a 16-bit ISA. Initially both host program writes and readback
+require the core halted and engines idle. Requests during execution are rejected
+without stealing a fetch cycle. Concurrent access would require a new arbitration
+and timing contract or another memory shape. Status/data-queue host operations
+remain separate from this program-memory restriction.
+
+The emulator owns program validity, access gating, bounds/loaded-image validation,
+and fetch-pipeline validity. Reset validity and halt execution without bulk-resetting
+RAM. Load, read back, and verify a complete declared image before RUN; prevent
+fetch outside that verified image and reject partial transport words. A write or
+an unwritten location must never supply a valid instruction. Model fetch latency,
+stalls, branches, and extension fetches independently of the RAM implementation.
+Any ROM is a deliberate hardware implementation, not an assumed power-up file load.
+
+Start with an explicitly selected flop implementation. Investigate CMOS5L macro
+availability early, but begin a macro backend only after exact shape/behavior,
+complete model/Liberty/LEF/GDS and power views, target permission, and flow
+compatibility are established. PDK presence alone proves none of the latter
+requirements. The helper library owns backend implementation/conformance; the
+emulator owns workload/area comparisons and target acceptance evidence. Unsupported
+macro-required builds fail; fallback requires explicit policy and a recorded reason.
+The first working slice and first ASIC project do not wait for a macro.
 
 ## 5. Protocol milestones and acceptance tests
 
@@ -266,7 +345,9 @@ real hardware resources; a future firmware update cannot add a missing PHY.
 
 Define a transport-independent OCaml host API: identify/version/capabilities,
 load/read program, configure pins, enqueue/dequeue data, run/stop/abort, inspect
-registers and engine status, and retrieve bounded trace events. Make protocol
+registers and engine status, and retrieve bounded trace events. Program-memory
+readback and writes initially require halted execution and idle engines, as in
+section 4; inspection of status is not a second memory port. Make protocol
 examples runnable through a simulator backend before real hardware exists.
 
 A proposed first physical loader is a slow clocked serial debug link using
@@ -277,26 +358,46 @@ framing, maximum host clock, command acknowledgement, length/error checks, and
 flow control before implementation. Start without concurrent program writes.
 
 Keep register addresses and binary transport versioned; expose capabilities for
-memory depth, pin count, engines, and ISA version. A CLI should load firmware,
-send/receive bytes, and export timestamped traces. Later a Bonsai web app can
-call a local service using that API; a TUI can share the same library. Defer UI
-framework and browser hardware-access choices until the device workflow works.
+memory width/depth, pin count, engines, and ISA version. A CLI should load firmware,
+send/receive bytes, and export timestamped traces. Keep these commands usable
+without a UI. A later operator interface can use the same API through a local
+service, with its placement decided after the device workflow works.
+
+Development integration with Hardcaml Workbench is a separate optional track:
+generic Dune commands first, then a small versioned manifest and a project-side
+driver built in this project's environment. The driver exposes target/configuration
+discovery, elaboration, generation, tests, and ASIC build/run artifacts as supported
+by the Workbench protocol. It reads project declarations/builds rather than copying
+target, clock, or memory policy into a second configuration authority. Workbench
+owns the job and UI; the ASIC adapter owns build/flow semantics. Link Workbench
+jobs/artifacts to ASIC build and execution identities.
+
+Use Workbench's generic hierarchy, waveform, log, and report views where supported.
+Emulator firmware loading, data exchange, and recovery remain P3 API operations;
+a device-control extension is not yet specified by Workbench. Bonsai Web is already
+Workbench's primary frontend. An emulator operator UI or terminal client remains
+a separate product decision; neither is required for hardware acceptance.
 
 ## 8. Construction sequence
 
 | Stage | Deliverables | Exit evidence |
 | --- | --- | --- |
-| 0. Make the tool path real | Minimal observable Hardcaml pin/timer circuit, working Verilog emitter, Tiny Tapeout wrapper and first flow setup | Generated RTL passes simulation; a small design completes CMOS5L hardening/precheck, establishing the toolchain |
+| 0. Make the tool path real | Observable pin/timer path; ASIC project declaration and emitted bundle; small registered flop-memory integration; prepared physical environment | Wrapper regression, memory integration and mapped synthesis pass; an adopted-bundle design completes CMOS5L hardening/precheck and gate-level checks |
 | 1. Define execution | Cycle model, typed instructions/descriptors, pin/timing contracts, assembler helpers | UART/SPI/I2C examples execute in the model; latency and program-size report |
 | 2. Implement primitives | Pin bank, synchronization/events, timer, shifter, small FIFOs, unit tests | Model/RTL agreement and edge-case properties; mapped area per block |
-| 3. Make it reloadable | Control core, program store, independent loader, CLI simulator/device API | Load/readback/run two different protocol programs without regenerating RTL |
+| 3. Make it reloadable | Control core, context-registered program store and consumer validity/arbitration, independent loader, CLI simulator/device API | Load/readback/run two different protocol programs without regenerating RTL |
 | 4. Complete baseline | Firmware and independent peers for UART, SPI controller/target, I2C controller/target | Coverage matrix with rates, timing margins, faults, and concurrency limits; FPGA exercise if available |
 | 5. Select physical architecture | Memory/FIFO/engine sweeps; repeated place and route; USB/Ethernet feasibility experiments | Chosen configuration fits the authorized 6x4 allocation with routed timing and resource margin; stretch limits documented |
-| 6. Prepare tapeout | Reproducible flow, gate-level regression, physical checks, pinout and bring-up guide | Complete submission artifacts with tool/PDK revisions, timing results, clean required checks, and recovery procedure |
-| Later. Application | Bonsai web app or TUI, program editor, waveform/event inspection | Same operations and errors as the established CLI/API |
+| 6. Prepare tapeout | Reproducible ASIC bundle/export and dependency resolution, gate-level regression, physical checks, pinout and bring-up guide | Complete submission artifacts with tool/PDK revisions, timing results, clean required checks, and recovery procedure |
+| Later. Application | Optional Workbench driver/artifact integration and an operator interface over the host API | Independent CLI remains usable; supported views preserve build/run identity and device operations/errors |
 
 Stages 0 and 1 should interleave: a small early physical-flow experiment gives
 useful evidence while the model prevents premature commitment to a large ISA.
+Run two tracks alongside each other: pin/timer/model/UART work, and the helper
+library's project/context/flop-memory implementation followed by emulator adoption
+in P0.6/P0.7. P3 hardware storage depends on that adoption; P1 models do not.
+Early macro investigation informs P5 without blocking either track. Workbench,
+an SRAM macro, and commercial EDA adapters are not initial prerequisites.
 Do not wait for USB/Ethernet or a finished CPU to discover memory/routing costs.
 The flow directory and required tools are described in
 [`tinytapeout/README.md`](../tinytapeout/README.md).
@@ -308,6 +409,15 @@ tests of emitted Verilog through the Tiny Tapeout wrapper. Use external protocol
 peer models with assertions on wire timing; self-loopback alone can hide a
 matching encoder/decoder bug. Randomize asynchronous phase, bounded jitter,
 resets, CS interruptions, stretch length, and queue starvation.
+
+`hardcaml_asic` owns memory backend conformance. Its scoreboard compares only
+contract-defined values across backends and checks disabled-output hold within
+each backend, including after an unspecified result. Poison initialization and
+post-write poison belong to the behavioral model, not synthesized storage.
+Emulator integration tests separately assert valid instruction consumption,
+shared-port access rules, whole-word loading, and recovery; vary unspecified
+values where useful. Link library conformance evidence without duplicating its
+backend test implementation here.
 
 Apply formal properties where they add value: no double pin ownership, open-drain
 never drives high, bounded FIFO occupancy, no loss/duplication at handshakes,
@@ -321,8 +431,15 @@ protocol rate, FIFO service budget, and errors under overload. A B-byte FIFO at
 R bits/s absorbs only about `8*B/R` seconds without service, before framing and
 other overhead. Sustained host throughput must be measured separately.
 
-Retain source/configuration hashes, random seeds, tool/PDK revisions, constraints,
-and links to logs with every physical result. Use
+Every candidate identifies the immutable ASIC build manifest: source/dependency
+revisions and content hashes (including dirty/untracked inputs), resource requests
+and selections/fallback reasons, distinct simulation/synthesis source sets,
+collateral, constraints, resolved configuration, and override reasons. Preserve
+input content as well as hashes. A separate execution record captures actual
+tools/environment, commands, completion status, logs, reports, and output hashes;
+running a flow does not mutate the build manifest. Link firmware, test seeds,
+and modeled/RTL/routed/board coverage to these identities. Missing measurements
+remain `not run` or `unknown`; an emitted bundle is not physical closure. Use
 [`tinytapeout/reports/README.md`](../tinytapeout/reports/README.md) for the record format.
 
 ## 10. Decisions to resolve with evidence
@@ -331,13 +448,16 @@ and links to logs with every physical result. Use
 | --- | --- | --- |
 | Core and engine count | One core, one duplex shift lane | Independent UART RX/TX and target-mode reaction measurements |
 | ISA encoding | Compare 16-bit plus extensions with 32-bit fixed | Program sizes, decoder area, and instruction timing |
-| Program storage | Small synchronous abstraction, writable while halted | CMOS5L macro availability and total placed area versus standard cells |
+| Program storage | `Single_port_ram`, 1RW, latency one, explicit flop implementation; host access halted and engines idle | Width/depth/packing and total placed area; macro capability gate before a supported backend comparison |
 | Clock/rates | Sweep clocks in simulation and physical constraints | Routed timing, pad/board path, and protocol jitter budgets |
 | Filtering | Synchronization first; per-input filtering if required | Glitch rejection versus latency and protocol pulse widths |
 | Host link/pin map | Dedicated inputs/output for debug; eight `uio` protocol pins | Loader complexity, bandwidth, and bring-up wiring |
 | Stretch boundary | Modeled USB/Ethernet bitstreams first | Actual electrical interface and continuous service budget |
-| Flow integration | All design-specific ASIC material under `tinytapeout/` | Root-relative upstream action behavior and reproducible staging |
+| Flow integration | Emulator-owned declaration through `hardcaml_asic`; generated TT/LibreLane bundle consumed by scripts | Adapter staging, configuration authority/conflict checks, provenance, and clean reproduction |
+| Workbench/operator UI | Optional driver for development; P3 host API for device operations | Versioned integration support and a concrete operator workflow; no hardware gate |
 
 The first implementation slice should be **pin bank + timer + cycle model +
 working RTL emitter**, exercised by a programmable UART transmit sequence. Then
 add receive/event behavior and SPI shifting before expanding the control core.
+Alongside it, prove the ASIC declaration and small registered program-memory path
+before integrating the full reloadable system.

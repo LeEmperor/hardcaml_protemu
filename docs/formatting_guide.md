@@ -380,6 +380,11 @@ The [construction plan](construction-plan.md#9-verification-and-measurements)
 already defines the verification boundaries: independent emulator model,
 Hardcaml checks, and emitted-RTL/wrapper tests with independent protocol peers.
 
+The reference model lives in `model/` (library `protemu_model`) and its tests in
+`test/model/`, both without a Hardcaml dependency. Its files keep the four-part
+source header and the direction-neutral naming of section 5; the `_i`/`_o` suffixes
+of section 4 do not apply, because a model record is a value, not a port.
+
 `hardcaml_asic` owns resource/backend conformance. Emulator tests own shared-port
 load/readback/fetch arbitration, program validity, loaded-image bounds, and
 recovery. Do not require physical memory outputs to match simulation poison;

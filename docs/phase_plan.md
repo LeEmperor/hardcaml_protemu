@@ -1,8 +1,10 @@
 # Protocol emulator phase plan
 
 Status: working execution plan, updated 2026-09-17 for decoupled RTL development
-and deferred ASIC library adoption (section 2). P0.1–P0.3 retain their recorded
-completion; P0.6/P0.7 are unchecked and deferred, not blocking.
+and deferred ASIC library adoption (section 2), with an adoption trigger/deadline,
+P0.5 split into legacy/adopted runs, and pre-adoption P2.8 evidence defined.
+P0.1–P0.3 retain their recorded completion; P0.6/P0.7 are unchecked and deferred,
+not blocking.
 A scaffold, accepted architecture, or emitted build is not completion evidence.
 
 ## 1. Purpose and use
@@ -31,9 +33,13 @@ the corresponding decision has evidence.
   dependencies and measured risk; use the architecture document for target context.
 
 Follow [formatting_guide.md](formatting_guide.md) for source changes. Existing
-locations are `lib/` for hardware, `bin/` for executables, `test/` for tests, and
-`tinytapeout/` for ASIC integration. New model, assembler, host, and firmware
-locations should be chosen when their first real implementation lands.
+locations are `lib/` for hardware, `bin/` for executables, `test/` for tests,
+`model/` for the reference execution model, and `tinytapeout/` for ASIC
+integration. `model/` is a separate Dune library, `protemu_model`, with no
+Hardcaml dependency, so a diagnostic model can never reach a synthesis source set
+and cannot share a mistake with the RTL; its tests live in `test/model/`. New
+assembler, host, and firmware locations should be chosen when their first real
+implementation lands.
 
 ### Ownership and external prerequisites
 
@@ -85,11 +91,13 @@ declaration, bundle emission), and every other module is plain Hardcaml. Store
 consumers expose the 1RW port and are tested against a contract model. As a result,
 phase numbers describe gates and dependencies, not the order work happens in:
 
-- **P0.6/P0.7 are deferred.** Pick them up when the library is consumable from a
-  separate project (ASIC P5.1) and the emulator has a top worth declaring, which may
-  be well after P2/P3 work starts. Until then, the existing `tinytapeout/` scripts
-  remain the flow path. P0 stays open, so the phase can close after later phases
-  have progressed. That is expected, not a plan violation.
+- **P0.6/P0.7 are deferred, with a defined start.** Start P0.6 once ASIC P5.1 has
+  evidence **and** either P2.7 (the UART TX slice supplies a top worth declaring) or
+  P3.1a (the store consumer can serve as P0.7's design) is complete, whichever
+  comes first. If the emulator side is ready but ASIC P5.1 is not, record ASIC P5.1
+  as the blocker beside P0.6 and P3.1b. Until adoption starts, the existing
+  `tinytapeout/` scripts remain the flow path. P0 stays open, so the phase can close
+  after later phases have progressed. That is expected, not a plan violation.
 - **P3 splits at the adoption boundary.** P3.1a (program-store consumer logic against
   the contract port) and P3.2–P3.5 proceed without adoption; only P3.1b
   (context-registered `Single_port_ram` at the top) waits for P0.6/P0.7.
@@ -99,15 +107,21 @@ phase numbers describe gates and dependencies, not the order work happens in:
   existing P0 hardening scripts. Estimates inform choices; they do not close
   physical items.
 - **Deferral has accepted costs.** Flow evidence gathered before adoption is labeled
-  legacy and must be rerun from the adopted bundle before P0, P5, or P6 close. Late
+  legacy and must be rerun from the adopted bundle before P0, P5, or P6 close
+  (P0.5a's run is repeated as P0.5b). Legacy mapped costs can close P2.8 but not P5
+  items. Late
   adoption can surface top-level interface, clock, or metadata mismatches. Keep the
   wrapper thin to bound that rework.
-- **Deferral has a limit.** Adoption must land early enough for P5 sweeps to run
-  through project declarations and for P6 to reproduce from pinned dependencies.
-  Do not let it slide into P5.
+- **Deferral has a deadline.** P0.6/P0.7 must have evidence before P3 exits, since
+  P3.1b is part of that gate, and before any P5 item is checked, so that P5 sweeps
+  run through project declarations and P6 reproduces from pinned dependencies. If
+  P3.2–P3.5 are nearly done and adoption has not started, adoption becomes the next
+  slice.
 
-The emulator's deferral also postpones ASIC P5.2–P5.4 (reference-consumer adoption)
-in the library's own plan. The library can still close ASIC P5.1 on its own.
+The emulator's deferral also postpones ASIC P5.2–P5.4 (reference-consumer adoption),
+and therefore the library's M3 milestone, in the
+[library's own plan](../../hardcaml_asic/docs/phase_plan.md#8-p5--reference-consumer-adoption-and-initial-usage),
+which records the same trigger. The library can still close ASIC P5.1 on its own.
 
 ### First working slice: programmable UART transmit
 
@@ -121,7 +135,8 @@ Use this sequence as the initial implementation queue:
    rerun its checks without treating the original P0 tests as UART evidence.
 4. `P1.3` and `P2.7`: drive a typed UART 8N1 transmit sequence through a test
    harness and check the waveform with an independent receiver/timing monitor.
-5. `P0.4`–`P0.5`: harden the same small design and record its physical cost.
+5. `P0.4` and `P0.5a`: harden the same small design with the existing scripts and
+   record its (legacy) physical cost.
    P0.6/P0.7 (ASIC bundle adoption and program-memory integration) are deferred
    and are not part of this slice; see the non-linear sequencing notes above.
 
@@ -171,13 +186,20 @@ with the first pin/timer work in P1/P2.
   mapped CMOS5L synthesis remains to be run. Revisions and staging are recorded in
   [`toolchain.lock`](../tinytapeout/toolchain.lock) and the
   [P0 experiment record](../tinytapeout/reports/2026-09-14-p0-tool-path.md).
-- [ ] **P0.5 — Complete the first physical run.** Run placement/routing, timing,
-  required physical checks, precheck, and a gate-level wrapper test for the small
-  circuit. Save an [experiment record](../tinytapeout/reports/README.md) with
-  commands, exact inputs, artifacts, results, and any remaining limitations.
-  Preserve scripts as consumers of the bundle; no library runner is required.
-  After P0.6, validate this run against the adopted bundle, including source sets
-  and generated configuration, before closing the phase.
+- [ ] **P0.5 — Complete the first physical run.** Split at the adoption boundary;
+  P0.5 is checked only when both parts are.
+  - [ ] **P0.5a — Legacy physical run.** Using the existing `tinytapeout/` scripts,
+    run placement/routing, timing, required physical checks, precheck, and a
+    gate-level wrapper test for the small circuit. Save an
+    [experiment record](../tinytapeout/reports/README.md) labeled legacy, with
+    commands, exact inputs, artifacts, results, and remaining limitations.
+    Evidence: that record. This satisfies the first working slice's physical
+    step, not the P0 exit gate.
+  - [ ] **P0.5b — Adopted-bundle physical run.** After P0.6, repeat P0.5a's run
+    from the emitted bundle, with scripts as bundle consumers (no library runner
+    is required). Evidence: a new record linked to the build manifest, with
+    source sets and generated configuration checked against the declaration and
+    any differences from P0.5a explained.
 - [ ] **P0.6 — Adopt the ASIC project declaration.** Integrate the planned
   `Project`/`Elaboration_context`/`Build` path with the observable circuit and
   emulator-owned wrapper. Declare TT harness plus CMOS5L technology, clocks,
@@ -188,8 +210,9 @@ with the first pin/timer work in P1/P2.
   lists, immutable manifest, and rerun P0 wrapper regression. Conflicting clock,
   source-list, or target-derived overrides produce diagnostic errors. Preserve
   P0.1–P0.3 as evidence for the original path, not proof of this migration.
-  *Deferred:* waits for ASIC P5.1 (library consumable without a sibling path) and
-  a chosen time to adopt. It does not block P1–P4 RTL; see
+  *Deferred:* starts when ASIC P5.1 has evidence and P2.7 or P3.1a is complete;
+  must have evidence before P3 exits or any P5 item is checked. It does not block
+  P1–P4 RTL; see
   [non-linear sequencing](#non-linear-sequencing-rtl-decoupled-from-asic-adoption).
   At adoption, declare the emulator's then-current top, not only the P0 circuit.
 - [ ] **P0.7 — Exercise registered program memory.** After P0.6 and library
@@ -203,8 +226,9 @@ with the first pin/timer work in P1/P2.
   *Deferred:* follows P0.6. If P3.1a has landed by then, its contract-port
   consumer can serve as the load/readback design in place of a separate fixture.
 
-**Exit gate:** P0.1–P0.7 have evidence. Because P0.6/P0.7 are deferred, this gate
-is expected to close after later phases have started. A small observable design from the adopted
+**Exit gate:** P0.1–P0.7 have evidence, including P0.5b. Because P0.6/P0.7 are
+deferred, this gate is expected to close after later phases have started. A small
+observable design from the adopted
 ASIC bundle passes generated-RTL simulation, CMOS5L hardening, required physical
 checks, precheck, and gate-level wrapper testing; the small registered-memory
 design passes integration and mapped synthesis. Tool availability, an emitted
@@ -214,18 +238,38 @@ bundle, or synthesis alone does not establish physical closure.
 
 **Entry:** architecture contracts in sections 3–4. P0 need not be complete.
 
-- [ ] **P1.1 — Make cycle semantics executable.** Define independent OCaml model
+- [x] **P1.1 — Make cycle semantics executable.** Define independent OCaml model
   state and one-cycle advancement. Cover command acceptance, parameter latching,
   commit edges, delays, wait arming, event/timeout precedence, set/ack precedence,
   reset, disable, STOP, ABORT, and idle-only single-step. Evidence: small examples
   assert exact edge behavior, including simultaneous-event cases. Model the
   program store's shared port, latency-one reads, disabled-output hold, and
   fetch validity; unspecified memory results cannot be accepted as instructions.
-- [ ] **P1.2 — Model the mechanism interfaces.** Add typed pin commands, timing
+  Evidence: [`machine.ml`](../model/machine.ml) holds the whole model state and one
+  rising edge, with [`program_store.ml`](../model/program_store.ml) as the contract
+  model of the 1RW port; [`test_cycle.ml`](../test/model/test_cycle.ml) asserts each
+  listed behavior edge by edge, including set-with-acknowledge and
+  event-with-timeout at the same edge. *Carried forward:* the model has no decoder
+  (P1.5 chooses the encoding), so an instruction boundary is modeled as a fetched
+  word being consumed or a stalling operation completing, and the fetched word is
+  checked for validity and discarded. P3.2 may revisit that definition.
+- [x] **P1.2 — Model the mechanism interfaces.** Add typed pin commands, timing
   requests, transfer descriptors, events, and FIFO operations. Define validation,
   ownership, blocking/nonblocking behavior, and safe abort results before opcode
   encoding. Evidence: legal examples run and invalid descriptors, conflicts,
-  zero delays, and queue boundary cases produce specified outcomes.
+  zero delays, and queue boundary cases produce specified outcomes. Evidence:
+  [`operation.ml`](../model/operation.ml) (the vocabulary and structural
+  validation), [`transfer.ml`](../model/transfer.ml) (descriptor and its rules),
+  [`pin_bank.ml`](../model/pin_bank.ml) (masked atomic commits and exclusive drive
+  ownership), [`event.ml`](../model/event.ml), [`fifo.ml`](../model/fifo.ml), and
+  [`fault.ml`](../model/fault.ml), checked by
+  [`test_mechanisms.ml`](../test/model/test_mechanisms.ml), which pins down which
+  reason each refusal reports rather than only that one occurred. *Carried
+  forward:* nothing drains a queue until P2.5's engine or P3.4's host port exists,
+  so a blocking queue operation ends only through ABORT, reset, or disable, which
+  raises the sticky queue fault; a transfer descriptor is validated and latched but
+  not executed, which is P2.5. The module is named `Operation` rather than
+  `Command` only because `Core.Command` shadows that name inside the library.
 - [ ] **P1.3 — Build the first firmware helpers.** Add labels, validation, and
   helpers for UART TX, a mode-0 SPI exchange, and explicit I2C drive/sample/wait
   sequences. Evidence: model traces show the expected transactions and record
@@ -300,11 +344,15 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   and combinational area per block/configuration using P0's flow. Exercise pin
   ownership, open-drain, FIFO, handshake, reset, and wait invariants; apply formal
   checks where useful and record environmental assumptions and checks not run.
-  Use declared configurations and link costs to build/selection and execution
-  identities; label legacy pre-adoption measurements explicitly. Before a flow run
-  is worthwhile, record per-block yowasp-yosys estimates (generic or liberty-mapped
-  tiers, [construction-plan.md §1](construction-plan.md#decoupling-rtl-from-the-asic-tooling))
-  labeled with their tier. Estimates alone do not satisfy this item.
+  Before a flow run is worthwhile, record per-block yowasp-yosys estimates (generic
+  or liberty-mapped tiers,
+  [construction-plan.md §1](construction-plan.md#decoupling-rtl-from-the-asic-tooling))
+  labeled with their tier. Estimates alone do not satisfy this item. Evidence:
+  mapped costs from a flow run. Before adoption, legacy runs of the existing
+  scripts are acceptable when labeled legacy and linked to exact source/tool
+  revisions and block parameters. After adoption, use declared configurations and
+  link costs to build/selection and execution identities. P5.1 reruns the
+  comparisons that feed configuration decisions; P2.8 is not reopened.
 
 **Exit gate:** primitives agree with the model on normal and fault paths, the
 first UART TX slice works, and initial per-block area and latency evidence exists.

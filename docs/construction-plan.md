@@ -122,7 +122,9 @@ A consequence is that the construction stages in section 8 are not a linear
 execution order. Emulator adoption of the library (P0.6/P0.7 in the
 [phase plan](phase_plan.md)) may be deferred until the library is consumable from a
 separate project (ASIC P5.1) and the emulator has a design worth declaring, while
-P1–P3 RTL proceeds against the contract. The costs of deferral are accepted
+P1–P3 RTL proceeds against the contract. Deferral is bounded: adoption must land
+before Stage 3 exits and before Stage 5 measurements count; the phase plan records
+the concrete start trigger. The costs of deferral are accepted
 explicitly: Stage 0 cannot exit, flow evidence gathered before adoption is labeled
 legacy, and late adoption may surface top-level interface, clock, or metadata
 mismatches. Keeping the adoption surface limited to the three points above bounds
@@ -136,6 +138,14 @@ that rework.
   later, and host writes are accepted only while halted. Decode/execute, readback,
   and image validity are placeholders. `test/test_protocol_core.ml` checks it against
   a contract model of the store.
+- `model/`: the independent reference execution model (Dune library `protemu_model`,
+  no Hardcaml dependency), covering P1.1 and P1.2. `machine.ml` holds all model state
+  and one rising edge; `operation.ml` is the typed mechanism vocabulary with its
+  structural validation; `pin_bank.ml`, `input_pins.ml`, `event.ml`, `fifo.ml`, and
+  `transfer.ml` are the mechanisms; `program_store.ml` is a contract model of the 1RW
+  store. It is kept out of `lib/` so a diagnostic model cannot reach a synthesis
+  source set. Transfers are validated and latched but not executed (P2.5), and there
+  is no decoder yet (P1.5). Tests are in `test/model/`.
 - `lib/protemu_types.ml`: candidate pin/configure/transfer instruction variants.
 - `lib/p0_observable.ml` and `bin/generate.ml`: an observable pin/timer circuit
   and working parameterized Verilog emitter, separate from the control scaffold.

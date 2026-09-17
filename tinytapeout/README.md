@@ -265,10 +265,11 @@ Do not infer a maximum protocol frequency from core clock alone.
 
 Use [P0 in the phase plan](../docs/phase_plan.md#3-p0--make-the-tool-path-real)
 as the single completion checklist. P0.1–P0.3 have recorded RTL-path evidence;
-P0.4/P0.5 still need mapped/physical results. P0.6/P0.7 separately track adoption
-and registered flop-memory integration; they are deferred, and existing script
-success does not close them. Physical evidence gathered before adoption is legacy
-and is rerun from the adopted bundle before P0 closes.
+P0.4 and P0.5a still need mapped/physical results from these scripts. P0.6/P0.7
+separately track adoption and registered flop-memory integration; they are deferred,
+and existing script success does not close them. Physical evidence gathered before
+adoption is legacy: P0.5a's run is repeated from the adopted bundle as P0.5b before
+P0 closes.
 P5.1a tracks the conditional SRAM capability investigation.
 
 Use the [experiment format](reports/README.md) to link an immutable build manifest

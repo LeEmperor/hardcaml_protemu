@@ -29,7 +29,8 @@ verification, and precheck as explicit later commands with their own results.
 ### Relationship to `hardcaml_asic`
 
 Environment provisioning remains an explicit project command during the migration
-in [P0.6/P0.7](phase_plan.md#3-p0--make-the-tool-path-real). Ordinary ASIC project
+in [P0.6/P0.7](phase_plan.md#3-p0--make-the-tool-path-real), which is deferred while
+emulator RTL develops independently of the library. Ordinary ASIC project
 elaboration must not install tools, fetch a PDK, or mutate this environment.
 `hardcaml_asic` owns target validation and generated RTL/source sets, constraints,
 TT metadata, flow configuration, and build provenance. The emulator owns the

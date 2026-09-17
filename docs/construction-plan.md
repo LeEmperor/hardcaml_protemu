@@ -1,7 +1,8 @@
 # Protocol emulator construction plan
 
-Status: architecture and integration plan, updated 2026-09-16 for the accepted
-`hardcaml_asic` ownership and memory contracts. Sizes, rates, and instruction
+Status: architecture and integration plan, updated 2026-09-17 for the implemented
+`hardcaml_asic` slice (its P0–P3, P4.1–P4.4) and the decision to develop emulator
+RTL decoupled from ASIC adoption (section 1). Sizes, rates, and instruction
 names remain study parameters, not implemented capabilities or a frozen ISA.
 
 ## 1. Direction and scope
@@ -73,11 +74,68 @@ this workspace's `scaf`, `hardcaml_asic`, and `workbench` checkout names; they a
 documentation references, not build dependencies. Reproduction must resolve and
 pin dependencies without requiring those developer-local paths.
 
+### Decoupling RTL from the ASIC tooling
+
+Emulator RTL is developed independently of `hardcaml_asic` adoption. The library
+touches the design at exactly three points, all at the project top:
+
+1. the program store, constructed by `Single_port_ram.create` with the elaboration
+   context;
+2. the project declaration: target, clocks, pin meanings, metadata, resource policy,
+   and flow overrides;
+3. bundle emission and flow staging, which replace the hand-maintained
+   `tinytapeout/` configuration.
+
+Everything else is ordinary Hardcaml (`Scope.t -> I.t -> O.t`) with no context
+argument: pin bank, synchronizers/events, timers/waits, shift lanes, FIFOs,
+register file, decoder/control core, and the loader. The rules that keep it so:
+
+- Modules that use the program store expose its 1RW port (enable, write-enable,
+  shared address, write data, read data) as ordinary ports and are written against
+  the [program-memory contract](../../hardcaml_asic/docs/program-memory-contract.md),
+  not its constructor. `Elaboration_context.t` is not threaded through the hierarchy;
+  only the top-level design constructor instantiates the RAM and connects the port.
+  [`protocol_core.ml`](../lib/protocol_core.ml) follows this.
+- Emulator testbenches use a small contract model of the store: latency-one reads,
+  held output while disabled, and poison after a write or for an unwritten word
+  ([`test_protocol_core.ml`](../test/test_protocol_core.ml)). Library backend
+  conformance stays in `hardcaml_asic`; adoption later reruns consumer checks against
+  its behavioral model.
+- Do not instantiate Hardcaml `memory`/`Ram` for the program store, and do not rely
+  on asynchronous reads or read-during-write behavior the contract leaves unspecified.
+- Keep the Tiny Tapeout wrapper and pin map thin and outside the core, so adoption
+  replaces configuration authority without restructuring RTL.
+
+Decoupled code does not mean decoupled measurement. The 6x4 area budget and clock
+choices still need early physical evidence, gathered in tiers of increasing cost:
+
+| Tier | Command basis | What it answers | Needs |
+| --- | --- | --- | --- |
+| Generic estimate | `.venv/bin/yowasp-yosys`: `read_verilog; synth -flatten -top M; stat` | Relative cell/flop counts between candidates, in under a second | `.venv` only |
+| Liberty-mapped estimate | Same, plus `dfflibmap`/`abc -liberty` and `stat -liberty` against the pinned `sg13cmos5l_stdcell_typ_1p20V_25C.lib` | Approximate CMOS5L cell area per block | Staged PDK (layer 2) |
+| Flow synthesis/hardening | Existing `tinytapeout/` scripts, later an emitted bundle | LibreLane-mapped area, placement, routed timing, checks | Full flow environment |
+
+The first two tiers are not LibreLane's synthesis script and carry no timing; label
+their results as estimates. Only flow runs close physical items.
+
+A consequence is that the construction stages in section 8 are not a linear
+execution order. Emulator adoption of the library (P0.6/P0.7 in the
+[phase plan](phase_plan.md)) may be deferred until the library is consumable from a
+separate project (ASIC P5.1) and the emulator has a design worth declaring, while
+P1–P3 RTL proceeds against the contract. The costs of deferral are accepted
+explicitly: Stage 0 cannot exit, flow evidence gathered before adoption is labeled
+legacy, and late adoption may surface top-level interface, clock, or metadata
+mismatches. Keeping the adoption surface limited to the three points above bounds
+that rework.
+
 ## 2. What exists today
 
-- `lib/protocol_core.ml`: an Idle/Fetch/Decode/Execute scaffold, an 8-bit PC,
-  a declared 256x8 memory with asynchronous read, and an output bank tied to zero.
-  The memory is not connected to an implemented instruction decoder or loader.
+- `lib/protocol_core.ml`: an Idle/Fetch/Decode/Execute scaffold with an 8-bit PC
+  and an output bank tied to zero. It drives an external 256x8 program store through
+  a contract-conforming 1RW port: fetch issues a read and decode consumes it one cycle
+  later, and host writes are accepted only while halted. Decode/execute, readback,
+  and image validity are placeholders. `test/test_protocol_core.ml` checks it against
+  a contract model of the store.
 - `lib/protemu_types.ml`: candidate pin/configure/transfer instruction variants.
 - `lib/p0_observable.ml` and `bin/generate.ml`: an observable pin/timer circuit
   and working parameterized Verilog emitter, separate from the control scaffold.
@@ -86,9 +144,17 @@ pin dependencies without requiring those developer-local paths.
 - `tinytapeout/`: wrapper, metadata, pinned flow inputs, staging and local checks;
   bootstrap/hardening scripts exist, but no completed mapped/physical run is
   recorded. See the [P0 record](../tinytapeout/reports/2026-09-14-p0-tool-path.md).
-- `hardcaml_asic`: memory configuration validation exists, but `Single_port_ram.create`
-  and the context/project/build path remain unimplemented at this review. The
-  accepted architecture is a dependency plan, not an available API.
+- `hardcaml_asic` (its [phase plan](../../hardcaml_asic/docs/phase_plan.md), reviewed
+  2026-09-17): P0–P3 and P4.1–P4.4 have evidence. Implemented are the
+  `Project`/`Elaboration_context`/`Build` lifecycle with resource identity and
+  selection policy; `Single_port_ram.create` with a behavioral model and explicitly
+  selected flop storage passing a conformance suite; TT/CMOS5L target resolution with
+  validated flow configuration; deterministic bundle emission (RTL, source sets, SDC,
+  TT metadata, manifest); and run records with structured result collection. Mapped
+  CMOS5L synthesis evidence exists for a 4x8 flop-memory example (179 cells, about
+  3,480 µm²). Still open: its small physical path (ASIC P4.5), consumer packaging
+  and adoption (ASIC P5), and the SRAM investigation (ASIC S). This repository does
+  not depend on the library yet; `lib/dune` lists no `hardcaml_asic`.
 - Dune, Hardcaml dependencies, and `scripts/with-switch.sh` are already present.
 
 Keep developing this scaffold, but do not let the current 8-bit instruction memory
@@ -235,8 +301,9 @@ Record firmware size, cycles per operation, and mapped area for each choice.
 
 For perspective, 256x16 program bits plus two 16x8 FIFOs already total 4,352
 storage bits before registers and metadata. That can dominate a small design if
-implemented in flip-flops. Use `hardcaml_asic.Single_port_ram` through the planned
-elaboration context. Its normative contract is single-port 1RW with one shared
+implemented in flip-flops. Use `hardcaml_asic.Single_port_ram` through the
+elaboration context at the project top, with consumers coded against its port
+(section 1, decoupling). Its normative contract is single-port 1RW with one shared
 address, latency one, held output when disabled, unspecified output after a
 write, and no initialization/reset. An enabled operation is a read or a write;
 the primitive supplies neither byte enables nor a second read port. Out-of-range
@@ -393,9 +460,12 @@ a separate product decision; neither is required for hardware acceptance.
 
 Stages 0 and 1 should interleave: a small early physical-flow experiment gives
 useful evidence while the model prevents premature commitment to a large ISA.
-Run two tracks alongside each other: pin/timer/model/UART work, and the helper
-library's project/context/flop-memory implementation followed by emulator adoption
-in P0.6/P0.7. P3 hardware storage depends on that adoption; P1 models do not.
+Run two tracks alongside each other: emulator model/RTL work, and the helper
+library's implementation followed by emulator adoption in P0.6/P0.7. The stages are
+not a strict execution order (section 1, decoupling): P1–P3 RTL, including the
+program-store consumer logic, proceeds against the memory contract, and adoption
+may land after later stages have progressed. Only the context-registered program
+store at the project top and Stage 0's exit depend on adoption.
 Early macro investigation informs P5 without blocking either track. Workbench,
 an SRAM macro, and commercial EDA adapters are not initial prerequisites.
 Do not wait for USB/Ethernet or a finished CPU to discover memory/routing costs.
@@ -429,7 +499,9 @@ per protocol, mapped sequential/combinational area, routed utilization, worst
 setup/hold slack, clock target, min/max observed edge response, maximum verified
 protocol rate, FIFO service budget, and errors under overload. A B-byte FIFO at
 R bits/s absorbs only about `8*B/R` seconds without service, before framing and
-other overhead. Sustained host throughput must be measured separately.
+other overhead. Sustained host throughput must be measured separately. Early area
+comparisons may use the yowasp-yosys estimate tiers from section 1; record which
+tier produced each number and do not report estimates as mapped or routed results.
 
 Every candidate identifies the immutable ASIC build manifest: source/dependency
 revisions and content hashes (including dirty/untracked inputs), resource requests

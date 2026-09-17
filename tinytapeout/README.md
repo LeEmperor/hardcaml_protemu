@@ -12,8 +12,11 @@ See the [construction plan](../docs/construction-plan.md) for the architecture.
 The [accepted ASIC architecture](../../hardcaml_asic/docs/architecture.md) supplies
 project declaration/elaboration, resource selection, target resolution, and
 build/flow artifacts. [P0.6/P0.7](../docs/phase_plan.md#3-p0--make-the-tool-path-real)
-adopt that path here. It is planned integration; the current scripts and files
-below still implement the original P0 path.
+adopt that path here. The library's lifecycle, flop memory, target resolution, and
+bundle emission now exist, but adoption is deliberately deferred while emulator RTL
+develops against the memory contract (see
+[non-linear sequencing](../docs/phase_plan.md#non-linear-sequencing-rtl-decoupled-from-asic-adoption)).
+Until then, the current scripts and files below remain the flow path.
 
 The emulator owns its design constructor, wrapper logic and reset/disable tests,
 requested TT/CMOS5L target, clocks/I/O assumptions, pin meanings, and implementation
@@ -97,6 +100,26 @@ layout fits, meets timing, or passes fabrication checks.
 The exact verification tools enabled depend on the process/flow configuration;
 inspect the CMOS5L run rather than requiring every tool manually.
 [LibreLane step reference](https://librelane.readthedocs.io/en/stable/reference/step_config_vars.html)
+
+### Quick area estimates without the flow
+
+For per-block comparisons while RTL changes quickly, run Yosys from the repository
+`.venv` directly
+on emitted Verilog instead of hardening. Neither tier is LibreLane's synthesis
+script, and neither reports timing. Record results as estimates with their tier.
+
+```sh
+# Generic: relative cell and flop counts, no PDK needed.
+../.venv/bin/yowasp-yosys -p "read_verilog src/p0_observable.v; synth -flatten -top p0_observable; stat"
+
+# Liberty-mapped: approximate CMOS5L cell area, needs the staged PDK.
+lib=pdk/ihp-sg13cmos5l/libs.ref/sg13cmos5l_stdcell/lib/sg13cmos5l_stdcell_typ_1p20V_25C.lib
+../.venv/bin/yowasp-yosys -p "read_verilog src/p0_observable.v; synth -flatten -top p0_observable; \
+  dfflibmap -liberty $lib; abc -liberty $lib; opt_clean; stat -liberty $lib"
+```
+
+Run these from `tinytapeout/`. On 2026-09-17 the liberty-mapped
+tier reported 170 cells and about 2,952 µm² for `p0_observable`, in under a second.
 
 ### Host prerequisites
 
@@ -243,7 +266,9 @@ Do not infer a maximum protocol frequency from core clock alone.
 Use [P0 in the phase plan](../docs/phase_plan.md#3-p0--make-the-tool-path-real)
 as the single completion checklist. P0.1–P0.3 have recorded RTL-path evidence;
 P0.4/P0.5 still need mapped/physical results. P0.6/P0.7 separately track adoption
-and registered flop-memory integration; existing script success does not close them.
+and registered flop-memory integration; they are deferred, and existing script
+success does not close them. Physical evidence gathered before adoption is legacy
+and is rerun from the adopted bundle before P0 closes.
 P5.1a tracks the conditional SRAM capability investigation.
 
 Use the [experiment format](reports/README.md) to link an immutable build manifest

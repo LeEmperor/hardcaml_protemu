@@ -49,3 +49,20 @@
    -q
    -p
    "read_verilog ../src/p0_observable.v ../src/project.v; hierarchy -check -top tt_um_leemperor_hardcaml_protemu; synth -top tt_um_leemperor_hardcaml_protemu; stat")))
+
+(rule
+ (alias rtl)
+ (deps p2_uart_tb.v ../src/uart_tx.generated.v)
+ (action
+  (progn
+   (run
+    iverilog
+    -g2012
+    -Wall
+    -s
+    p2_uart_tb
+    -o
+    p2_uart
+    ../src/uart_tx.generated.v
+    p2_uart_tb.v)
+   (run vvp p2_uart))))

@@ -13,10 +13,10 @@ The [accepted ASIC architecture](../../hardcaml_asic/docs/architecture.md) suppl
 project declaration/elaboration, resource selection, target resolution, and
 build/flow artifacts. [P0.6/P0.7](../docs/phase_plan.md#3-p0--make-the-tool-path-real)
 adopt that path here. The library's lifecycle, flop memory, target resolution, and
-bundle emission now exist, but adoption is deliberately deferred while emulator RTL
-develops against the memory contract (see
-[non-linear sequencing](../docs/phase_plan.md#non-linear-sequencing-rtl-decoupled-from-asic-adoption)).
-Until then, the current scripts and files below remain the flow path.
+bundle emission now exist. P0.6 has adopted the current observable top; see
+the [adopted flow guide](../docs/asic-adoption.md). P0.7 memory integration
+remains separate. The existing scripts and hand-maintained files below are the
+legacy physical path until the adopted physical run closes P0.5b.
 
 The emulator owns its design constructor, wrapper logic and reset/disable tests,
 requested TT/CMOS5L target, clocks/I/O assumptions, pin meanings, and implementation
@@ -77,7 +77,7 @@ OCaml source + ASIC project declaration (planned adoption)
   -> GDS layout + netlist + reports + Tiny Tapeout submission package
 ```
 
-The current P0 generator emits RTL directly; P0.6 migrates to the bundle path.
+The legacy P0 generator emits RTL directly; P0.6 emits a separate adopted bundle.
 LibreLane coordinates these tools. The PDK (process design kit) supplies the
 foundry-specific cell models, timing libraries, geometry, and physical rules.
 Hardcaml's simulator verifies digital behavior; it does not establish that the
@@ -265,11 +265,10 @@ Do not infer a maximum protocol frequency from core clock alone.
 
 Use [P0 in the phase plan](../docs/phase_plan.md#3-p0--make-the-tool-path-real)
 as the single completion checklist. P0.1–P0.3 have recorded RTL-path evidence;
-P0.4 and P0.5a still need mapped/physical results from these scripts. P0.6/P0.7
-separately track adoption and registered flop-memory integration; they are deferred,
-and existing script success does not close them. Physical evidence gathered before
-adoption is legacy: P0.5a's run is repeated from the adopted bundle as P0.5b before
-P0 closes.
+P0.4 and P0.5a still need mapped/physical results from the legacy scripts.
+P0.6 has adopted the observable design; P0.7 still tracks registered flop-memory
+integration. Physical evidence gathered before adoption is legacy: P0.5a's run
+is repeated from the adopted bundle as P0.5b before P0 closes.
 P5.1a tracks the conditional SRAM capability investigation.
 
 Use the [experiment format](reports/README.md) to link an immutable build manifest

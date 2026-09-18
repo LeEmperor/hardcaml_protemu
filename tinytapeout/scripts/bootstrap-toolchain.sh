@@ -47,6 +47,7 @@ die() {
 offline=0
 check_only=0
 require_container=1
+adopted_only=0
 
 usage() {
     cat <<'USAGE'
@@ -66,6 +67,8 @@ Options:
                    runs dockerized; tt-support-tools also supports a native
                    no-docker path. Use this only if you intend to supply a
                    native LibreLane yourself.
+  --adopted-only   Provision the toolchain and pinned LibreLane image without
+                   staging or configuring the legacy P0 project.
   -h, --help       Show this message.
 
 Environment:
@@ -80,11 +83,16 @@ while [[ $# -gt 0 ]]; do
         --offline) offline=1 ;;
         --check) check_only=1; offline=1 ;;
         --no-container) require_container=0 ;;
+        --adopted-only) adopted_only=1 ;;
         -h|--help) usage; exit 0 ;;
         *) usage >&2; die "$EX_GENERAL" "unknown option: $1" ;;
     esac
     shift
 done
+
+if [[ $adopted_only -eq 1 && $require_container -eq 0 ]]; then
+    die "$EX_GENERAL" "--adopted-only needs Docker for the adopted regression and postcheck"
+fi
 
 # A single guard for every mutating action, so --check cannot change anything.
 mutating() { [[ $check_only -eq 0 ]]; }
@@ -98,6 +106,7 @@ readonly script_dir repo_root
 
 readonly tt_dir="$repo_root/tinytapeout"
 readonly lock_file="$tt_dir/toolchain.lock"
+readonly adopted_lock_file="$tt_dir/asic-dependencies.lock"
 # The Python environment belongs to the repository, not to the Tiny Tapeout
 # subtree: LibreLane and precheck are ASIC-flow tools that happen to be reached
 # through TT. Keeping it at the root keeps this a dune/Hardcaml project that
@@ -278,6 +287,8 @@ check_prerequisites() {
             die "$EX_PREREQ" "$runtime is installed but not usable by this user" \
                 "Start the service and confirm your user may talk to it, then rerun."
         else
+            [[ $adopted_only -eq 0 || $runtime == docker ]] || die "$EX_PREREQ" \
+                "adopted flow requires Docker; its runner invokes docker explicitly"
             info "container runtime: $runtime"
         fi
     else
@@ -291,6 +302,40 @@ check_prerequisites() {
         # No hard minimum is enforced. The plan asks for a figure published only
         # after a clean bootstrap has actually been observed.
     fi
+}
+
+pull_adopted_image() {
+    [[ $adopted_only -eq 1 ]] || return 0
+    step "Resolving the adopted LibreLane image"
+    local image="ghcr.io/librelane/librelane:$(lock librelane_version)"
+    if docker image inspect "$image" >/dev/null 2>&1; then
+        info "$image (present)"
+        return 0
+    fi
+    if [[ $check_only -eq 1 ]]; then
+        die "$EX_PREREQ" "Docker image missing: $image" \
+            "Rerun without --check to pull it."
+    fi
+    [[ $offline -eq 0 ]] || die "$EX_NETWORK" \
+        "Docker image missing and --offline was given: $image"
+    net "pulling $image"
+    docker pull "$image" || die "$EX_NETWORK" "failed to pull $image"
+}
+
+validate_adopted_locks() {
+    [[ $adopted_only -eq 1 ]] || return 0
+    [[ -f $adopted_lock_file ]] || die "$EX_LOCKFILE" \
+        "missing adopted dependency lock: $adopted_lock_file"
+    local key have want revision
+    for key in support_tools_revision pdk_revision librelane_version python; do
+        have=$(sed -n "s/^${key}=//p" "$adopted_lock_file" | head -1)
+        want=$(lock "$key")
+        [[ $have == "$want" ]] || die "$EX_MISMATCH" \
+            "asic-dependencies.lock $key=$have; toolchain.lock wants $want"
+    done
+    revision=$(sed -n 's/^asic_revision=//p' "$adopted_lock_file" | head -1)
+    [[ $revision =~ ^[0-9a-f]{40}$ ]] || die "$EX_LOCKFILE" \
+        "asic-dependencies.lock needs a full asic_revision"
 }
 
 # ---------------------------------------------------------------------------
@@ -956,6 +1001,21 @@ EOF
 }
 
 summary() {
+    if [[ $adopted_only -eq 1 ]]; then
+        cat <<EOF
+
+Adopted bundle toolchain ready.
+  support tools     $support_tools_dir
+  PDK_ROOT          $pdk_dir
+  LibreLane Python  $venv_dir/bin/python
+  precheck Python   $precheck_venv_dir/bin/python
+  Docker image      ghcr.io/librelane/librelane:$(lock librelane_version)
+
+Next: tinytapeout/scripts/adopted-flow.sh emit preflight
+The physical run starts only with: tinytapeout/scripts/adopted-flow.sh run
+EOF
+        return
+    fi
     cat <<EOF
 
 ================================================================================
@@ -1002,6 +1062,7 @@ main() {
 
     parse_lockfile
     validate_lockfile
+    validate_adopted_locks
     step "Lockfile validated: $lock_file"
     info "process $(lock pdk), tiles $(lock tiles), librelane $(lock librelane_version)"
 
@@ -1013,9 +1074,12 @@ main() {
     install_precheck_environment
     ensure_pdk
     verify_pdk
-    stage_project
-    create_user_config
-    inspect_user_config
+    pull_adopted_image
+    if [[ $adopted_only -eq 0 ]]; then
+        stage_project
+        create_user_config
+        inspect_user_config
+    fi
     write_env_file
     summary
 }

@@ -35,3 +35,11 @@
  (alias runtest)
  (action
   (run cmp p0_observable.generated.v p0_observable.regenerated.v)))
+
+; UART first-slice RTL for direct emitted-Verilog simulation. This is a separate
+; block experiment, not yet the selected Tiny Tapeout project top.
+
+(rule
+ (target uart_tx.generated.v)
+ (action
+  (run %{exe:../../bin/generate_p2.exe} uart_tx %{target})))

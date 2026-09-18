@@ -1,0 +1,8 @@
+# Source revision for the installed hardcaml_asic package and its flow collateral.
+# Install the library from this exact commit; see docs/asic-adoption.md.
+asic_repository=https://github.com/LeEmperor/hardcaml_asic.git
+asic_revision=414b7f4f92a201bd9bceb6864579dc3ee475101f
+support_tools_revision=da63c9927411e3aca350977d653d24bbf5bca972
+pdk_revision=2bbec755dc67ca3db0261c3d6163e15735d66710
+librelane_version=3.1.0.dev3
+python=3.11

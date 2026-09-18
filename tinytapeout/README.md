@@ -18,6 +18,14 @@ the [adopted flow guide](../docs/asic-adoption.md). P0.7 memory integration
 remains separate. The existing scripts and hand-maintained files below are the
 legacy physical path until the adopted physical run closes P0.5b.
 
+The flow entry point is the repository root's `./flow.sh`, which runs the adopted
+bundle path end to end; [`scripts/adopted-flow.sh`](scripts/adopted-flow.sh) is its
+one orchestration implementation, and `./bootstrap.sh` provisions what it consumes.
+The legacy scripts below are reached through explicitly named `legacy-*` commands
+and need `./bootstrap.sh --legacy-project` to have staged that project. See the
+[adopted flow guide](../docs/asic-adoption.md#the-flow) and the
+[migration handoff](../docs/flow_migration.md).
+
 The emulator owns its design constructor, wrapper logic and reset/disable tests,
 requested TT/CMOS5L target, clocks/I/O assumptions, pin meanings, and implementation
 policies. The helper's harness validates ports and resolves target requirements;
@@ -192,7 +200,7 @@ tinytapeout/
   src/                      generated RTL, thin wrapper, and flow configuration
   test/                     wrapper HDL test
   docs/info.md              Tiny Tapeout user documentation
-  scripts/                  generation, tests, checks, and staging
+  scripts/                  flow orchestration, generation, tests, checks, staging
   toolchain.lock            selected upstream flow/PDK revisions
   constraints/              future reviewed timing overrides, if needed
   build/                    ignored staged template project and intermediates
@@ -220,6 +228,8 @@ TT_SUPPORT_TOOLS_DIR=/absolute/path/to/tt-support-tools-cmos5l \
   tinytapeout/scripts/stage-project.sh
 ```
 
+The staged project is legacy; `./bootstrap.sh --legacy-project` is what creates it,
+and the adopted flow renders its own inputs from the bundle instead.
 The ignored staged project receives an ephemeral `tt` symlink to that checkout.
 This matches the path expected by `tt_tool.py` while keeping the design repository
 small. A hosted flow should check out the revision from `toolchain.lock` into the
@@ -280,5 +290,9 @@ submission-candidate validation.
 
 Run `dune exec protemu -- check` (`tinytapeout/scripts/check-p0.sh`) for deterministic generation, Hardcaml
 tests, wrapper RTL simulation, Verilator lint, generic Yosys synthesis, and
-staging. Generic synthesis does not satisfy P0.4: the official CMOS5L flow still
-needs to reach synthesis using the intended PDK libraries.
+staging. Those are the legacy inputs: the committed RTL and the hand-maintained
+`info.yaml` and `src/config.json`. The adopted bundle's equivalents are
+`tinytapeout/scripts/check-adopted-bundle.py` and `./flow.sh build emit preflight`,
+and `tinytapeout/scripts/check-flow.sh` checks the orchestration itself. Generic
+synthesis does not satisfy P0.4: the official CMOS5L flow still needs to reach
+synthesis using the intended PDK libraries.

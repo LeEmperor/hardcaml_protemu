@@ -47,7 +47,12 @@ die() {
 offline=0
 check_only=0
 require_container=1
-adopted_only=0
+
+# The flow's normal path is the adopted bundle, so provisioning stops at the
+# toolchain: support tools, PDK, Python environments, and the pinned LibreLane
+# image. Staging and configuring the legacy P0 project is the exception now, and
+# --legacy-project asks for it.
+adopted_only=1
 
 usage() {
     cat <<'USAGE'
@@ -67,8 +72,9 @@ Options:
                    runs dockerized; tt-support-tools also supports a native
                    no-docker path. Use this only if you intend to supply a
                    native LibreLane yourself.
-  --adopted-only   Provision the toolchain and pinned LibreLane image without
-                   staging or configuring the legacy P0 project.
+  --legacy-project Also stage and configure the legacy P0 project. Needed only
+                   by the legacy hardening scripts; ./flow.sh does not use it.
+  --adopted-only   Accepted for compatibility; this is the default now.
   -h, --help       Show this message.
 
 Environment:
@@ -83,16 +89,13 @@ while [[ $# -gt 0 ]]; do
         --offline) offline=1 ;;
         --check) check_only=1; offline=1 ;;
         --no-container) require_container=0 ;;
+        --legacy-project) adopted_only=0 ;;
         --adopted-only) adopted_only=1 ;;
         -h|--help) usage; exit 0 ;;
         *) usage >&2; die "$EX_GENERAL" "unknown option: $1" ;;
     esac
     shift
 done
-
-if [[ $adopted_only -eq 1 && $require_container -eq 0 ]]; then
-    die "$EX_GENERAL" "--adopted-only needs Docker for the adopted regression and postcheck"
-fi
 
 # A single guard for every mutating action, so --check cannot change anything.
 mutating() { [[ $check_only -eq 0 ]]; }
@@ -307,6 +310,14 @@ check_prerequisites() {
 pull_adopted_image() {
     [[ $adopted_only -eq 1 ]] || return 0
     step "Resolving the adopted LibreLane image"
+    # --no-container is the promise to supply a native LibreLane, so the pinned
+    # image is not resolved and its absence is not an error. The flow's run and
+    # postcheck steps are where that promise is kept or broken.
+    if [[ $require_container -eq 0 ]]; then
+        warn "container check skipped; the pinned image was not resolved"
+        info "run and postcheck need it, or a native LibreLane you supply"
+        return 0
+    fi
     local image="ghcr.io/librelane/librelane:$(lock librelane_version)"
     if docker image inspect "$image" >/dev/null 2>&1; then
         info "$image (present)"
@@ -1004,22 +1015,40 @@ summary() {
     if [[ $adopted_only -eq 1 ]]; then
         cat <<EOF
 
-Adopted bundle toolchain ready.
+================================================================================
+$(mutating && echo "Flow toolchain ready." || echo "Flow toolchain valid (--check: nothing was changed).")
+
+  process           $(lock pdk)
+  tiles             $(lock tiles)
+  librelane         $(lock librelane_version)
   support tools     $support_tools_dir
+                    $(lock support_tools_revision)
   PDK_ROOT          $pdk_dir
-  LibreLane Python  $venv_dir/bin/python
-  precheck Python   $precheck_venv_dir/bin/python
+                    $(lock pdk_revision)
+  python env        $venv_dir
+  precheck env      $precheck_venv_dir
+  precheck tools    ${precheck_tools:-not checked}
   Docker image      ghcr.io/librelane/librelane:$(lock librelane_version)
 
-Next: tinytapeout/scripts/adopted-flow.sh emit preflight
-The physical run starts only with: tinytapeout/scripts/adopted-flow.sh run
+Activate (each new shell, for commands you type by hand):
+  source $repo_root/env.sh
+
+Next commands:
+  ./flow.sh --help                steps, overrides, and how to resume
+  ./flow.sh build emit preflight  prepare a bundle and check it; no hardening
+  ./flow.sh                       the whole flow, hardening included (hours)
+
+This prepared an environment. It did not run hardening, timing analysis,
+physical verification, precheck, or gate-level simulation, and says nothing
+about whether the design closes.
+================================================================================
 EOF
         return
     fi
     cat <<EOF
 
 ================================================================================
-$(mutating && echo "Environment ready." || echo "Environment valid (--check: nothing was changed).")
+$(mutating && echo "Environment ready (--legacy-project)." || echo "Environment valid (--check: nothing was changed).")
 
   process           $(lock pdk)
   tiles             $(lock tiles)
@@ -1036,14 +1065,16 @@ $(mutating && echo "Environment ready." || echo "Environment valid (--check: not
 Activate (each new shell):
   source $repo_root/env.sh
 
-Next commands:
-  dune exec protemu -- check      RTL regression: generation, tests, lint,
-                                  generic synthesis, staging
-  dune exec protemu -- harden     mapped synthesis and place-and-route
-  dune exec protemu -- precheck   required Tiny Tapeout checks (needs Nix)
-  (not yet written)
-  tinytapeout/scripts/test-gates.sh      gate-level wrapper simulation
-  tinytapeout/scripts/report-run.sh      artifact hashes and experiment summary
+The adopted flow is ./flow.sh and does not use the staged project. These
+legacy commands do; they remain available during the transition:
+
+  dune exec protemu -- check            RTL regression on the committed RTL:
+                                        generation, tests, lint, generic
+                                        synthesis, staging
+  dune exec protemu -- legacy-harden    mapped synthesis and place-and-route
+                                        on the staged project
+  dune exec protemu -- precheck         Tiny Tapeout precheck on a legacy
+                                        hardening run (needs Nix)
 
 This prepared an environment. It did not run hardening, timing analysis,
 physical verification, precheck, or gate-level simulation, and says nothing

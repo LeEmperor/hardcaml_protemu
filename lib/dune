@@ -9,7 +9,7 @@
 (library
  (name hardcaml_protemu)
  (public_name hardcaml_protemu)
- (libraries core hardcaml hardcaml_circuits)
+ (libraries core hardcaml)
  (preprocess
   (pps ppx_hardcaml ppx_jane))
  (lint

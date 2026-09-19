@@ -19,7 +19,8 @@
 # Python runner and reporter it drives. This file is the public name for it and
 # supplies the full-run default; there is no second implementation.
 #
-# See docs/asic-adoption.md and docs/environment.md.
+# docs/flow.md is the source of truth for this flow: stages, overrides,
+# resuming, artifacts, and what has been verified about it.
 
 set -euo pipefail
 

@@ -27,7 +27,7 @@
 # It prepares an environment. It does not stage a design, emit a bundle, or start
 # hardening: that is ./flow.sh, and it is always an explicit command.
 #
-# See docs/environment.md.
+# See docs/environment.md; the flow itself is docs/flow.md.
 
 set -euo pipefail
 

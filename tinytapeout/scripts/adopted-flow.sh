@@ -4,8 +4,9 @@
 #
 # It drives an emitted hardcaml_asic bundle through the adopted path. Every step
 # is explicit; only "run" starts LibreLane, and only "postcheck" runs physical
-# postchecks. The steps themselves live in adopted_phase4.py and
-# adopted_report.py, which own their arguments and exit codes.
+# postchecks. The steps themselves live in adopted_phase4.py,
+# adopted_report.py and adopted_archive.py, which own their arguments and exit
+# codes.
 #
 # ./flow.sh at the repository root is the canonical entry point and is what the
 # documentation names. It is a thin wrapper: with no steps it calls this script
@@ -23,10 +24,11 @@ repo_root=$(cd "$script_dir/../.." && pwd)
 tt_dir="$repo_root/tinytapeout"
 runner="$script_dir/adopted_phase4.py"
 reporter="$script_dir/adopted_report.py"
+archiver="$script_dir/adopted_archive.py"
 
 # The default sequence, in order. "bootstrap" is deliberately not in it: a flow
 # invocation never provisions.
-readonly default_steps=(build emit preflight run postcheck collect report)
+readonly default_steps=(build emit preflight run postcheck collect report archive)
 
 usage() {
     cat <<'USAGE'
@@ -44,11 +46,17 @@ Steps:
   postcheck   TT precheck and gate-level wrapper simulation after a full run
   collect     write results.json for a run
   report      print the physical/timing summary for a run
+  archive     promote the run's records and reports into flow_results/
   bootstrap   provision flow tools (transitional; prefer ./bootstrap.sh)
   --full      the default sequence above, in a fresh output directory. This is
               what ./flow.sh runs when given no steps.
 
 Output:
+  A run directory under PROTEMU_FLOW_OUT is scratch: it is ~240 MB, gitignored,
+  and disposable. "archive" promotes the ~1 MB a reader actually checks into
+  flow_results/<date>-<run id>/, which is kept and committed. Curate it by
+  writing a README.md beside the records; re-archiving never deletes one.
+
   PROTEMU_FLOW_OUT holds one bundle and its runs. --full allocates a fresh one
   under tinytapeout/build/ unless PROTEMU_FLOW_OUT names the experiment; named
   steps default to tinytapeout/build/adopted. Emission refuses a bundle
@@ -65,6 +73,8 @@ Environment:
   PROTEMU_BUNDLE    the emitted bundle             ($PROTEMU_FLOW_OUT/bundle)
   PROTEMU_RUNS      run storage, one per attempt   ($PROTEMU_FLOW_OUT/runs)
   PROTEMU_RUN       an existing run, for steps after "run"
+  PROTEMU_FLOW_RESULTS  kept archives, one per run        (./flow_results)
+  PROTEMU_ARCHIVE   exact archive directory for this run
   PROTEMU_STAGE     full | synthesis, how far "run" goes             (full)
   PROTEMU_TT        tt-support-tools checkout
   PROTEMU_PDK_ROOT  PDK root (IHP sg13cmos5l)
@@ -94,7 +104,7 @@ if [[ $1 == --full ]]; then
 fi
 for step in "$@"; do
     case $step in
-        build|emit|preflight|run|postcheck|collect|report|bootstrap) ;;
+        build|emit|preflight|run|postcheck|collect|report|archive|bootstrap) ;;
         -h|--help) usage; exit 0 ;;
         *) echo "flow: unknown step: $step (try --help)" >&2; exit 2 ;;
     esac
@@ -190,6 +200,7 @@ summary() {
             summary_path 'precheck reports' "${check}tt/precheck/reports/results.md"
         done
     fi
+    [[ -z $archive_dir ]] || summary_path 'archive' "$archive_dir"
 
     if [[ -n $failed_step ]]; then
         printf '\n  %s\n' "failed at step: $failed_step" >&2
@@ -198,6 +209,7 @@ summary() {
 }
 
 failed_step=
+archive_dir=
 
 # Ctrl-C and SIGTERM during a hardening run are ordinary: the run directory is
 # still evidence. Print the summary, then re-raise with the default handler so
@@ -354,6 +366,33 @@ step_report() {
     need_run || return $?
     say "report"
     python3 "$reporter" "$run_dir"
+}
+
+# The run directory is scratch and gitignored; this is what makes a finished run
+# survive it. The destination is named from the run's own start time and id
+# rather than from anything this invocation chose, so archiving the same run
+# twice lands in the same place and a directory name sorts chronologically.
+# --force replaces the files this writes and nothing else: a curated README.md
+# beside them is left alone.
+step_archive() {
+    need_run || return $?
+    local results=${PROTEMU_FLOW_RESULTS:-$repo_root/flow_results}
+    local dest=${PROTEMU_ARCHIVE:-} name
+    if [[ -z $dest ]]; then
+        name=$(python3 - "$run_dir/run.json" <<'PY'
+import json, sys
+record = json.load(open(sys.argv[1]))
+stamp = record["started_at"][:19].replace("-", "").replace(":", "").replace("T", "-")
+print(f'{stamp}-{record["run_id"][:8]}')
+PY
+        ) || return $?
+        dest=$results/$name
+    fi
+    [[ $dest == /* ]] || dest=$PWD/$dest
+    say "archive into $dest"
+    python3 "$archiver" "$run_dir" --output "$dest" --force || return $?
+    archive_dir=$dest
+    echo "flow: archive $dest" >&2
 }
 
 echo "flow: output directory $out" >&2

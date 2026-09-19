@@ -169,7 +169,10 @@ and checks the provided versions against `precheck/tool-versions.json`, so Nix
 is a host prerequisite for precheck (not for hardening). Do not install
 `klayout` from apt for this. With Ubuntu's `nix-bin` package, your user must be
 in the `nix-users` group (`sudo usermod -aG nix-users $USER`, then log in
-again). For `ihp-sg13cmos5l`, precheck runs KLayout checks only; no check
+again). No channel or `NIX_PATH` setup is needed: every `nix-shell` call here
+sets `NIX_PATH` from the revision `precheck/default.nix` itself pins, so the
+wrapper shell comes from the pin rather than from whatever the host has
+configured (see [`scripts/nix-pin.sh`](scripts/nix-pin.sh)). For `ihp-sg13cmos5l`, precheck runs KLayout checks only; no check
 invokes `magic`.
 
 A PATH inspection on this machine found `opam`, `dune`, `yosys`, `verilator`, and

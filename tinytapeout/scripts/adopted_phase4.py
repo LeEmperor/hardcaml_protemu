@@ -14,6 +14,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import signal
@@ -85,11 +86,30 @@ def safe_child(root, relative):
     return path
 
 
-def command_output(argv, cwd=None):
-    result = subprocess.run(argv, capture_output=True, text=True, check=False, cwd=cwd)
+def command_output(argv, cwd=None, env=None):
+    result = subprocess.run(argv, capture_output=True, text=True, check=False, cwd=cwd,
+                            env=env)
     if result.returncode:
         raise PrerequisiteError(f"command failed: {argv!r}: {result.stderr.strip()}")
     return result.stdout.strip()
+
+
+def nixpkgs_pin(nix_file):
+    """A NIX_PATH value for the nixpkgs revision that nix_file pins.
+
+    `nix-shell --run` resolves <nixpkgs> for its own bashInteractive. Without a
+    channel or NIX_PATH that lookup fails, and nix prints an evaluation error and
+    falls back to the environment's bash. The pinned tools are unaffected --
+    precheck/default.nix pins nixpkgs by revision with fetchTarball and never
+    consults the search path -- so it is noise, but it is noise in the middle of a
+    postcheck log. Pointing <nixpkgs> at the same revision silences it and makes
+    the wrapper shell come from the pin too.
+
+    Returns None when the pin cannot be read: an empty search path would be worse
+    than the error, so the caller leaves NIX_PATH alone.
+    """
+    match = re.search(r'fetchTarball\s*"([^"]+)"', Path(nix_file).read_text())
+    return f"nixpkgs={match.group(1)}" if match else None
 
 
 def preflight(bundle, support_tools, pdk_root, python, allow_python_mismatch=False,
@@ -304,8 +324,14 @@ def postcheck(args):
         (work / "tech").symlink_to((args.support_tools / "tech").resolve(),
                                    target_is_directory=True)
         pin = read_json(work / "precheck/tool-versions.json")["klayout"]
+        # Both nix-shell calls below take <nixpkgs> from the copied default.nix's
+        # own pin; env carries it into the logged one as well.
+        nix_path = nixpkgs_pin(work / "precheck/default.nix")
+        if nix_path:
+            env["NIX_PATH"] = nix_path
         native_klayout = command_output(
-            ["nix-shell", "default.nix", "--run", "klayout -v"], cwd=work / "precheck")
+            ["nix-shell", "default.nix", "--run", "klayout -v"], cwd=work / "precheck",
+            env=env)
         record["tools"]["klayout"] = native_klayout
         record["tools"]["klayout_requested"] = pin
         if native_klayout != f"KLayout {pin}":

@@ -107,6 +107,9 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd "$script_dir/../.." && pwd)
 readonly script_dir repo_root
 
+# shellcheck source=nix-pin.sh
+source "$script_dir/nix-pin.sh"
+
 readonly tt_dir="$repo_root/tinytapeout"
 readonly lock_file="$tt_dir/toolchain.lock"
 readonly adopted_lock_file="$tt_dir/asic-dependencies.lock"
@@ -678,8 +681,10 @@ prepare_precheck_tools() {
     fi
 
     net "realizing $nix_file (first run downloads KLayout and Magic)"
-    local versions
-    if ! versions=$(nix-shell "$nix_file" --run 'klayout -v; magic --version 2>&1 || true' </dev/null); then
+    local versions pin
+    pin=$(nixpkgs_pin "$nix_file")
+    if ! versions=$(NIX_PATH="${pin:-${NIX_PATH:-}}" \
+        nix-shell "$nix_file" --run 'klayout -v; magic --version 2>&1 || true' </dev/null); then
         warn "nix-shell could not provide the precheck tools; precheck.sh will retry"
         precheck_tools="nix realization failed"
         return

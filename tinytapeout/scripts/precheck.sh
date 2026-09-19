@@ -83,6 +83,9 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd "$script_dir/../.." && pwd)
 readonly script_dir repo_root
 
+# shellcheck source=nix-pin.sh
+source "$script_dir/nix-pin.sh"
+
 readonly tt_dir="$repo_root/tinytapeout"
 readonly lock_file="$tt_dir/toolchain.lock"
 readonly venv_dir="$repo_root/.venv"
@@ -202,8 +205,10 @@ verify_native_tools() {
     info "the first run downloads KLayout and Magic into /nix/store"
     # Nix's own progress goes to stderr and stays visible; only the tools'
     # version output is captured.
-    local versions
-    versions=$(nix-shell "$nix_file" --run 'klayout -v; magic --version 2>&1 || true' </dev/null) \
+    local versions pin
+    pin=$(nixpkgs_pin "$nix_file")
+    versions=$(NIX_PATH="${pin:-${NIX_PATH:-}}" \
+        nix-shell "$nix_file" --run 'klayout -v; magic --version 2>&1 || true' </dev/null) \
         || die "$EX_TOOL" "nix-shell could not provide the precheck tools" \
                "Try it directly: nix-shell $nix_file --run 'klayout -v'"
 
@@ -281,11 +286,13 @@ prepare_work_dir() {
 run_precheck() {
     step "Running precheck"
 
-    local rc=0
+    local rc=0 pin
+    pin=$(nixpkgs_pin "$work_dir/tt/precheck/default.nix")
     # PYTHONPATH/PYTHONHOME are cleared because a Nix shell may point them at
     # Nix's own Python, which would shadow the environment's pinned packages.
     ( cd "$work_dir/tt/precheck" \
       && PRECHECK_PYTHON="$precheck_venv_dir/bin/python" PRECHECK_GDS="$gds_file" \
+         NIX_PATH="${pin:-${NIX_PATH:-}}" \
          nix-shell default.nix --run \
            'exec env -u PYTHONPATH -u PYTHONHOME "$PRECHECK_PYTHON" precheck.py --gds "$PRECHECK_GDS" --tech "$PDK"' \
            </dev/null ) || rc=$?

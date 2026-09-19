@@ -35,6 +35,9 @@ let circuit block =
   | "uart_tx" ->
     let module C = Circuit.With_interface (Uart_tx.I) (Uart_tx.O) in
     C.create_exn ~name:block (Uart_tx.create (scope ()))
+  | "uart_slice" ->
+    let module C = Circuit.With_interface (Uart_slice.I) (Uart_slice.O) in
+    C.create_exn ~name:block (Uart_slice.create (scope ()))
   | _ -> failwith "unknown P2 block"
 ;;
 

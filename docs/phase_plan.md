@@ -146,7 +146,9 @@ Use this sequence as the initial implementation queue:
 
 The slice is complete when model, Hardcaml, and emitted RTL agree on the UART
 frame and reset/disable release behavior, and the small physical run has recorded
-results. Simulation work can progress while the physical environment is prepared.
+results. Both halves now have records: P2.7 holds the agreement and the release
+behavior, and P0.5a holds the physical run — of P0's small observable circuit, which is
+what that step asked for, not of the UART slice itself. Simulation work can progress while the physical environment is prepared.
 The harness may issue typed commands directly; runtime loading and a full control
 core are P3 deliverables. This early demonstration does not complete baseline UART.
 Its functional work does not wait for the ASIC APIs, an SRAM macro, or Workbench.
@@ -546,16 +548,40 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   start, pacing, and data; the [P2 implementation record](p2-implementation.md)
   measures the event-to-engine path. The control-decision path and external
   timing envelope remain.
-- [ ] **P2.7 — Close the first UART TX demonstration.** Connect P1.3's sequence
+- [x] **P2.7 — Close the first UART TX demonstration.** Connect P1.3's sequence
   to the pin/timer hardware and the emitted-RTL harness. Evidence: an independent
   monitor checks idle, start, data, stop, bit periods, and reset/disable during
   transmission. Save matching model and RTL traces for the first working slice.
-  *Progress:* [`firmware_uart.ml`](../f_model/firmware_uart.ml)'s typed TX
-  descriptor matches [`uart_tx.ml`](../lib/uart_tx.ml) in the functional-model/Hardcaml
-  trace and an independent receiver test. [`p2_uart_tb.v`](../tinytapeout/test/p2_uart_tb.v)
-  is wired into `@rtl`, and its emitted-RTL simulation passes. The complete firmware-to-
-  hardware connection and saved matching model/RTL traces remain. See the
+  *Evidence:* [`uart_slice.ml`](../lib/uart_slice.ml) takes the 8N1 frame through the
+  pin and timer hardware instead of straight out of the lane: the lane is claimed as the
+  engine in [`pin_bank.ml`](../lib/pin_bank.ml), [`timing.ml`](../lib/timing.ml) counts
+  out one bit period of idle before the start edge — the leading idle phase P1.3's
+  sequence spends two operations on — and every bit is committed by a masked engine write,
+  so what leaves the design leaves through an owner. Four producers are then decoded by
+  one independent receiver that is told nothing but the expected bit period: P1.3's
+  bit-banged [`tx_sequence`](../f_model/firmware_uart.ml) on the reference machine, the
+  same frame as one typed descriptor on [`shift_engine.ml`](../f_model/shift_engine.ml),
+  the Hardcaml slice, and the emitted Verilog under
+  [`p2_uart_slice_tb.v`](../tinytapeout/test/p2_uart_slice_tb.v), whose receiver is
+  written a second time in Verilog so that the two monitors cannot share a mistake. All
+  four agree on
+  [`uart_frame.trace`](../test/integration/uart_slice/uart_frame.trace), which is the
+  saved matching model and RTL trace: `@runtest` writes it only after the two model
+  producers and the Hardcaml slice agree and diffs it against the committed copy, and
+  `@rtl` diffs the emitted-RTL copy against the same file. Reset, disable, and abort part
+  way through a frame release the pin and the engine's claim on the next edge, checked in
+  both harnesses; only the selected pin is ever driven; the bank raises no rejection or
+  conflict. The monitor and the tests are in
+  [`test/integration/uart_slice/`](../test/integration/uart_slice). See the
   [P2 implementation record](p2-implementation.md).
+  *Carried forward:* the bank's registered write puts the pin one cycle behind the lane,
+  uniformly, so bit periods are unchanged and only the frame's absolute position moves.
+  The sequencer is the demonstration harness this section allows, issuing the one typed
+  command the slice needs; fetch, decode, and runtime loading remain P3, and a firmware
+  *program* reaching the same pins is P3.2's evidence, not this item's. The receiver
+  measures the bit period as the greatest common divisor of the frame's transition
+  intervals, which equals the bit period only for a byte that puts a bit between two
+  unlike neighbours; `0xa6` is such a byte and the vectors keep it.
 - [ ] **P2.8 — Record primitive costs and invariants.** Measure mapped sequential
   and combinational area per block/configuration using P0's flow. Exercise pin
   ownership, open-drain, FIFO, handshake, reset, and wait invariants; apply formal

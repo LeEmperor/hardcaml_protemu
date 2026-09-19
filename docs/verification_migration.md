@@ -1,8 +1,9 @@
 # Verification suite migration
 
 Status: in progress on 2026-09-19. Baseline capture, the functional-model rename,
-suite reorganization, cycle/event adapter conformance, and the timed `Input_events`
-pilot are complete; four-state properties are not implemented.
+suite reorganization, cycle/event adapter conformance, the timed `Input_events` pilot,
+and one justified four-state property are complete; the integrated path, regression
+policy and final checks remain.
 
 This is a temporary implementation guide. [verification.md](verification.md) owns
 the current-state inventory, target architecture, model/driver/monitor contracts,
@@ -400,6 +401,10 @@ from the recorded settings. Reports include source/configuration, timestamp/unit
 first mismatch, nearby samples, and between-edge activity. No waveform is required for a
 pass; the bounded textual trace is sufficient for this pilot.
 
+One later change was made to this stage's source: the temporal shrinker now discards
+candidates equal to their input, fixed together with the Stage 6 shrinker below. It did
+not change this stage's recorded results.
+
 Run the pilot with
 `./scripts/with-switch.sh dune runtest test/primitives/input_events --force`. On commit
 `989f7a6acc7b8e72c5380f07a1ea3845c79f1d87` plus the Stage 5 diff, the focused suite and
@@ -415,21 +420,133 @@ formatter, and `git diff --check` exited 0.
 **Recommended effort: Sol 5.6 high.** Define and validate X/Z observation semantics,
 injection assumptions, and a property that cannot pass through accidental coercion.
 
-- [ ] Name the property first (for example, specified recovery after a bounded
+- [x] Name the property first (for example, specified recovery after a bounded
   unknown pad sample). Specify injection site, duration, resolution, allowed
   observations, and deadlines. Do not infer metastability behavior from X support.
-- [ ] Use direct four-state Evsim processes behind a suite adapter; preserve X/Z in
+- [x] Use direct four-state Evsim processes behind a suite adapter; preserve X/Z in
   observations. Keep validity metadata separate, and fail unexpected unknowns on
   required known outputs. Do not convert X into integer zero or `Unspecified`.
-- [ ] Use ordinary `f_model` predictions for known-value behavior and a dedicated
+- [x] Use ordinary `f_model` predictions for known-value behavior and a dedicated
   property/sampling model for the X-sensitive part. Check raw bus resolution with
   explicit drivers/pull-ups if bus resolution is the selected obligation.
-- [ ] Include an intentional controlled violation to show the X-aware check fails
+- [x] Include an intentional controlled violation to show the X-aware check fails
   for the intended reason. Record replay and runtime costs.
 
 Exit: one meaningful four-state property with positive and controlled-negative
 checks. If no contract justifies a property yet, record it as deferred rather than
 inventing a physical model or claiming four-state coverage.
+
+#### Four-state property result — 2026-09-19
+
+The property is **bounded unknown-pad recovery and unknown isolation** on P2.2
+`Input_events`, implemented in
+[`input_events_four_state_testbench.ml`](../test/primitives/input_events/input_events_four_state_testbench.ml)
+and [`input_events_four_state_tests.ml`](../test/primitives/input_events/input_events_four_state_tests.ml).
+It was selected because `Input_events` is the only block whose declared contract already
+concerns an external pad that the design does not drive, and because the timed pilot
+established the clock, coincidence and sampling conventions it reuses. Bus resolution was
+*not* selected, so open-drain wire resolution with explicit drivers and pull-ups remains a
+recorded hole rather than a claim; it is tracked in the verification.md evidence map.
+
+The contract was fixed before the test was written. X is driven at `pin_in_i` only, for
+whole sampling edges; the window ends when the environment drives the pad back to a known
+level at a stated timestamp, or when a synchronous reset clears the synchronizer. The
+three statements checked are isolation (`event_o` and `overflow_o` never carry an unknown
+bit, and an undriven pin never contaminates a driven one), contamination (the affected
+`snapshot_o` bits must actually read X), and bounded recovery (three edges after the last
+unknown sample every output is known and equals the `f_model` prediction; a reset edge
+recovers at that edge). Three edges is the `stage0`/`stage1`/`previous` register depth.
+None of this is metastability, setup/hold, MTBF or analog evidence.
+
+Structure, against the stage requirements:
+
+- Direct `Four_state_simulator` processes sit behind the suite's own adapter; no
+  step-testbench binding is used. Observed values stay in an X/Z-preserving word type and
+  are never read through `to_int_trunc`. Converting a word to an integer is a function
+  that fails on an unknown bit rather than truncating one away.
+- Validity and logic stay in different types. `Observation.Unavailable`/`Unspecified`
+  still mean "cannot be compared" and "the contract does not constrain this"; X and Z are
+  values seen on a wire. The four-state checker has its own `Word`, `Expect` and `Reason`
+  rather than reusing the cycle checker's three-state validity.
+- Known values come from the ordinary `Protemu_f_model.Input_pins` and `Event`. A separate
+  contamination model — three unknown masks shifted one stage per edge — supplies the
+  X-sensitive part. `f_model` is stepped with unknown pad bits replaced by zero, and those
+  bit positions are exactly the ones the contamination pipeline excludes from comparison
+  for exactly the edges they can reach, so the substituted value is never compared.
+- The installed four-state logic is pessimistic where Verilog is not: `X &: 0` is `X`.
+  That reaches the edge detectors through an unknown `previous`, so those bits are
+  declared unconstrained for the edges the pessimism can reach and required known outside
+  them. The recorded recovery bound is therefore an upper bound.
+
+Evidence. A directed transcript covers one resolved unknown window, one reset-cleared
+window, and event traffic running through both; separate directed cases check per-pin
+containment and reset recovery at the reset edge, and one case asserts that the directed
+scenario really does observe X so the property cannot go vacuous. The generated property
+runs seed `20260919`, 120 trials, maximum size 16; its prerequisite keeps an applied
+reset, at least one edge that samples an unknown pad, and enough edges after it to observe
+recovery, and the generator builds each window around a chosen sampling edge so it can
+never produce a window that falls between edges.
+
+Two controlled negatives run in the regression, one on each side of the boundary. A design
+defect that wires the pad into the event set path fails isolation with
+`Unexpected_unknown` on `event_o` at the edge the unknown is first captured, before any
+snapshot is affected. An observer that reads X as zero fails contamination with
+`Missing_unknown` on `snapshot_o`, expecting `0000000X` and receiving `00000000`; this is
+the check that makes accidental coercion a failure rather than a pass. Both shrink from a
+nine-edge scenario to a five-edge one with a single-bit, single-edge unknown window, and
+both produce an identical redacted report on a second run from the recorded settings.
+
+One defect was found and fixed in the shrinker while doing this: a candidate whose
+transition was already as early as its predecessor is equal to the scenario it came from,
+and accepting it consumed the whole shrink budget without making the case smaller, so the
+later candidates that shorten the run were never reached. Both temporal shrinkers now
+discard candidates equal to their input — the four-state one and, on request, the Stage 5
+timed one in
+[`input_events_timing_testbench.ml`](../test/primitives/input_events/input_events_timing_testbench.ml).
+The Stage 5 fix changed no expect output: that fixture's controlled failure already
+reached its three-edge shrunk form inside the budget, so the fix removes the wasted-budget
+hazard without altering the recorded result. `dune runtest test/primitives/input_events
+--force` exited 0 with nothing to promote afterwards. The cycle shrinker in
+[`env.ml`](../test/common/env.ml) does not have this defect: it only drops items, so every
+candidate is strictly shorter than its input.
+
+The deferred half of the four-state obligation — resolved external buses and open-drain
+wire resolution — is written up in verification.md under "Deferred: resolved buses and
+open-drain wire resolution", with what exists (the driver-side `Pin_bank` checks), what is
+missing (no tri-state pad, pull-up, second driver, wired-AND or contention case anywhere
+in the OCaml tier), why it is deferred (no implemented consumer shares a bus yet; I²C is
+P4.5), and what a future property would need. The driver-side contract stays in
+construction-plan.md and the wire-side evidence stays owed by phase_plan.md P4.5/P4.6.
+
+Costs, measured with
+`./scripts/with-switch.sh dune exec test/primitives/input_events/input_events_four_state_bench.exe -- 5000`
+on commit `b6e29aa` plus this stage's diff, OCaml `5.2.0+ox`, Linux `6.8.0-139-generic`,
+AMD Ryzen Threadripper PRO 5955WX. The same block and an equivalent five-edge scenario on
+both value types: 102.204 microseconds per two-state startup and 111.012 per four-state
+startup; 123.030 microseconds per two-state trial and 147.485 per four-state trial.
+Four-state costs roughly 9% more to start and 20% more per trial here. These are local
+regression-budget measurements, not general performance guarantees.
+
+Verification. `./scripts/with-switch.sh dune build @all`,
+`./scripts/with-switch.sh dune runtest --force`, and
+`./scripts/with-switch.sh dune build @rtl` exited 0. The focused
+`dune runtest test/primitives/input_events --force` exited 0, as did the same command
+under the recorded `PROTEMU_SEED=20260919 PROTEMU_TRIALS=4 PROTEMU_SIZE=8` overrides that
+the failure reports print. `dune build @test/primitives/input_events/lint` and the lint
+aliases for `test/common`, `test/f_model`, `test/primitives/pin_bank`, `lib`, `f_model`
+and `isa` exited 0. `dune build @fmt` still reports the repository-wide pre-existing
+format differences recorded in Stage 2; the new files themselves are formatted with the
+pinned formatter and `git diff --check` exited 0.
+
+Worktree note. During this stage the worktree also contained an unrelated, uncommitted
+`uart_slice` block (`lib/uart_slice.ml`, `test/integration/uart_slice/`,
+`tinytapeout/test/p2_uart_slice_tb.v`, and edits to `bin/generate_p2.ml` and two
+`tinytapeout` dune files) from concurrent work. It was left untouched. Its tests pass and
+its RTL check passes, but `dune build @lint` fails on
+`test/integration/uart_slice/uart_slice_unit_tests.ml` ("Ignored expression must come with
+a type annotation"), which is why the lint result above is recorded per directory rather
+than as a whole-repository `@lint`. The test counts recorded in verification.md exclude
+that in-progress block.
 
 ### 7. Extend to the integrated path and regression policy
 

@@ -1,6 +1,7 @@
 # Phase 2 primitive implementation record
 
-Date: 2026-09-18, verification re-run 2026-09-19. Baseline revision: `626ece9`.
+Date: 2026-09-18, verification re-run 2026-09-19, P2.7 closed 2026-09-19.
+Baseline revision: `626ece9`.
 The sources described here were uncommitted working-tree changes when the record
 was written; they are committed as of `9fd703d`. This record is functional
 evidence, not a mapped CMOS5L cost report.
@@ -18,10 +19,11 @@ evidence, not a mapped CMOS5L cost report.
 | [`Observed_transfer`](../lib/observed_transfer.ml) | Connects asynchronous start, pacing, and data pins to one input snapshot before the lane consumes them. Rise, fall, or either edge can start or pace a transaction. | Synchronized start/data/pace and response-latency test. |
 | [`Firmware_uart`](../f_model/firmware_uart.ml) | Typed, validated 8N1 TX descriptor used as the independent model-side sequence for the first slice. The same module's bit-banged sequence is P1.3 evidence and is not part of this record. | Its cycle trace matches the UART hardware transmitter for the same byte and timing. |
 | [`Uart_tx`](../lib/uart_tx.ml) | One clockless 10-bit lane transaction per 8N1 frame: start 0, byte LSB first, stop 1. Each bit is `2 * half_period_i` clocks. Idle is driven high while enabled; reset/disable/abort release the pin. | Independent bit-center receiver test, back-to-back start, and disable test. [`p2_uart_tb.v`](../tinytapeout/test/p2_uart_tb.v) covers emitted Verilog when HDL tools are available. |
+| [`Uart_slice`](../lib/uart_slice.ml) | P2.7's first working slice. A six-state harness claims the transmit pin for the engine, spends one bit period of [`Timing`](../lib/timing.ml) countdown driving the resting level, offers the byte to `Uart_tx`, commits every bit through a masked [`Pin_bank`](../lib/pin_bank.ml) engine write, and releases the claim after the stop bit. The pin therefore lags the lane by exactly one cycle, uniformly. Reset, disable, and abort release pin and claim together. | One independent receiver decodes four producers to the same frame; [`uart_frame.trace`](../test/integration/uart_slice/uart_frame.trace) is the saved trace. [`p2_uart_slice_tb.v`](../tinytapeout/test/p2_uart_slice_tb.v) repeats the receiver in Verilog and diffs the same file. |
 
 [`generate_p2.ml`](../bin/generate_p2.ml) emits standalone Verilog for every
 block in the table. It does not change the P0 wrapper or its committed RTL. The
-`@rtl` Dune alias now includes the UART testbench.
+`@rtl` Dune alias now includes the UART testbench and the UART slice testbench.
 
 ## Timing observed in digital simulation
 
@@ -59,6 +61,7 @@ Re-run in this checkout on 2026-09-19, through the pinned switch:
 ./scripts/with-switch.sh dune build @fmt       # FAILS; see below
 ./scripts/with-switch.sh dune build @rtl       # passes with host HDL tools
 ./scripts/with-switch.sh dune exec bin/generate_p2.exe -- uart_tx /tmp/uart_tx.v
+./scripts/with-switch.sh dune exec bin/generate_p2.exe -- uart_slice /tmp/uart_slice.v
 ```
 
 `@runtest` and `@lint` pass. **`@fmt` fails**: now that `ocamlformat` is
@@ -66,23 +69,44 @@ installed it can run for the first time, and it reports diffs across the P2 RTL/
 sources, the block-owned suites under `test/primitives/`, `bin/generate_p2.ml`, and
 `bin/asic_bundle.ml`. The
 P2 sources have never been through the formatter. That is unrelated to their
-behavior, but it is an open cleanup, not a passing check.
+behavior, but it is an open cleanup, not a passing check. The P2.7 sources added
+afterwards -- [`uart_slice.ml`](../lib/uart_slice.ml) and everything under
+[`test/integration/uart_slice/`](../test/integration/uart_slice) -- are formatted, so
+they do not add to that pile.
+
+The P2.7 suite is appended rather than woven in: it has its own directory, its own
+monitor, and no dependency on `test/common/`, so it does not collide with the
+verification-harness migration in
+[verification_migration.md](verification_migration.md) and can adopt the shared runner
+when that migration reaches integration tests.
 
 `@rtl` passes with host Icarus Verilog 12.0 (including `vvp`), Verilator 5.020,
-and Yosys 0.33. It passes the P0 wrapper and P2 UART emitted-RTL simulations,
-wrapper lint, and a generic synthesis smoke test. The generic Yosys result is not
+and Yosys 0.33. It passes the P0 wrapper, the P2 UART, and the P2.7 UART slice
+emitted-RTL simulations, wrapper lint, and a generic synthesis smoke test. The generic Yosys result is not
 CMOS5L-mapped evidence; the pinned LibreLane image remains authoritative for the
 adopted physical flow.
 
-The first working slice remains open: its typed UART descriptor matches the
-model and Hardcaml transmitter, and the emitted UART RTL passes its independent
-testbench, but the firmware sequence is not yet connected through the complete
-hardware path and matching model/RTL traces have not been saved.
-The rest of P1.3's helpers and labels also remain. P2.8 remains open because no generic or liberty-mapped Yosys estimate,
+The first working slice is closed. Its frame now runs through the pin and timer
+hardware in [`uart_slice.ml`](../lib/uart_slice.ml), and one independent receiver
+decodes four producers of it to the same ten-bit table: P1.3's bit-banged sequence on
+the reference machine, the same frame as one typed descriptor on the reference transfer
+engine, the Hardcaml slice sampled at the bank's pins, and the emitted Verilog. The
+receiver is written twice, in OCaml and in Verilog, so that the model side and the RTL
+side cannot share a mistake, and both write
+[`uart_frame.trace`](../test/integration/uart_slice/uart_frame.trace): `@runtest` emits
+it only after the three OCaml producers agree and diffs the committed copy, and `@rtl`
+diffs the Verilog copy against the same file. Reset, disable, and abort part way through
+a frame release the pin and the engine's claim on the next edge in both harnesses.
+What the slice does not establish: the harness is not the control core, so nothing here
+measures a fetched-and-decoded instruction reaching a pin, and the physical cost of the
+slice is P2.8's and P5's, not this record's.
+
+P2.8 remains open because no generic or liberty-mapped Yosys estimate,
 CMOS5L flow run, mapped sequential/combinational area, or formal check has been
 recorded. P2.2's time-resolved two-state pilot records a 10--19 tick deterministic
 capture latency and phase-dependent sub-period pulse capture; it is not analog
 metastability or physical CDC evidence. P2.6 still needs the event-to-core-decision-to-pin measurement and a
-measured external timing envelope. The lane's claim mask and pin outputs have
-not yet been connected through the integrated pin-bank arbitration at a project
-top.
+measured external timing envelope. The lane's claim mask and pin outputs now run through
+pin-bank arbitration in [`uart_slice.ml`](../lib/uart_slice.ml), for one engine and one
+claimed pin; a project top that arbitrates between engines, and the Tiny Tapeout wrapper
+that would carry it, are still P3 and P0.7 work.

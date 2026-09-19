@@ -606,7 +606,12 @@ let shrink_candidates (scenario : Scenario.t) =
   let fewer_edges =
     if scenario.edges <= 1 then [] else [ { scenario with edges = scenario.edges - 1 } ]
   in
+  (* A transition that is already as early as its predecessor produces a candidate equal
+     to the scenario it came from. Accepting one would consume the whole shrink budget
+     without making the case smaller, and the later candidates - shortening the run -
+     would never be reached. *)
   removed @ moved @ fewer_edges
+  |> List.filter ~f:(fun candidate -> not (Scenario.equal candidate scenario))
 ;;
 
 let quickcheck

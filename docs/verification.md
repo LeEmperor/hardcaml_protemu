@@ -1,8 +1,9 @@
 # System verification
 
 Status: current implementation updated on 2026-09-19 after the functional-model
-rename, per-block suite reorganization, cycle/event adapter conformance experiment, and
-timed `Input_events` pilot; four-state properties remain unimplemented.
+rename, per-block suite reorganization, cycle/event adapter conformance experiment,
+timed `Input_events` pilot, and one four-state `Input_events` property. Resolved-bus
+four-state behavior and the physical obligations below remain unimplemented.
 
 This is the enduring source of truth for verification architecture, suite ownership,
 current evidence, and the intended next state. It incorporates the former test
@@ -16,8 +17,8 @@ verification policy rather than maintaining another test architecture.
 ## Current state
 
 Paths in this section describe files that exist now. The rename to `f_model`, per-block
-suite layout, backend sampling characterization, and timed P2.2 pilot are implemented.
-The four-state suite is not.
+suite layout, backend sampling characterization, timed P2.2 pilot, and one named
+four-state P2.2 property are implemented. A resolved-bus four-state suite is not.
 
 ### Backend and test inventory
 
@@ -25,9 +26,9 @@ The four-state suite is not.
 | --- | --- |
 | OCaml RTL simulation backend | Synchronous product suites use `Hardcaml.Cyclesim`; timed P2.2 uses two-state Evsim, as does the isolated conformance fixture. Emitted-Verilog checks use separate tools. |
 | `hardcaml_step_testbench` | Used by the isolated cycle/event adapter conformance suite; production block suites have not migrated to it. |
-| `hardcaml_event_driven_sim` | Two-state Evsim is exercised by adapter conformance and the timed P2.2 product pilot. |
+| `hardcaml_event_driven_sim` | Two-state Evsim is exercised by adapter conformance and the timed P2.2 product pilot. Four-state Evsim is exercised by the P2.2 unknown-pad property and nothing else. |
 | `hardcaml_waveterm`, `alcotest` | Declared `:with-test` but unused. No waveforms are produced and no Alcotest suite exists. |
-| Test styles | 104 `let%expect_test`, 32 `let%test_unit`, and two Quickcheck drivers built on `base_quickcheck`. |
+| Test styles | 108 `let%expect_test`, 35 `let%test_unit`, and three Quickcheck drivers built on `base_quickcheck`. |
 | Blocks on the shared harness | One: P2.1 `Pin_bank`. Everything else still runs its own loop. |
 
 The conformance fixture is evidence about adapter scheduling only; a declared dependency
@@ -41,7 +42,7 @@ deliberately kept apart so that a disagreement between two of them is evidence r
 | Layer | Library | Depends on Hardcaml | Contents |
 | --- | --- | --- | --- |
 | Reference model | `test_protemu_f_model` ([`test/f_model/`](../test/f_model/dune)) | No | 95 expect tests over [`f_model/`](../f_model/dune). |
-| Model/RTL comparison and backend conformance | uniquely named libraries under [`test/common/`](../test/common/dune), [`test/primitives/`](../test/primitives), [`test/core/`](../test/core), and [`test/integration/`](../test/integration) | Yes, except generic support | 29 cycle product `%test_unit` tests, 5 cycle harness expect tests, one adapter `%test_unit`, one adapter expect test, two timed product `%test_unit` tests, three timed product expect tests, and the cycle/timed harnesses. |
+| Model/RTL comparison and backend conformance | uniquely named libraries under [`test/common/`](../test/common/dune), [`test/primitives/`](../test/primitives), [`test/core/`](../test/core), and [`test/integration/`](../test/integration) | Yes, except generic support | 29 cycle product `%test_unit` tests, 5 cycle harness expect tests, one adapter `%test_unit`, one adapter expect test, two timed product `%test_unit` tests, three timed product expect tests, three four-state product `%test_unit` tests, four four-state product expect tests, and the cycle, timed and four-state harnesses. |
 | Emitted RTL | none — Dune rules | n/a | iverilog, verilator and yosys checks behind `dune build @rtl`. |
 
 #### Model tests — `test/f_model/`
@@ -249,6 +250,98 @@ exact-edge two-tick pulse. Failure reports carry timestamp/unit, edge, seed/tria
 source/configuration, first mismatch, nearby samples, and between-edge activity. Run it
 with `./scripts/with-switch.sh dune runtest test/primitives/input_events --force`.
 
+### Four-state unknown-pad property — P2.2
+
+[`input_events_four_state_testbench.ml`](../test/primitives/input_events/input_events_four_state_testbench.ml)
+and [`input_events_four_state_tests.ml`](../test/primitives/input_events/input_events_four_state_tests.ml)
+implement one named property and nothing wider: *bounded unknown-pad recovery and unknown
+isolation*. It uses direct `Four_state_simulator` processes behind the suite's own
+adapter; no step-testbench binding is involved.
+
+The contract is stated before the test, not read back from the DUT.
+
+| Item | Statement |
+| --- | --- |
+| Injection site | `pin_in_i` only, at the module boundary. Nothing inside the DUT is forced. |
+| Window | Whole sampling edges, driven by timestamped transitions on the same clock/coincidence convention as the timed pilot. |
+| Resolution | The environment drives the pad back to a known level at a stated timestamp, or a synchronous reset clears the synchronizer. No probabilistic resolution. |
+| Isolation | `event_o` and `overflow_o` carry no unknown bit at any edge, and a driven pin never becomes unknown because a neighbouring pin is undriven. |
+| Contamination | While an unknown sample is inside the synchronizer, the affected `snapshot_o` bits must read X. A level there is a failure, so the property cannot pass by coercion. |
+| Recovery bound | Three edges after the last edge that sampled an unknown pad bit, every output is known and equals the `f_model` prediction. A reset edge recovers at that edge. |
+
+The bound is the synchronizer register depth — `stage0`, `stage1`, `previous` — and is a
+digital statement only. It is not metastability, setup/hold, MTBF or analog evidence, and
+four-state simulation does not create any of those.
+
+Known values come from the ordinary `Protemu_f_model.Input_pins` and `Event`; a separate
+contamination model of three shifted unknown masks supplies the X-sensitive part, so the
+integer reference is never asked to be an X oracle. Observed logic is kept in an
+X/Z-preserving word type, distinct from the `Observation` validity type: validity says
+whether a thing can be compared, X and Z are values on a wire.
+
+The installed four-state logic is pessimistic where Verilog is not — `X &: 0` is `X`
+here — which reaches the edge detectors through an unknown `previous`. Those bits are
+declared unconstrained for the edges the pessimism can reach and required known outside
+them, so the recorded bound is an upper bound that an optimistic simulator cannot exceed.
+
+Evidence: a directed transcript covering one resolved unknown window, one reset-cleared
+window and concurrent event traffic; per-pin containment; reset recovery at the reset
+edge; and a generated property at seed `20260919`, 120 trials, maximum size 16, whose
+prerequisite keeps an applied reset, at least one edge that samples an unknown pad, and
+room to observe recovery. Two controlled negatives run in the regression: a design defect
+wiring the pad into the event set path fails isolation with `Unexpected_unknown` on
+`event_o`, and an observer that reads X as zero fails contamination with
+`Missing_unknown` on `snapshot_o`. Both shrink to a five-edge scenario with a
+single-bit, single-edge unknown window and reproduce identically from their recorded
+settings. Run it with
+`./scripts/with-switch.sh dune runtest test/primitives/input_events --force`; measure it
+with
+`./scripts/with-switch.sh dune exec test/primitives/input_events/input_events_four_state_bench.exe -- 5000`.
+
+### Deferred: resolved buses and open-drain wire resolution
+
+This is the other four-state obligation, named here so it stays visible rather than
+being implied by the one property above. It is **not implemented**, and nothing in the
+current suite should be read as evidence for it.
+
+The contract exists already. [construction-plan.md](construction-plan.md) fixes the
+driver side — for open drain, always drive a zero, `pin_out = 0` with `pin_oe = drive_low`
+— and requires the pull-up and multiple open-drain drivers to be modelled in the
+testbench. [phase_plan.md](phase_plan.md) owes the wire side at P4.5/P4.6: resolved
+open-drain bus tests with pull-ups covering actual SCL observation, stuck bus, NACK
+paths, and forced arbitration loss followed by release. The invariant list under
+"Evidence map and completion rules" below includes open-drain never driving high.
+
+What exists today is the *driver-side half*, in two-state Cyclesim: `Pin_bank` forces
+write data low when `write_open_drain_i` is set, and `test/primitives/pin_bank/` checks
+that an open-drain commit never drives a high, with the controlled
+`Defect.Ignore_open_drain` fixture proving that check can fail. That is a statement about
+the two words the block emits, `pins_o` and `pin_oe_o`. It is not a statement about a
+wire.
+
+What is missing is everything past the block boundary. The OCaml design has no tri-state
+pad and no bus: value and enable stay separate words all the way out to
+[`tinytapeout/src/project.v`](../tinytapeout/src/project.v), where `uio_out`/`uio_oe`
+become the pads and the resolution happens off-chip. So there is no model of a released
+pin as Z, no pull-up, no second external driver, no wired-AND, and no contention case in
+which two drivers disagree and the wire is X.
+
+It is deferred rather than attempted because no implemented consumer shares a bus yet.
+I²C is P4.5 and unimplemented, so a property written now would be about an invented wire,
+which the migration guide explicitly rules out. Inventing a physical model is worse than
+recording the hole.
+
+A future property needs, at minimum: a resolved four-state signal
+(`Four_state_logic.create_signal ~resolution:`Resolved`) standing for the wire; an
+explicit tri-state model driving it from the DUT's `pins_o`/`pin_oe_o`, where a released
+pin contributes Z rather than a level; an explicit pull-up driver; one or more
+independent external open-drain peers; and expectations covering wired-AND resolution, a
+released bus reading high through the pull-up, a stuck-low bus, and a contention case
+that reads X and is required to fail. The never-drive-high invariant would then be
+checked at the wire instead of at the register. Whether this lands in the OCaml tier at
+all, or is left to the emitted-RTL tier where the pads actually exist, is itself an open
+decision and is recorded as such in the evidence map.
+
 ### Current limitations and evidence boundaries
 
 The cycle runner takes one item per edge and monitors edge-indexed observations. Its
@@ -269,11 +362,14 @@ dependency/tool manifest. The stronger reproduction requirements below remain
 work to complete. Trace context is bounded (six edges by default); no waveform,
 stimulus journal, or general replay-file format is implemented.
 
-No four-state property or coverage-collection suite is implemented. The timed product
-runner currently covers only `Input_events`; P2.6 and integrated paths have not adopted
-it. The existing RTL smoke checks do not establish gate-level functional behavior,
-physical timing closure, or metastability reliability. See the evidence map below for
-the distinction between implemented checks and outstanding obligations.
+Exactly one four-state property is implemented, on `Input_events` alone. Resolved buses
+with explicit drivers and pull-ups, open-drain wire resolution and any other X/Z
+obligation have no four-state evidence. No coverage-collection suite is implemented. The
+timed and four-state runners currently cover only `Input_events`; P2.6 and integrated
+paths have not adopted either. The existing RTL smoke checks do not establish gate-level
+functional behavior, physical timing closure, or metastability reliability. See the
+evidence map below for the distinction between implemented checks and outstanding
+obligations.
 
 ## Next state
 
@@ -452,7 +548,9 @@ checked, never silently coerce unknown bits. Record unexpected unknowns even whe
 other data is masked. Allow don't-care bits only where the contract explicitly
 permits them. Known-value scenarios can reuse the ordinary reference; X-sensitive
 properties use dedicated expectations without making the entire reference library
-four-state. Resolved buses must model all drivers and the pull-up explicitly.
+four-state. Resolved buses must model all drivers and the pull-up explicitly; the
+implemented P2.2 unknown-pad property above follows this policy and is currently its only
+instance.
 
 ### 1. Keep the test environment small
 
@@ -638,7 +736,8 @@ Historical run reports are not fresh results for later source revisions.
 | P0 wrapper | Two tests in `test/integration/wrapper/` plus `@rtl` wrapper checks | Later host/load/recovery evidence |
 | P2.2 external phase and pulse capture | `test/primitives/input_events/input_events_timing_{testbench,tests}.ml`; directed cases plus 160 generated trials, 10--19 tick deterministic latency, captured/missed pulse cases, reset/event interactions, temporal shrink/replay | Physical CDC/setup/hold/metastability evidence remains separate |
 | P2.6 event-to-engine/core-to-pin latency | Cycle behavior only; integration incomplete | Timed integrated path and independent timestamped monitor |
-| Unknown propagation / resolved external buses | No four-state suite | Named properties, explicit X/Z model, targeted tests |
+| Unknown pad propagation and recovery | `test/primitives/input_events/input_events_four_state_{testbench,tests}.ml`; declared injection site/window/resolution, isolation and per-pin containment, a three-edge recovery bound, 120 generated trials at seed `20260919`, and two controlled negatives covering a design leak and a coercing observer | Extend to further blocks only where a contract names an X/Z obligation |
+| Resolved external buses, open-drain wire resolution | No four-state suite | An explicit multi-driver/pull-up model and targeted tests, or a recorded decision to leave it to the emitted-RTL tier |
 | Memory backend conformance | Owned by `hardcaml_asic` | Link library evidence; emulator owns consumption/arbitration/image bounds/recovery |
 | Protocol correctness and timing | Reference firmware/peer tests and UART RTL smoke | Independent monitors/peers at integrated RTL boundaries; loopback alone insufficient |
 | Formal, CDC/reset, mapped/gate-level and physical timing | Not established by this functional suite or generic Yosys smoke test | Record applicable analyses, assumptions, tool/source identity and outstanding gaps in phase/flow evidence |

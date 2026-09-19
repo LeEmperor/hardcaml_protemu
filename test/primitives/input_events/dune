@@ -2,6 +2,8 @@
  (name protemu_input_events_tests)
  (wrapped false)
  (modules
+  input_events_four_state_testbench
+  input_events_four_state_tests
   input_events_testbench
   input_events_timing_testbench
   input_events_timing_tests
@@ -23,5 +25,23 @@
   (pps ppx_hardcaml ppx_jane))
  (lint
   (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))
+
+; The measured cost of the four-state property, for the regression budget. Kept out of
+; the inline-test library so the test suite does not depend on core_unix.
+
+(executable
+ (name input_events_four_state_bench)
+ (modules input_events_four_state_bench)
+ (libraries
+  core
+  core_unix
+  hardcaml
+  hardcaml_event_driven_sim
+  hardcaml_protemu
+  protemu_input_events_tests)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
  (flags
   (:standard -w -27-57-33-34-35-40-63-47-26)))

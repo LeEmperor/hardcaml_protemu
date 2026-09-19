@@ -50,7 +50,7 @@ let ocaml_deps = "scripts/ocaml-deps.sh"
 
 (* The canonical ASIC flow. Every command here that implements or hardens goes through
    this one script, so there is a single implementation path and a single set of exit
-   codes. See docs/flow_migration.md. *)
+   codes. See docs/flow.md. *)
 let flow_script = "flow.sh"
 
 let bootstrap =
@@ -252,7 +252,7 @@ let command =
       "First time on a machine or clone: ./bootstrap.sh\n\
        Each new shell: source env.sh\n\
        The ASIC flow: ./flow.sh (./flow.sh --help)\n\
-       See docs/environment.md.")
+       See docs/environment.md for the environment, docs/flow.md for the flow.")
     [ "bootstrap", bootstrap
     ; "doctor", doctor
     ; "flow", flow

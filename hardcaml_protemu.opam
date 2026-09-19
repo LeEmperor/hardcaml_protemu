@@ -13,7 +13,6 @@ depends: [
   "dune" {>= "3.17" & >= "3.17"}
   "core"
   "hardcaml"
-  "hardcaml_circuits"
   "ppx_hardcaml"
   "ppx_jane"
   "hardcaml_step_testbench" {with-test}
@@ -23,6 +22,7 @@ depends: [
   "alcotest" {with-test}
   "core_unix" {with-test}
   "jane_rope" {with-test}
+  "hardcaml_asic" {with-test}
   "ppx_js_style" {with-dev-setup}
   "ocamlformat" {with-dev-setup}
   "ocaml-lsp-server" {with-dev-setup}

@@ -25,7 +25,6 @@
   ; and must not be forced on a consumer.
   core
   hardcaml
-  hardcaml_circuits
   ppx_hardcaml
   ppx_jane
   ; Test frameworks: test/ only.
@@ -38,6 +37,7 @@
   ; `dune build`, so they ride with-test rather than being dropped.
   (core_unix :with-test)
   (jane_rope :with-test)
+  (hardcaml_asic :with-test)
   (ppx_js_style :with-dev-setup)
   (ocamlformat :with-dev-setup)
   (ocaml-lsp-server :with-dev-setup)))

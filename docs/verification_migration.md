@@ -1,8 +1,8 @@
 # Verification suite migration
 
 Status: in progress on 2026-09-19. Baseline capture, the functional-model rename,
-suite reorganization, and cycle/event adapter conformance are complete; timed product
-verification and four-state properties are not implemented.
+suite reorganization, cycle/event adapter conformance, and the timed `Input_events`
+pilot are complete; four-state properties are not implemented.
 
 This is a temporary implementation guide. [verification.md](verification.md) owns
 the current-state inventory, target architecture, model/driver/monitor contracts,
@@ -346,22 +346,69 @@ These are local regression-budget measurements, not general performance guarante
 **Recommended effort: Sol 5.6 high.** Establish independent sampling predictions,
 timed monitoring, temporal shrinking, and reproducible event scheduling.
 
-- [ ] Add timestamped transition scenarios, a two-state Evsim adapter, and an
+- [x] Add timestamped transition scenarios, a two-state Evsim adapter, and an
   independent sampling/reference adapter. Keep raw simulator handles out of `f_model`.
-- [ ] Sweep transitions before/after edges and across a period, pulses narrower
+- [x] Sweep transitions before/after edges and across a period, pulses narrower
   than a period, reset timing, and applicable acknowledgement/event interactions.
   State how exactly coincident transitions are ordered and which physical cases
   that digital convention does not establish.
-- [ ] Check missed/captured pulses and pipeline latency against explicit assumptions.
+- [x] Check missed/captured pulses and pipeline latency against explicit assumptions.
   Preserve Cyclesim checks for synchronous event priority and state behavior.
-- [ ] Monitor relevant activity between edges. Report timestamp, time unit, edge,
+- [x] Monitor relevant activity between edges. Report timestamp, time unit, edge,
   seed/trial, source/configuration, first mismatch, and bounded nearby context.
   Add waveform capture only as a useful diagnostic, not a passing-test requirement.
-- [ ] Extend generated scenarios and shrinking to preserve temporal ordering,
+- [x] Extend generated scenarios and shrinking to preserve temporal ordering,
   pulse/window prerequisites, and failure identity. Prove replay with a controlled
   timed mismatch and fresh simulation state per trial.
 
 Exit: actual P2.2 phase/pulse evidence, independently predicted and replayable.
+
+#### Timed `Input_events` result — 2026-09-19
+
+[`input_events_timing_testbench.ml`](../test/primitives/input_events/input_events_timing_testbench.ml)
+owns timestamped pad/reset/event scenarios, the two-state Evsim adapter, a simulator-free
+sampling predictor, continuous activity monitors, bounded generation, temporal shrinking,
+and replay reporting. Each trial constructs a fresh circuit and simulator. The ordinary
+functional model still accepts only integer samples at clock edges and has no simulator
+handles or timing backend dependency.
+
+One scheduler owns stimulus and clock updates. Time is an abstract integer tick, the
+clock rises first at tick 5 and has a 10-tick period, and registered outputs are sampled
+one tick after each rising edge. Stimulus at an exact rising-edge timestamp is submitted
+first and given a bounded 32-delta settle allowance before the clock transition; it is
+therefore defined as before-edge stimulus. A transition at the following tick is after
+that edge. All scheduled transitions have transport semantics. This ordering establishes
+a deterministic digital case only: it is not setup/hold, metastability, analog pulse, CDC,
+or physical timing evidence.
+
+The complete integer-phase sweep observed 10 through 19 ticks from a high transition to
+the reported synchronized rising edge. Equivalently, a value sampled at one edge becomes
+the registered snapshot/edge result after the following edge. A two-tick pulse crossing a
+sampling edge was captured, while an eight-tick pulse wholly between edges was missed.
+Thus the digital assumption is sampling-point coverage, not an unconditional sub-period
+minimum pulse width; a pulse spanning a full period necessarily covers a sampling edge
+under this convention. Directed cases also cover reset before an exact edge and event
+set/acknowledge/overflow priority. The existing Cyclesim tests remain active.
+
+The normal property runs seed `20260919`, 160 trials, and maximum size 18. Scenarios keep
+an applied reset and a bounded pulse window. Shrinking removes transitions, moves them
+earlier without reordering them, and shortens the run only while those prerequisites and
+the same phase/observation failure identity survive. The controlled
+`Delay_pad_transitions_one_tick` adapter defect is found on trial zero, shrinks to reset
+plus an exact-edge two-tick pulse, and produces the same redacted report on a second run
+from the recorded settings. Reports include source/configuration, timestamp/unit, edge,
+first mismatch, nearby samples, and between-edge activity. No waveform is required for a
+pass; the bounded textual trace is sufficient for this pilot.
+
+Run the pilot with
+`./scripts/with-switch.sh dune runtest test/primitives/input_events --force`. On commit
+`989f7a6acc7b8e72c5380f07a1ea3845c79f1d87` plus the Stage 5 diff, the focused suite and
+its lint alias exited 0. `dune build @all @lint`, the full forced `dune runtest`, and
+`dune build @rtl` also exited 0 through the switch wrapper. The controlled report's
+recorded seed/trial/size rerun of the `test/primitives/input_events` directory exited 0.
+`dune build @fmt` still reports the repository-wide pre-existing format differences
+recorded in Stage 2; both new timing files themselves were formatted with the pinned
+formatter, and `git diff --check` exited 0.
 
 ### 6. Add one justified four-state property
 

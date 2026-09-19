@@ -1,12 +1,24 @@
 (library
  (name protemu_input_events_tests)
  (wrapped false)
- (modules input_events_testbench input_events_unit_tests)
+ (modules
+  input_events_testbench
+  input_events_timing_testbench
+  input_events_timing_tests
+  input_events_unit_tests)
  ; Keep the ppx_expect source-tree workaround described in test/common/dune.
  (inline_tests
   (flags
    (:standard -source-tree-root .)))
- (libraries core hardcaml hardcaml_protemu protemu_f_model)
+ (libraries
+  base_quickcheck
+  core
+  hardcaml
+  hardcaml_event_driven_sim
+  hardcaml_protemu
+  protemu_f_model
+  protemu_test_common
+  splittable_random)
  (preprocess
   (pps ppx_hardcaml ppx_jane))
  (lint

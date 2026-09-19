@@ -10,7 +10,7 @@ evidence, not a mapped CMOS5L cost report.
 | Block | Interface and behavior | Evidence |
 | --- | --- | --- |
 | [`Pin_bank`](../lib/pin_bank.ml) | Eight registered value/enable pins; masked commits; software and one engine claim masks; conflicting claims/writes are refused with sticky conflict status. Open-drain writes force data low regardless of supplied data. Reset, abort, and disable release outputs and claims. | [`test/primitives/pin_bank/`](../test/primitives/pin_bank): model comparison, masking, open drain, conflict, reset/disable/abort. |
-| [`Input_events`](../lib/input_events.ml) | Two synchronizer stages, one registered snapshot, rise/fall pulses, six sticky event bits, set-wins acknowledgement, and per-bit overflow. | Model comparison over 100 deterministic cycles, set/ack/overflow and reset tests. |
+| [`Input_events`](../lib/input_events.ml) | Two synchronizer stages, one registered snapshot, rise/fall pulses, six sticky event bits, set-wins acknowledgement, and per-bit overflow. | Model comparison over 100 deterministic cycles plus a two-state Evsim integer-phase/pulse/reset sweep and 160 generated timed trials. |
 | [`Timing`](../lib/timing.ml) | 16-bit delay, level/edge wait with optional timeout, and a free-running periodic tick with phase restart. A delay accepted at edge `k` completes at `k+n`; zero is rejected. Immediate level success does not produce a delayed completion event, matching the model. | Reference-machine comparison, exact delay, stale edge, event-over-timeout, periodic activity during waits, and phase restart tests. |
 | [`Primitive_demo`](../lib/primitive_demo.ml) | Composes a wait and an independent transfer lane on the same clock without gating the lane on timer busy. | Transfer output changes and completes while the core wait remains active. |
 | [`Byte_fifo`](../lib/byte_fifo.ml) | Eight-bit flop queue, selectable depth 4/8/16, explicit ready/valid, simultaneous full pop/push, sticky overflow/starvation. Reset and disable clear occupancy without clearing data cells. Instantiate separately for TX and RX. | Reference-model comparison and boundary tests at all three depths. |
@@ -25,13 +25,15 @@ block in the table. It does not change the P0 wrapper or its committed RTL. The
 
 ## Timing observed in digital simulation
 
-The input front end presents a transition after two sampling edges when it arrives
-before the first edge. If it arrives just after one edge, the first usable sample
-is the next edge, giving up to three clock periods from that earlier edge. These
-are digital pipeline bounds; metastability can add uncertainty, and no analog
-reliability or minimum pulse width has been measured. A pulse must be present at
-a sampling edge and survive the two-stage path to be observed. No input filter
-has been selected.
+The time-resolved input-front-end sweep uses abstract integer ticks, a ten-tick clock,
+and a deterministic convention that settles an exact-edge pad transition before the
+clock. Across all ten integer phases, the synchronized edge indication appeared 10--19
+ticks after the external transition: a value sampled at one edge reaches the registered
+snapshot after the following edge. A two-tick pulse crossing a sampling edge was captured;
+an eight-tick pulse wholly between edges was missed. A pulse must cover a sampling point;
+a full-period pulse guarantees that in this digital model, while no sub-period width does
+independently of phase. These are digital pipeline results, not setup/hold, metastability,
+analog pulse, or physical timing evidence. No input filter has been selected.
 
 In the composed observed transfer, a start transition sampled at edge `k` appears
 as a snapshot and edge pulse after edge `k+1`. The armed lane consumes that pulse
@@ -78,8 +80,9 @@ testbench, but the firmware sequence is not yet connected through the complete
 hardware path and matching model/RTL traces have not been saved.
 The rest of P1.3's helpers and labels also remain. P2.8 remains open because no generic or liberty-mapped Yosys estimate,
 CMOS5L flow run, mapped sequential/combinational area, or formal check has been
-recorded. P2.2 still needs asynchronous-phase sweeps with a time-resolved pad
-driver; P2.6 still needs the event-to-core-decision-to-pin measurement and a
+recorded. P2.2's time-resolved two-state pilot records a 10--19 tick deterministic
+capture latency and phase-dependent sub-period pulse capture; it is not analog
+metastability or physical CDC evidence. P2.6 still needs the event-to-core-decision-to-pin measurement and a
 measured external timing envelope. The lane's claim mask and pin outputs have
 not yet been connected through the integrated pin-bank arbitration at a project
 top.

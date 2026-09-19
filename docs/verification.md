@@ -1,8 +1,8 @@
 # System verification
 
 Status: current implementation updated on 2026-09-19 after the functional-model
-rename, per-block suite reorganization, and cycle/event adapter conformance experiment;
-timed product verification and four-state properties remain unimplemented.
+rename, per-block suite reorganization, cycle/event adapter conformance experiment, and
+timed `Input_events` pilot; four-state properties remain unimplemented.
 
 This is the enduring source of truth for verification architecture, suite ownership,
 current evidence, and the intended next state. It incorporates the former test
@@ -15,19 +15,19 @@ verification policy rather than maintaining another test architecture.
 
 ## Current state
 
-Paths in this section describe files that exist now. The rename to `f_model` and
-the per-block suite layout are implemented. Backend sampling is characterized, but
-timed product and four-state suites are not.
+Paths in this section describe files that exist now. The rename to `f_model`, per-block
+suite layout, backend sampling characterization, and timed P2.2 pilot are implemented.
+The four-state suite is not.
 
 ### Backend and test inventory
 
 | Question | Answer |
 | --- | --- |
-| OCaml RTL simulation backend | Product suites use `Hardcaml.Cyclesim`; the isolated conformance fixture also runs two-state Evsim. Emitted-Verilog checks use separate tools. |
+| OCaml RTL simulation backend | Synchronous product suites use `Hardcaml.Cyclesim`; timed P2.2 uses two-state Evsim, as does the isolated conformance fixture. Emitted-Verilog checks use separate tools. |
 | `hardcaml_step_testbench` | Used by the isolated cycle/event adapter conformance suite; production block suites have not migrated to it. |
-| `hardcaml_event_driven_sim` | Two-state Evsim is exercised by adapter conformance only; no timed product obligation is claimed. |
+| `hardcaml_event_driven_sim` | Two-state Evsim is exercised by adapter conformance and the timed P2.2 product pilot. |
 | `hardcaml_waveterm`, `alcotest` | Declared `:with-test` but unused. No waveforms are produced and no Alcotest suite exists. |
-| Test styles | 101 `let%expect_test`, 30 `let%test_unit`, one Quickcheck driver built on `base_quickcheck`. |
+| Test styles | 104 `let%expect_test`, 32 `let%test_unit`, and two Quickcheck drivers built on `base_quickcheck`. |
 | Blocks on the shared harness | One: P2.1 `Pin_bank`. Everything else still runs its own loop. |
 
 The conformance fixture is evidence about adapter scheduling only; a declared dependency
@@ -41,7 +41,7 @@ deliberately kept apart so that a disagreement between two of them is evidence r
 | Layer | Library | Depends on Hardcaml | Contents |
 | --- | --- | --- | --- |
 | Reference model | `test_protemu_f_model` ([`test/f_model/`](../test/f_model/dune)) | No | 95 expect tests over [`f_model/`](../f_model/dune). |
-| Model/RTL comparison and backend conformance | uniquely named libraries under [`test/common/`](../test/common/dune), [`test/primitives/`](../test/primitives), [`test/core/`](../test/core), and [`test/integration/`](../test/integration) | Yes, except generic support | 29 product `%test_unit` tests, 5 harness expect tests, one adapter `%test_unit`, one adapter expect test, and the `Env` harness. |
+| Model/RTL comparison and backend conformance | uniquely named libraries under [`test/common/`](../test/common/dune), [`test/primitives/`](../test/primitives), [`test/core/`](../test/core), and [`test/integration/`](../test/integration) | Yes, except generic support | 29 cycle product `%test_unit` tests, 5 cycle harness expect tests, one adapter `%test_unit`, one adapter expect test, two timed product `%test_unit` tests, three timed product expect tests, and the cycle/timed harnesses. |
 | Emitted RTL | none — Dune rules | n/a | iverilog, verilator and yosys checks behind `dune build @rtl`. |
 
 #### Model tests — `test/f_model/`
@@ -200,13 +200,13 @@ the five scenario steps consequently return at times 10, 20, 30, 40, and 50. Its
 interface comment describes the waits in the opposite order and is not used as the
 contract. The Evsim step-testbench handler remains local to its process.
 
-The clock scheduler alone drives the clock. A timed pad driver will own only its declared
-pads and submit events to the common scheduler rather than advancing simulation itself.
+The clock scheduler alone drives the clock. The timed pad driver owns only its declared
+pads and submits events to the timed runner rather than advancing simulation itself.
 At an exact clock timestamp, the convention is to enqueue and settle the pad update before
 the clock transition ("before the edge"); an after-edge transition uses a later tick. The
-Stage 5 runner must enforce this ordering before exact-coincidence cases count as product
-evidence. Scheduled transitions use transport semantics: every transition is retained;
-the runner does not silently suppress a short pulse as an inertial delay would.
+P2.2 runner enforces this ordering with a bounded delta-settle allowance. Scheduled
+transitions use transport semantics: every transition is retained; the runner does not
+silently suppress a short pulse as an inertial delay would.
 
 The conformance run has an eight-step adapter budget and a 51-tick simulator cap, although
 it completes in five steps/50 ticks. On completion or timeout, the testbench process waits
@@ -217,9 +217,41 @@ and constructs fresh state. Run it with
 the recorded 2026-09-19 result and machine identity remain in the migration guide. This
 experiment establishes adapter sampling and budgeting only, not timed product coverage.
 
+### Timed P2.2 product pilot
+
+[`input_events_timing_testbench.ml`](../test/primitives/input_events/input_events_timing_testbench.ml)
+and [`input_events_timing_tests.ml`](../test/primitives/input_events/input_events_timing_tests.ml)
+form the first event-driven product suite. Timestamped pad/reset/event scenarios feed a
+two-state Evsim adapter and a separate simulator-free predictor built from explicit
+sampling rules plus `Protemu_f_model.Input_pins` and `Event`. Raw simulator signals remain
+inside the test adapter. Every generated trial constructs fresh DUT/reference state.
+
+The time unit is an abstract integer tick. The clock rises at 5, 15, 25, and so on. At an
+exact rising timestamp, the runner applies stimulus first and permits 32 delta cycles for
+the combinational input network to settle before changing the clock. Outputs are sampled
+one tick later. A transition at that later tick is after the edge. The 32-delta allowance
+is a finite scheduler budget and no simulated elapsed time. Continuous monitors record pad,
+snapshot, edge, event, and overflow changes between samples.
+
+Under that convention, a ten-phase sweep measured 10--19 ticks from an external high
+transition to the synchronized rising indication: the sampled value reaches the registered
+snapshot after the following clock edge. A two-tick pulse straddling a sample was captured;
+an eight-tick pulse wholly between samples was missed. Capture therefore assumes that the
+pulse covers a sampling point. A full-period pulse guarantees that in this deterministic
+digital model, while no sub-period width does independently of phase. These results do not
+measure setup/hold, analog pulse rejection, metastability, MTBF, or physical timing.
+
+The directed case also exercises exact-edge reset and sticky event set/acknowledge/overflow
+priority. The generated regression uses seed `20260919`, 160 trials, and maximum size 18.
+Its shrinker preserves reset, temporal ordering, a pulse window, and mismatch identity.
+The controlled one-tick pad-delay defect is reproducible and shrinks to reset plus an
+exact-edge two-tick pulse. Failure reports carry timestamp/unit, edge, seed/trial,
+source/configuration, first mismatch, nearby samples, and between-edge activity. Run it
+with `./scripts/with-switch.sh dune runtest test/primitives/input_events --force`.
+
 ### Current limitations and evidence boundaries
 
-The runner takes one item per edge and monitors edge-indexed observations. Its
+The cycle runner takes one item per edge and monitors edge-indexed observations. Its
 `Dut` adapter hides Cyclesim operations, but its scheduling contract is still
 synchronous. `Observation.Defined` contains an `int`; `Unavailable` and
 `Unspecified` describe observation validity, not four-state electrical logic.
@@ -237,11 +269,11 @@ dependency/tool manifest. The stronger reproduction requirements below remain
 work to complete. Trace context is bounded (six edges by default); no waveform,
 stimulus journal, or general replay-file format is implemented.
 
-No event-driven product suite, four-state property, or coverage-collection suite is
-implemented. The event-driven conformance fixture establishes adapter behavior only. The
-existing RTL smoke checks do not establish gate-level functional behavior, physical
-timing closure, or metastability reliability. See the evidence map below for the
-distinction between implemented checks and outstanding obligations.
+No four-state property or coverage-collection suite is implemented. The timed product
+runner currently covers only `Input_events`; P2.6 and integrated paths have not adopted
+it. The existing RTL smoke checks do not establish gate-level functional behavior,
+physical timing closure, or metastability reliability. See the evidence map below for
+the distinction between implemented checks and outstanding obligations.
 
 ## Next state
 
@@ -599,12 +631,12 @@ Historical run reports are not fresh results for later source revisions.
 | Obligation | Current evidence/owner | Next evidence still owed |
 | --- | --- | --- |
 | ISA, encoding, reference cycle schedule, firmware examples | `test/f_model/`, 95 expect tests | Preserve independently; extend with new contracts |
-| Cycle/event adapter scheduling | `test/common/backend_conformance*.ml`; matching five-edge known-value trace, completion, and timeout on Cyclesim/two-state Evsim | Enforce the declared coincident-event convention in the Stage 5 timed runner; this is not product coverage |
+| Cycle/event adapter scheduling | `test/common/backend_conformance*.ml`; matching five-edge known-value trace, completion, and timeout on Cyclesim/two-state Evsim; exact-coincidence ordering is enforced by the P2.2 runner | Recheck the characterized adapter and delta-settle convention when dependencies change |
 | Pin bank cycle agreement and harness diagnostics | `test/primitives/pin_bank/` plus generic fixtures in `test/common/`; recorded 200 trials and seed sweeps above | Extend properties as the block contract grows |
 | Other primitive cycle behavior | 23 block-owned directed tests under `test/primitives/` and one integration case under `test/integration/primitive_demo/` | Add bounded generated properties where they provide distinct evidence |
 | Core memory/fetch/execute behavior | Three directed tests in `test/core/protocol_core/` | Broader instruction/stall/reset cases as contracts land |
 | P0 wrapper | Two tests in `test/integration/wrapper/` plus `@rtl` wrapper checks | Later host/load/recovery evidence |
-| P2.2 external phase and pulse capture | No timed suite | Two-state Evsim sweep with explicit sampling/pulse assumptions |
+| P2.2 external phase and pulse capture | `test/primitives/input_events/input_events_timing_{testbench,tests}.ml`; directed cases plus 160 generated trials, 10--19 tick deterministic latency, captured/missed pulse cases, reset/event interactions, temporal shrink/replay | Physical CDC/setup/hold/metastability evidence remains separate |
 | P2.6 event-to-engine/core-to-pin latency | Cycle behavior only; integration incomplete | Timed integrated path and independent timestamped monitor |
 | Unknown propagation / resolved external buses | No four-state suite | Named properties, explicit X/Z model, targeted tests |
 | Memory backend conformance | Owned by `hardcaml_asic` | Link library evidence; emulator owns consumption/arbitration/image bounds/recovery |

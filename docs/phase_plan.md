@@ -493,23 +493,25 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   according to the contract. Evidence: [`pin_bank.ml`](../lib/pin_bank.ml),
   [`test/primitives/pin_bank/`](../test/primitives/pin_bank), and the
   [P2 implementation record](p2-implementation.md).
-- [ ] **P2.2 — Input and event front end.** Add synchronization, registered
+- [x] **P2.2 — Input and event front end.** Add synchronization, registered
   snapshots, edge detection, latched status, acknowledgement, and overflow
   reporting where applicable. Evidence: asynchronous-phase sweeps, stale-edge
   rejection, set-wins acknowledgement, and reset cases pass. Record the observed
   digital latency range and assumptions about minimum pulse width.
-  *Progress:* [`input_events.ml`](../lib/input_events.ml) and
+  *Evidence:* [`input_events.ml`](../lib/input_events.ml) and
   [`observed_transfer.ml`](../lib/observed_transfer.ml) pass digital functional-model/Hardcaml
-  comparisons; time-resolved asynchronous-phase sweeps remain. See the
-  [P2 implementation record](p2-implementation.md).
-  *Verification dependency:* P2.2 needs a time-resolved pad driver; the current
-  cycle-only suite cannot supply phase/pulse evidence. Adopt the divided cycle/event
-  responsibilities in [verification.md](verification.md#next-state), following the
-  [migration guide](verification_migration.md). Reuse reference/checking/reporting
-  conventions while allowing a separate timed runner. P2.6 consumes the same timed
-  facilities. Four-state properties are a separate, explicitly modeled obligation;
-  two-state Evsim is sufficient for deterministic phase/pulse sweeps. Neither tier
-  establishes analog metastability reliability.
+  comparisons. The two-state Evsim pilot under
+  [`test/primitives/input_events/`](../test/primitives/input_events) sweeps all integer
+  phases, captured/missed sub-period pulses, exact-edge reset, and event interactions;
+  it records a 10--19 tick deterministic latency range under its explicit sampling
+  convention. See the [P2 implementation record](p2-implementation.md).
+  *Verification dependency:* the implemented time-resolved pad driver follows the
+  divided cycle/event responsibilities in [verification.md](verification.md#next-state)
+  and the [migration guide](verification_migration.md), reusing reference/checking/replay
+  conventions behind a separate timed runner. P2.6 can consume the same facilities.
+  Four-state properties remain a separate, explicitly modeled obligation; two-state
+  Evsim is sufficient for deterministic phase/pulse sweeps. Neither tier establishes
+  analog metastability reliability.
 - [x] **P2.3 — Timing and waits.** Implement countdown, periodic ticks, level/edge
   waits with timeout, and event-based phase restart. Evidence: exact delay edges,
   zero-delay rejection, immediate level completion, event-over-timeout precedence,

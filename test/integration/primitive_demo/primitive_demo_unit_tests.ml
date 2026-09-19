@@ -1,3 +1,8 @@
+open! Core
+open! Hardcaml
+open! Hardcaml_protemu
+open! Primitive_demo_testbench
+
 let%test_unit "P2.3 an active transfer advances while the core timer waits" =
   let sim = Sim.create (Primitive_demo.create (Scope.create ~flatten_design:true ())) in
   let i = Cyclesim.inputs sim in
@@ -30,8 +35,3 @@ let%test_unit "P2.3 an active transfer advances while the core timer waits" =
   done;
   check "wait eventually completes" o.wait_complete_o 1
 ;;
-open! Core
-open! Hardcaml
-open! Hardcaml_protemu
-open! Primitive_demo_testbench
-

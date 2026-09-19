@@ -211,8 +211,7 @@ module Artifacts = struct
     Option.value (Sys.getenv "PROTEMU_ARTIFACTS") ~default:"protemu-artifacts"
   ;;
 
-  let write ~test ~(settings : Settings.t) ~trial ~contents =
-    let directory = directory () in
+  let write_to ~directory ~test ~(settings : Settings.t) ~trial ~contents =
     let pid = Posix.getpid () in
     let seed = settings.seed in
     let path =
@@ -226,5 +225,9 @@ module Artifacts = struct
       Some path
     with
     | _ -> None
+  ;;
+
+  let write ~test ~settings ~trial ~contents =
+    write_to ~directory:(directory ()) ~test ~settings ~trial ~contents
   ;;
 end

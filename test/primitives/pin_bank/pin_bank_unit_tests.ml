@@ -1,3 +1,8 @@
+open! Core
+open! Hardcaml
+open! Hardcaml_protemu
+open! Pin_bank_testbench
+
 let%test_unit "P2.1 masked commits, claims, conflict, and release" =
   let sim = Pin_sim.create (Pin_bank.create (Scope.create ~flatten_design:true ())) in
   let i = Cyclesim.inputs sim in
@@ -62,7 +67,9 @@ let%test_unit "P2.1 pin commits and ownership track the independent model" =
     Cyclesim.cycle sim;
     i.write_valid_i := Bits.gnd;
     (match expected with
-     | Ok next -> state := next; check "accepted write" o.rejected_o 0
+     | Ok next ->
+       state := next;
+       check "accepted write" o.rejected_o 0
      | Error _ -> check "rejected write" o.rejected_o 1);
     check "model value" o.pins_o !state.value;
     check "model output enable" o.pin_oe_o !state.output_enable
@@ -72,7 +79,9 @@ let%test_unit "P2.1 pin commits and ownership track the independent model" =
   i.claim_valid_i := Bits.vdd;
   i.claim_engine_i := Bits.vdd;
   i.claim_mask_i := bits 8 0x30;
-  (match Protemu_f_model.Pin_bank.claim !state ~owner:(Kinds.Owner.Engine 0) ~mask:0x30 with
+  (match
+     Protemu_f_model.Pin_bank.claim !state ~owner:(Kinds.Owner.Engine 0) ~mask:0x30
+   with
    | Ok next -> state := next
    | Error _ -> failwith "model claim was unexpectedly rejected");
   Cyclesim.cycle sim;
@@ -130,8 +139,3 @@ let%test_unit "P2.1 reset and disable release driven pins" =
   Cyclesim.cycle sim;
   check "reset release" o.pin_oe_o 0
 ;;
-open! Core
-open! Hardcaml
-open! Hardcaml_protemu
-open! Pin_bank_testbench
-

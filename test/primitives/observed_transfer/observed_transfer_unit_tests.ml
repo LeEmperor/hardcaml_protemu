@@ -1,3 +1,8 @@
+open! Core
+open! Hardcaml
+open! Hardcaml_protemu
+open! Observed_transfer_testbench
+
 let%test_unit "P2.6 observed edges pace a preconfigured lane and abort releases pins" =
   let sim = Shift_sim.create (Shift_lane.create (Scope.create ~flatten_design:true ())) in
   let i = Cyclesim.inputs sim in
@@ -76,7 +81,9 @@ let%test_unit "P2.6 arm latches parameters and starts only on a later event" =
 
 let%test_unit "P2.5/P2.6 shift timing and results match the independent model" =
   let run ~observed ~arm ~lsb ~idle_clock =
-    let sim = Shift_sim.create (Shift_lane.create (Scope.create ~flatten_design:true ())) in
+    let sim =
+      Shift_sim.create (Shift_lane.create (Scope.create ~flatten_design:true ()))
+    in
     let i = Cyclesim.inputs sim in
     let o = Cyclesim.outputs sim in
     i.reset_i := Bits.vdd;
@@ -86,17 +93,11 @@ let%test_unit "P2.5/P2.6 shift timing and results match the independent model" =
     let direction = Kinds.Direction.Duplex in
     let pacing =
       if observed
-      then
-        F_model.Transfer.Pacing.Observed_edge
-          { pin = 3; edge = Kinds.Edge.Either }
+      then F_model.Transfer.Pacing.Observed_edge { pin = 3; edge = Kinds.Edge.Either }
       else F_model.Transfer.Pacing.Internal { half_period = 2 }
     in
-    let leading =
-      if idle_clock then Kinds.Clock_phase.On_falling else On_rising
-    in
-    let trailing =
-      if idle_clock then Kinds.Clock_phase.On_rising else On_falling
-    in
+    let leading = if idle_clock then Kinds.Clock_phase.On_falling else On_rising in
+    let trailing = if idle_clock then Kinds.Clock_phase.On_rising else On_falling in
     let descriptor : F_model.Transfer.t =
       { direction
       ; bit_count = 4
@@ -120,15 +121,15 @@ let%test_unit "P2.5/P2.6 shift timing and results match the independent model" =
     i.rx_ready_i := Bits.vdd;
     i.tx_enable_i := Bits.vdd;
     i.rx_enable_i := Bits.vdd;
-    i.lsb_first_i := (if lsb then Bits.vdd else Bits.gnd);
+    i.lsb_first_i := if lsb then Bits.vdd else Bits.gnd;
     i.output_pin_i := bits 3 0;
     i.input_pin_i := bits 3 2;
     i.clock_pin_i := bits 3 1;
-    i.clock_enable_i := (if observed then Bits.gnd else Bits.vdd);
-    i.idle_clock_i := (if idle_clock then Bits.vdd else Bits.gnd);
+    i.clock_enable_i := if observed then Bits.gnd else Bits.vdd;
+    i.idle_clock_i := if idle_clock then Bits.vdd else Bits.gnd;
     i.half_period_i := bits 16 2;
     i.launch_trailing_i := Bits.vdd;
-    i.observed_i := (if observed then Bits.vdd else Bits.gnd);
+    i.observed_i := if observed then Bits.vdd else Bits.gnd;
     for cycle = 0 to 34 do
       let command = if cycle = 0 then Some (descriptor, arm) else None in
       let start_event = arm && cycle = 3 in
@@ -136,29 +137,29 @@ let%test_unit "P2.5/P2.6 shift timing and results match the independent model" =
       let bit_index = !model.index in
       let sampled =
         if bit_index < 4
-        then
+        then (
           let position = if lsb then bit_index else 3 - bit_index in
-          (0x9 lsr position) land 1
+          (0x9 lsr position) land 1)
         else 0
       in
       let pin_in = sampled lsl 2 in
-      i.start_valid_i := (if Option.is_some command then Bits.vdd else Bits.gnd);
-      i.arm_i := (if arm then Bits.vdd else Bits.gnd);
-      i.start_event_i := (if start_event then Bits.vdd else Bits.gnd);
-      i.observed_edge_i := (if observed_edge then Bits.vdd else Bits.gnd);
+      i.start_valid_i := if Option.is_some command then Bits.vdd else Bits.gnd;
+      i.arm_i := if arm then Bits.vdd else Bits.gnd;
+      i.start_event_i := if start_event then Bits.vdd else Bits.gnd;
+      i.observed_edge_i := if observed_edge then Bits.vdd else Bits.gnd;
       i.pin_in_i := bits 8 pin_in;
-      model :=
-        F_model.Shift_engine.step
-          !model
-          ~enable:true
-          ~abort:false
-          ~command
-          ~start_event
-          ~observed_edge
-          ~pin_in
-          ~occupied:0
-          ~tx_valid:true
-          ~rx_ready:true;
+      model
+      := F_model.Shift_engine.step
+           !model
+           ~enable:true
+           ~abort:false
+           ~command
+           ~start_event
+           ~observed_edge
+           ~pin_in
+           ~occupied:0
+           ~tx_valid:true
+           ~rx_ready:true;
       Cyclesim.cycle sim;
       check "model busy" o.busy_o (if !model.active then 1 else 0);
       check "model armed" o.armed_o (if !model.armed then 1 else 0);
@@ -181,8 +182,7 @@ let%test_unit "P2.5/P2.6 shift timing and results match the independent model" =
 
 let%test_unit "P2.6 synchronized start and pacing use the same input snapshot" =
   let sim =
-    Observed_sim.create
-      (Observed_transfer.create (Scope.create ~flatten_design:true ()))
+    Observed_sim.create (Observed_transfer.create (Scope.create ~flatten_design:true ()))
   in
   let i = Cyclesim.inputs sim in
   let o = Cyclesim.outputs sim in
@@ -232,8 +232,3 @@ let%test_unit "P2.6 synchronized start and pacing use the same input snapshot" =
   check "aligned data sampled" o.rx_data_o 1;
   check "pacing completion releases" o.pin_oe_o 0
 ;;
-open! Core
-open! Hardcaml
-open! Hardcaml_protemu
-open! Observed_transfer_testbench
-

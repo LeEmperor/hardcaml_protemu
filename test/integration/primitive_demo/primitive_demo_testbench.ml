@@ -1,7 +1,6 @@
 open! Core
 open! Hardcaml
 open! Hardcaml_protemu
-
 module Sim = Cyclesim.With_interface (Primitive_demo.I) (Primitive_demo.O)
 
 let bits width n = Bits.of_int_trunc ~width n

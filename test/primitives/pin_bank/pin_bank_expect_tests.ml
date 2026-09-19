@@ -1,3 +1,6 @@
+open! Core
+open! Pin_bank_testbench
+
 let directed_scenario =
   [ Item.reset
   ; Item.write ~engine:false ~mask:0x0f ~value:0x05 ~output_enable:0x0f ()
@@ -22,7 +25,6 @@ let directed_scenario =
   ]
 ;;
 
-(* The settings the regression runs. They are written down rather than drawn from the
 let%expect_test "a directed pin-bank scenario, edge by edge" =
   let (_ : Run.t) = directed Config.default ~scenario:directed_scenario in
   [%expect
@@ -82,5 +84,3 @@ let%expect_test "a directed pin-bank scenario, edge by edge" =
     model and design agreed on all 9 edges
     |}]
 ;;
-open! Core
-open! Pin_bank_testbench

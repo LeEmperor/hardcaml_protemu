@@ -1,3 +1,8 @@
+open! Core
+open! Hardcaml
+open! Hardcaml_protemu
+open! Input_events_testbench
+
 let%test_unit "P2.2 synchronizer, set-wins acknowledge, and overflow" =
   let sim = Sim.create (Input_events.create (Scope.create ~flatten_design:true ())) in
   let i = Cyclesim.inputs sim in
@@ -46,8 +51,7 @@ let%test_unit "P2.2 snapshots and sticky events track the independent model" =
     |]
   in
   let selected mask =
-    Array.to_list kinds
-    |> List.filteri ~f:(fun n _ -> mask land (1 lsl n) <> 0)
+    Array.to_list kinds |> List.filteri ~f:(fun n _ -> mask land (1 lsl n) <> 0)
   in
   let mask_of predicate =
     Array.foldi kinds ~init:0 ~f:(fun n mask kind ->
@@ -56,7 +60,7 @@ let%test_unit "P2.2 snapshots and sticky events track the independent model" =
   for cycle = 0 to 99 do
     let pad = cycle * 73 land 255 in
     let set = if cycle mod 3 = 0 then 1 lsl (cycle mod 6) else 0 in
-    let ack = if cycle mod 5 = 0 then 1 lsl ((cycle / 5) mod 6) else 0 in
+    let ack = if cycle mod 5 = 0 then 1 lsl (cycle / 5 mod 6) else 0 in
     i.pin_in_i := bits 8 pad;
     i.event_set_i := bits 6 set;
     i.event_ack_i := bits 6 ack;
@@ -70,8 +74,3 @@ let%test_unit "P2.2 snapshots and sticky events track the independent model" =
     check "model overflow" o.overflow_o (mask_of F_model.Event.overflowed)
   done
 ;;
-open! Core
-open! Hardcaml
-open! Hardcaml_protemu
-open! Input_events_testbench
-

@@ -1,3 +1,8 @@
+open! Core
+open! Hardcaml
+open! Hardcaml_protemu
+open! Timing_testbench
+
 let%test_unit "P2.3 exact delay, immediate level, stale edge, and timeout precedence" =
   let sim = Sim.create (Timing.create (Scope.create ~flatten_design:true ())) in
   let i = Cyclesim.inputs sim in
@@ -88,9 +93,7 @@ let%test_unit "P2.3 waits and periodic ticks track the independent machine" =
   i.reset_i := Bits.gnd;
   let machine = ref (F_model.Machine.create ()) in
   let step ?(pin_in = 0) command =
-    let input =
-      { F_model.Machine.Input.idle with command; pin_in }
-    in
+    let input = { F_model.Machine.Input.idle with command; pin_in } in
     machine := F_model.Machine.step !machine input;
     let snapshot = F_model.Input_pins.snapshot !machine.inputs in
     i.snapshot_i := bits 8 snapshot;
@@ -110,17 +113,14 @@ let%test_unit "P2.3 waits and periodic ticks track the independent machine" =
        i.wait_valid_i := Bits.vdd;
        i.wait_kind_i := bits 2 1;
        i.wait_pin_i := bits 3 pin;
-       i.wait_level_i := (if level then Bits.vdd else Bits.gnd);
-       i.wait_timeout_enable_i :=
-         (if Option.is_some timeout then Bits.vdd else Bits.gnd);
+       i.wait_level_i := if level then Bits.vdd else Bits.gnd;
+       i.wait_timeout_enable_i := if Option.is_some timeout then Bits.vdd else Bits.gnd;
        i.wait_delay_i := bits 16 (Option.value timeout ~default:0)
      | Some (Wait_edge { pin; edge; timeout }) ->
        i.wait_valid_i := Bits.vdd;
-       i.wait_kind_i :=
-         bits 2 (if Kinds.Edge.equal edge Rising then 2 else 3);
+       i.wait_kind_i := bits 2 (if Kinds.Edge.equal edge Rising then 2 else 3);
        i.wait_pin_i := bits 3 pin;
-       i.wait_timeout_enable_i :=
-         (if Option.is_some timeout then Bits.vdd else Bits.gnd);
+       i.wait_timeout_enable_i := if Option.is_some timeout then Bits.vdd else Bits.gnd;
        i.wait_delay_i := bits 16 (Option.value timeout ~default:0)
      | Some _ | None -> ());
     Cyclesim.cycle sim;
@@ -128,7 +128,9 @@ let%test_unit "P2.3 waits and periodic ticks track the independent machine" =
       if List.mem !machine.last.events kind ~equal:F_model.Event.Kind.equal then 1 else 0
     in
     check "model wait busy" o.busy_o (if F_model.Machine.waiting !machine then 1 else 0);
-    check "model completion" o.complete_o
+    check
+      "model completion"
+      o.complete_o
       (if occurred Delay_expired = 1 || occurred Wait_complete = 1 then 1 else 0);
     check "model timeout" o.timeout_o (occurred Wait_timeout);
     check "model periodic tick" o.tick_o (occurred Tick)
@@ -149,8 +151,3 @@ let%test_unit "P2.3 waits and periodic ticks track the independent machine" =
   step ~pin_in:1 None;
   step ~pin_in:1 None
 ;;
-open! Core
-open! Hardcaml
-open! Hardcaml_protemu
-open! Timing_testbench
-

@@ -1,7 +1,6 @@
 open! Core
 open! Hardcaml
 open! Hardcaml_protemu
-
 module Sim = Cyclesim.With_interface (Timing.I) (Timing.O)
 module F_model = Protemu_f_model
 module Kinds = Protemu_isa.Kinds

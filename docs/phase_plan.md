@@ -176,7 +176,7 @@ with the first pin/timer work in P1/P2.
   command using the wrapper. Compare a timed output trace with the Hardcaml
   expectation. Evidence: reset, enable/disable, pin value/enable, and timer
   transitions pass at the wrapper boundary. Evidence:
-  [`test_hardcaml_protemu.ml`](../test/test_hardcaml_protemu.ml),
+  [`wrapper_unit_tests.ml`](../test/integration/wrapper/wrapper_unit_tests.ml),
   [`test-rtl.sh`](../tinytapeout/scripts/test-rtl.sh), and the
   [P0 experiment record](../tinytapeout/reports/2026-09-14-p0-tool-path.md).
 - [ ] **P0.4 — Establish the physical environment.** Select exact CMOS5L template,
@@ -442,12 +442,13 @@ bundle, or synthesis alone does not establish physical closure.
   backend. Simulation poison must not become synthesized logic or a required
   physical output value. Whole-suite migration and full-core implementation are
   not required to close this item.
-  Evidence: the harness is four modules under `test/`, described in
+  Evidence: the harness support is under `test/common/` and its first block testbench
+  is under `test/primitives/pin_bank/`, described in
   [verification.md current state](verification.md#current-state).
-  [`observation.ml`](../test/observation.ml) holds the unavailable/unspecified/defined
-  distinction and the checker; [`replay.ml`](../test/replay.ml) the seed, generator
+  [`observation.ml`](../test/common/observation.ml) holds the unavailable/unspecified/defined
+  distinction and the checker; [`replay.ml`](../test/common/replay.ml) the seed, generator
   settings, failing trial, configuration, source/dependency identity and rerun command;
-  [`env.ml`](../test/env.ml) the `Device` a block is described by once, the runner that
+  [`env.ml`](../test/common/env.ml) the `Device` a block is described by once, the runner that
   alone advances time, the pin-to-item monitor conventions, and the Quickcheck driver,
   shrinker and failure report. A block supplies drivers, an independent model, monitors
   and its required observations; the runner drives, settles, samples pre-edge, takes the
@@ -455,8 +456,9 @@ bundle, or synthesis alone does not establish physical closure.
   Section 6's distinctions are reserved in the monitor record — direction, stream
   identity, edge timestamp, stream boundary and error — with no stretch engine
   implemented.
-  P2.1 is the first consumer. [`pin_bank_env.ml`](../test/pin_bank_env.ml) describes it
-  once and [`test_pin_bank_harness.ml`](../test/test_pin_bank_harness.ml) uses that one
+  P2.1 is the first consumer. [`pin_bank_testbench.ml`](../test/primitives/pin_bank/pin_bank_testbench.ml) describes it
+  once and the tests under [`test/primitives/pin_bank/`](../test/primitives/pin_bank) plus
+  generic fixtures under [`test/common/`](../test/common) use that one
   description four ways: the checker's validity rules, a directed expect transcript, a
   200-trial Quickcheck run against [`f_model/pin_bank.ml`](../f_model/pin_bank.ml) from a
   recorded seed, and a controlled mismatch that is found, shrunk to two items, reported
@@ -469,8 +471,9 @@ bundle, or synthesis alone does not establish physical closure.
   now states that the sticky bit records the attempt. `reject_reason` is declared
   `Unavailable` on the RTL side: the comparison skips it, and the hole is visible rather
   than absent. Waveform capture is not implemented — the bounded trace and the failing
-  scenario are the diagnostics section 4 requires. No other test has been migrated, and
-  ASIC backend conformance stays linked separately as `hardcaml_asic`'s evidence.
+  scenario are the diagnostics section 4 requires. The remaining tests are now
+  structurally block-owned but have not all adopted the shared runner; ASIC backend
+  conformance stays linked separately as `hardcaml_asic`'s evidence.
 
 **Exit gate:** UART/SPI/I2C examples execute in the model, execution contracts are
 testable, and program sizes and path timing are recorded. The chosen encoding is
@@ -488,7 +491,7 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   Evidence: masked writes preserve other pins, overlapping claims are rejected,
   open-drain operations never drive high, and reset/disable/abort release pins
   according to the contract. Evidence: [`pin_bank.ml`](../lib/pin_bank.ml),
-  [`test_primitives.ml`](../test/test_primitives.ml), and the
+  [`test/primitives/pin_bank/`](../test/primitives/pin_bank), and the
   [P2 implementation record](p2-implementation.md).
 - [ ] **P2.2 — Input and event front end.** Add synchronization, registered
   snapshots, edge detection, latched status, acknowledgement, and overflow
@@ -514,14 +517,14 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   Evidence: [`timing.ml`](../lib/timing.ml) matches the reference machine on
   waits and periodic ticks; [`primitive_demo.ml`](../lib/primitive_demo.ml)
   shows a transfer progressing during a wait
-  ([`test_primitives.ml`](../test/test_primitives.ml)). See the
+  ([`test/integration/primitive_demo/`](../test/integration/primitive_demo)). See the
   [P2 implementation record](p2-implementation.md).
 - [x] **P2.4 — Data queues.** Implement configurable small TX/RX FIFOs with
   explicit ready/valid, full/empty, validity reset, and fault behavior. Evidence:
   simultaneous push/pop and boundary cases preserve ordering and occupancy with
   no loss or duplication; starvation/overflow follows the specified policy.
   Evidence: [`byte_fifo.ml`](../lib/byte_fifo.ml),
-  [`test_primitives.ml`](../test/test_primitives.ml), and the
+  [`test/primitives/byte_fifo/`](../test/primitives/byte_fifo), and the
   [P2 implementation record](p2-implementation.md).
 - [x] **P2.5 — Internally paced transfers.** Implement the candidate shift lane
   with lengths 1..32, both bit orders, TX-only/RX-only/duplex, initial preload,
@@ -530,7 +533,7 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   underrun/overrun safe aborts match the model. Evidence:
   [`shift_lane.ml`](../lib/shift_lane.ml),
   [`shift_engine.ml`](../f_model/shift_engine.ml),
-  [`test_primitives.ml`](../test/test_primitives.ml), and the
+  [`test/primitives/shift_lane/`](../test/primitives/shift_lane), and the
   [P2 implementation record](p2-implementation.md).
 - [ ] **P2.6 — Observed-event transfers.** Add generic preconfigured arming/start
   and external-edge pacing on top of P2.2/P2.5. Align observed clock, select, and
@@ -590,7 +593,7 @@ before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decouple
     instructions; nothing depends on bulk reset or initialization. *Progress:* the
     [`protocol_core.ml`](../lib/protocol_core.ml) scaffold drives the contract port
     with halted-only writes and a latency-one fetch
-    ([`test_protocol_core.ml`](../test/test_protocol_core.ml)). Readback, validity,
+    ([`test/core/protocol_core/`](../test/core/protocol_core)). Readback, validity,
     bounds, load-complete, and engine-idle gating remain.
   - [ ] **P3.1b — Context-registered store at the project top.** After P0.6/P0.7,
     instantiate `hardcaml_asic.Single_port_ram` in the project design constructor

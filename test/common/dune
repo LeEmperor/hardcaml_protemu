@@ -21,7 +21,7 @@
  (inline_tests
   (flags
    (:standard -source-tree-root .)))
- (libraries core protemu_test_common protemu_pin_bank_testbench)
+ (libraries core unix protemu_test_common protemu_pin_bank_testbench)
  (preprocess
   (pps ppx_jane))
  (lint

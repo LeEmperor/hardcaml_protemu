@@ -1,3 +1,5 @@
+open! Core
+
 let%expect_test "the checker keeps unavailable, unspecified and defined apart" =
   let show ~required ~model ~dut =
     print_s
@@ -57,4 +59,3 @@ let%expect_test "the checker keeps unavailable, unspecified and defined apart" =
       (actual Unavailable)))
     |}]
 ;;
-open! Core

@@ -98,9 +98,9 @@ register file, decoder/control core, and the loader. The rules that keep it so:
   [`protocol_core.ml`](../lib/protocol_core.ml) follows this.
 - Emulator testbenches use a small contract model of the store: latency-one reads,
   held output while disabled, and poison after a write or for an unwritten word
-  ([`test_protocol_core.ml`](../test/test_protocol_core.ml)). Library backend
-  conformance stays in `hardcaml_asic`; adoption later reruns consumer checks against
-  its behavioral model.
+  ([`protocol_core_testbench.ml`](../test/core/protocol_core/protocol_core_testbench.ml)).
+  Library backend conformance stays in `hardcaml_asic`; adoption later reruns consumer
+  checks against its behavioral model.
 - Do not instantiate Hardcaml `memory`/`Ram` for the program store, and do not rely
   on asynchronous reads or read-during-write behavior the contract leaves unspecified.
 - Keep the Tiny Tapeout wrapper and pin map thin and outside the core, so adoption
@@ -136,7 +136,7 @@ that rework.
   and an output bank tied to zero. It drives an external 256x8 program store through
   a contract-conforming 1RW port: fetch issues a read and decode consumes it one cycle
   later, and host writes are accepted only while halted. Decode/execute, readback,
-  and image validity are placeholders. `test/test_protocol_core.ml` checks it against
+  and image validity are placeholders. `test/core/protocol_core/` checks it against
   a contract model of the store.
 - `isa/`: the instruction specification (Dune library `hardcaml_protemu.isa`, no
   Hardcaml dependency and no execution), which P1.5 chose and recorded in
@@ -170,12 +170,12 @@ that rework.
 - The P2 primitives in `lib/`: `pin_bank.ml`, `input_events.ml`, `timing.ml`,
   `byte_fifo.ml`, `shift_lane.ml`, `observed_transfer.ml`, `uart_tx.ml`, and
   `primitive_demo.ml`, each compared against a `f_model/` reference in
-  `test/test_primitives.ml`, with `bin/generate_p2.ml` emitting standalone Verilog
-  for every block. Their interfaces, contracts, and the latencies measured in
+  the block-owned suites under `test/primitives/`, with `bin/generate_p2.ml` emitting
+  standalone Verilog for every block. Their interfaces, contracts, and the latencies measured in
   digital simulation are in the [P2 record](p2-implementation.md). Mapped CMOS5L
   cost for them is not measured (P2.8), and the lane's claim mask is not yet wired
   through pin-bank arbitration at a project top.
-- `test/test_hardcaml_protemu.ml` and `tinytapeout/test/tb.v`: focused P0
+- `test/integration/wrapper/` and `tinytapeout/test/tb.v`: focused P0
   Hardcaml/wrapper tests. They do not establish complete pin-bank or UART support.
 - `tinytapeout/`: wrapper, metadata, pinned flow inputs, staging, local checks,
   and the flow scripts. The observable circuit has hardened to GDS on CMOS5L on

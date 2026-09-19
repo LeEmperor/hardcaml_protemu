@@ -1,7 +1,6 @@
 open! Core
 open! Hardcaml
 open! Hardcaml_protemu
-
 module Shift_sim = Cyclesim.With_interface (Shift_lane.I) (Shift_lane.O)
 module Observed_sim = Cyclesim.With_interface (Observed_transfer.I) (Observed_transfer.O)
 module F_model = Protemu_f_model

@@ -1,7 +1,7 @@
 # Verification suite migration
 
-Status: in progress on 2026-09-19. Baseline capture and the functional-model rename
-are complete; suite reorganization and new simulation backends are not implemented.
+Status: in progress on 2026-09-19. Baseline capture, the functional-model rename,
+and suite reorganization are complete; new simulation backends are not implemented.
 
 This is a temporary implementation guide. [verification.md](verification.md) owns
 the current-state inventory, target architecture, model/driver/monitor contracts,
@@ -216,28 +216,57 @@ requires redesigning the shared harness.
 | `test/f_model/*` | Retains independent reference-only tests in place |
 | `tinytapeout/test/*` | Remains the emitted-RTL tier |
 
-- [ ] Give each block a `*_testbench.ml`, `*_expect_tests.ml`, and
+- [x] Give each block a `*_testbench.ml`, `*_expect_tests.ml`, and
   `*_unit_quickcheck_tests.ml` as applicable. Add timing/four-state files only when
   that block has an obligation requiring them.
-- [ ] Extract drivers/scenarios/observations once into the block testbench. Both
+- [x] Extract drivers/scenarios/observations once into the block testbench. Both
   expect and generated cases call its entry points. Keep references independent
   of DUT helpers; do not copy RTL expressions to manufacture expected results.
-- [ ] Create a shared support library and per-suite Dune libraries with unique
+- [x] Create a shared support library and per-suite Dune libraries with unique
   names. Keep generic harness tests separate from support code, and reference-only
   dependencies separate from Hardcaml dependencies. Avoid a parent stanza owning
   modules that a child stanza also owns.
-- [ ] Preserve the installed ppx_expect workaround:
+- [x] Preserve the installed ppx_expect workaround:
   `(inline_tests (flags (:standard -source-tree-root .)))`, with its explanatory
   comment, in new inline-test stanzas until the underlying issue is resolved.
-- [ ] Update replay test-directory configuration and verify printed rerun commands
+- [x] Update replay test-directory configuration and verify printed rerun commands
   work after moves. Preserve environment overrides and deterministic fixtures that
   explicitly disable overrides. Test artifact paths from Dune runner directories.
-- [ ] Keep existing directed assertions active; introduce compact expect transcripts
+- [x] Keep existing directed assertions active; introduce compact expect transcripts
   and meaningful generated properties incrementally rather than replacing useful
   assertions with snapshots solely for uniformity.
 
 Exit: every old case has an active owner, no duplicate/missing Dune ownership, and
 per-module tests and their printed replay commands work.
+
+#### Reorganization result — 2026-09-19
+
+The reorganized source is based on commit
+`a84d9b86e539b97cd5949e80a78c1f02c3a815b7`; the verification below also includes
+the current follow-up diff that formats the split files, places their shared opens
+before the tests, updates active documentation, and adds the artifact-path check.
+
+The shared `Observation`, `Replay`, and `Env` modules now form the unwrapped
+`protemu_test_common` support library under `test/common/`; its checker and replay
+fixtures are a separate inline-test library. Each primitive, core, and integration
+directory has a uniquely named Dune library and a block testbench. The pin-bank
+testbench remains the single definition used by its directed transcript and bounded
+generated comparison, while the controlled defect stays in the generic replay tests.
+The remaining directed tests retain their original assertions in block-owned files.
+
+All 29 directed `%test_unit` cases and four pre-existing RTL/harness expect tests
+remain active; one new common expect test checks artifact paths and cleanup from a
+Dune runner directory.
+the 95 independent functional-model expect tests remain in `test/f_model/`.
+`./scripts/with-switch.sh dune build @all` and
+`./scripts/with-switch.sh dune build @lint`,
+`./scripts/with-switch.sh dune runtest --force`, and
+`./scripts/with-switch.sh dune build @rtl` exited 0. Focused runs for
+`test/common`, `test/primitives/pin_bank`, `test/core/protocol_core`, and
+`test/integration/wrapper` exited 0. The replay fixture now prints
+`dune runtest test/common --force`; that exact command with its recorded environment
+settings also exited 0. No event-driven behavior or test expectation changed in this
+stage.
 
 ### 4. Establish cycle/event adapter conformance
 

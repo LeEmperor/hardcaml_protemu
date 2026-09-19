@@ -1,3 +1,8 @@
+open! Core
+open! Hardcaml
+open! Hardcaml_protemu
+open! Shift_lane_testbench
+
 let%test_unit "P2.5 internal lane preloads, clocks, samples, and completes" =
   let sim = Sim.create (Shift_lane.create (Scope.create ~flatten_design:true ())) in
   let i = Cyclesim.inputs sim in
@@ -32,8 +37,7 @@ let%test_unit "P2.5 internal lane preloads, clocks, samples, and completes" =
     check "leading edge clock" o.pin_value_o (3 land (2 lor expected_bit));
     Cyclesim.cycle sim;
     Cyclesim.cycle sim;
-    if n < 7
-    then check "next bit preloaded" o.pin_value_o ((0xa5 lsr (6 - n)) land 1)
+    if n < 7 then check "next bit preloaded" o.pin_value_o ((0xa5 lsr (6 - n)) land 1)
   done;
   check "transfer complete" o.done_o 1;
   check "received word" o.rx_data_o 0xa5;
@@ -133,8 +137,3 @@ let%test_unit "P2.5 pin conflict and 32-bit boundary" =
   Cyclesim.cycle sim;
   check "32-bit completion" o.done_o 1
 ;;
-open! Core
-open! Hardcaml
-open! Hardcaml_protemu
-open! Shift_lane_testbench
-

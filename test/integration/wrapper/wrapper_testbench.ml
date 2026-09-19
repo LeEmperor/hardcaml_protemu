@@ -1,7 +1,6 @@
 open! Core
 open! Hardcaml
 open! Hardcaml_protemu
-
 module Sim = Cyclesim.With_interface (P0_observable.I) (P0_observable.O)
 
 let int signal = Bits.to_int_trunc !signal

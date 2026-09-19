@@ -1,3 +1,8 @@
+open! Core
+open! Hardcaml
+open! Hardcaml_protemu
+open! Uart_tx_testbench
+
 let%test_unit "P2.7 independent 8N1 receiver sees idle, start, data, and stop" =
   let sim = Sim.create (Uart_tx.create (Scope.create ~flatten_design:true ())) in
   let i = Cyclesim.inputs sim in
@@ -15,10 +20,11 @@ let%test_unit "P2.7 independent 8N1 receiver sees idle, start, data, and stop" =
   Cyclesim.cycle sim;
   i.byte_valid_i := Bits.gnd;
   check "start low on acceptance" o.pins_o 0;
-  let expected = Array.init 10 ~f:(function
-    | 0 -> 0
-    | 9 -> 1
-    | n -> (0xa6 lsr (n - 1)) land 1)
+  let expected =
+    Array.init 10 ~f:(function
+      | 0 -> 0
+      | 9 -> 1
+      | n -> (0xa6 lsr (n - 1)) land 1)
   in
   for cycle = 1 to 80 do
     Cyclesim.cycle sim;
@@ -61,19 +67,19 @@ let%test_unit "P2.7 typed UART descriptor matches hardware frame trace" =
   let model = ref F_model.Shift_engine.idle in
   for cycle = 0 to 81 do
     let command = if cycle = 0 then Some (descriptor, false) else None in
-    i.byte_valid_i := (if cycle = 0 then Bits.vdd else Bits.gnd);
-    model :=
-      F_model.Shift_engine.step
-        !model
-        ~enable:true
-        ~abort:false
-        ~command
-        ~start_event:false
-        ~observed_edge:false
-        ~pin_in:0
-        ~occupied:0
-        ~tx_valid:true
-        ~rx_ready:true;
+    i.byte_valid_i := if cycle = 0 then Bits.vdd else Bits.gnd;
+    model
+    := F_model.Shift_engine.step
+         !model
+         ~enable:true
+         ~abort:false
+         ~command
+         ~start_event:false
+         ~observed_edge:false
+         ~pin_in:0
+         ~occupied:0
+         ~tx_valid:true
+         ~rx_ready:true;
     Cyclesim.cycle sim;
     let expected = if !model.active then !model.pins land 1 else 1 in
     check "typed firmware UART pin" o.pins_o expected;
@@ -81,7 +87,3 @@ let%test_unit "P2.7 typed UART descriptor matches hardware frame trace" =
     check "typed firmware UART done" o.done_o (if !model.done_ then 1 else 0)
   done
 ;;
-open! Core
-open! Hardcaml
-open! Hardcaml_protemu
-open! Uart_tx_testbench

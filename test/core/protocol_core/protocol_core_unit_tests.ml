@@ -1,3 +1,7 @@
+open! Core
+open! Hardcaml
+open! Protocol_core_testbench
+
 let%test_unit "fetch reads the program store through one latency-one port" =
   let sim, store = create () in
   let i = Cyclesim.inputs sim in
@@ -63,6 +67,3 @@ let%test_unit "load requests are refused while running and STOP halts at a bound
   wait_halted 4;
   check_output ~name:"ready again once halted" o.load_ready_o 1
 ;;
-open! Core
-open! Hardcaml
-open! Protocol_core_testbench

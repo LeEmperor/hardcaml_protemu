@@ -1,5 +1,12 @@
+open! Core
+open! Hardcaml
+open! Hardcaml_protemu
+open! Byte_fifo_testbench
+
 let%test_unit "P2.4 full simultaneous pop/push preserves byte order" =
-  let sim = Sim.create (Byte_fifo.create ~depth:4 (Scope.create ~flatten_design:true ())) in
+  let sim =
+    Sim.create (Byte_fifo.create ~depth:4 (Scope.create ~flatten_design:true ()))
+  in
   let i = Cyclesim.inputs sim in
   let o = Cyclesim.outputs sim in
   i.reset_i := Bits.vdd;
@@ -30,7 +37,9 @@ let%test_unit "P2.4 full simultaneous pop/push preserves byte order" =
 ;;
 
 let%test_unit "P2.4 simultaneous queue operations track the independent model" =
-  let sim = Sim.create (Byte_fifo.create ~depth:4 (Scope.create ~flatten_design:true ())) in
+  let sim =
+    Sim.create (Byte_fifo.create ~depth:4 (Scope.create ~flatten_design:true ()))
+  in
   let i = Cyclesim.inputs sim in
   let o = Cyclesim.outputs sim in
   i.reset_i := Bits.vdd;
@@ -41,9 +50,9 @@ let%test_unit "P2.4 simultaneous queue operations track the independent model" =
   for cycle = 0 to 99 do
     let push = if cycle mod 7 < 5 then Some (cycle land 255) else None in
     let pop = cycle mod 5 < 3 in
-    i.push_valid_i := (if Option.is_some push then Bits.vdd else Bits.gnd);
+    i.push_valid_i := if Option.is_some push then Bits.vdd else Bits.gnd;
     i.push_data_i := bits 8 (Option.value push ~default:0);
-    i.pop_ready_i := (if pop then Bits.vdd else Bits.gnd);
+    i.pop_ready_i := if pop then Bits.vdd else Bits.gnd;
     let next, popped, _, _ = F_model.Fifo.step !fifo ~push ~pop in
     (match popped with
      | None -> ()
@@ -56,7 +65,9 @@ let%test_unit "P2.4 simultaneous queue operations track the independent model" =
 ;;
 
 let%test_unit "P2.4 overflow and reset validity" =
-  let sim = Sim.create (Byte_fifo.create ~depth:4 (Scope.create ~flatten_design:true ())) in
+  let sim =
+    Sim.create (Byte_fifo.create ~depth:4 (Scope.create ~flatten_design:true ()))
+  in
   let i = Cyclesim.inputs sim in
   let o = Cyclesim.outputs sim in
   i.reset_i := Bits.vdd;
@@ -80,8 +91,7 @@ let%test_unit "P2.4 overflow and reset validity" =
 let%test_unit "P2.4 all configured FIFO depths preserve ordering" =
   List.iter [ 4; 8; 16 ] ~f:(fun depth ->
     let sim =
-      Sim.create
-        (Byte_fifo.create ~depth (Scope.create ~flatten_design:true ()))
+      Sim.create (Byte_fifo.create ~depth (Scope.create ~flatten_design:true ()))
     in
     let i = Cyclesim.inputs sim in
     let o = Cyclesim.outputs sim in
@@ -103,8 +113,3 @@ let%test_unit "P2.4 all configured FIFO depths preserve ordering" =
     done;
     check "configured queue empty" o.count_o 0)
 ;;
-open! Core
-open! Hardcaml
-open! Hardcaml_protemu
-open! Byte_fifo_testbench
-

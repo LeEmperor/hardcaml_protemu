@@ -1,7 +1,6 @@
 open! Core
 open! Hardcaml
 open! Hardcaml_protemu
-
 module Sim = Cyclesim.With_interface (Protocol_core.I) (Protocol_core.O)
 
 let width = Protocol_core.Config.program_width

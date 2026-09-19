@@ -1,7 +1,7 @@
 # System verification
 
 Status: current implementation updated on 2026-09-19 after the functional-model
-rename; the next-state architecture below is not a claim of completed coverage.
+rename and per-block suite reorganization; new simulation backends remain unimplemented.
 
 This is the enduring source of truth for verification architecture, suite ownership,
 current evidence, and the intended next state. It incorporates the former test
@@ -14,18 +14,18 @@ verification policy rather than maintaining another test architecture.
 
 ## Current state
 
-Paths in this section describe files that exist now. The rename to `f_model` is
-implemented; the proposed per-block suite layout and backend changes are not.
+Paths in this section describe files that exist now. The rename to `f_model` and
+the per-block suite layout are implemented; the proposed backend changes are not.
 
 ### Backend and test inventory
 
 | Question | Answer |
 | --- | --- |
 | OCaml RTL simulation backend | `Hardcaml.Cyclesim` throughout; emitted-Verilog checks use separate tools. |
-| `hardcaml_step_testbench` | Declared `:with-test`, wired into `test/dune`, used by nothing. |
+| `hardcaml_step_testbench` | Declared `:with-test`, not yet used by a suite. |
 | `hardcaml_event_driven_sim` | Same: declared, wired, unused. The adoption is designed but unstarted. |
 | `hardcaml_waveterm`, `alcotest` | Same again. No waveforms are produced and no Alcotest suite exists. |
-| Test styles | 99 `let%expect_test`, 29 `let%test_unit`, one Quickcheck driver built on `base_quickcheck`. |
+| Test styles | 100 `let%expect_test`, 29 `let%test_unit`, one Quickcheck driver built on `base_quickcheck`. |
 | Blocks on the shared harness | One: P2.1 `Pin_bank`. Everything else still runs its own loop. |
 
 Dependency wiring precedes event-driven implementation; a declared dependency is
@@ -33,13 +33,13 @@ not evidence of a running suite.
 
 ### Existing evidence layers
 
-The suite has an independent model library, two test libraries, and a Verilog tier,
+The suite has an independent model library, per-suite RTL test libraries, and a Verilog tier,
 deliberately kept apart so that a disagreement between two of them is evidence rather than a shared mistake.
 
 | Layer | Library | Depends on Hardcaml | Contents |
 | --- | --- | --- | --- |
 | Reference model | `test_protemu_f_model` ([`test/f_model/`](../test/f_model/dune)) | No | 95 expect tests over [`f_model/`](../f_model/dune). |
-| Model/RTL comparison | `test_hardcaml_protemu` ([`test/`](../test/dune)) | Yes | 29 `%test_unit` directed tests, 4 expect tests, the `Env` harness. |
+| Model/RTL comparison | uniquely named libraries under [`test/common/`](../test/common/dune), [`test/primitives/`](../test/primitives), [`test/core/`](../test/core), and [`test/integration/`](../test/integration) | Yes, except generic support | 29 `%test_unit` directed tests, 5 expect tests, and the `Env` harness. |
 | Emitted RTL | none — Dune rules | n/a | iverilog, verilator and yosys checks behind `dune build @rtl`. |
 
 #### Model tests — `test/f_model/`
@@ -67,17 +67,19 @@ the printer. These are the conventions `Env` later formalised.
 
 Two styles coexist here, and the split is the current migration boundary.
 
-**The directed `%test_unit` layer** is still the majority of the RTL evidence:
+**The directed `%test_unit` layer** is still the majority of the RTL evidence. Its
+29 cases retain their original assertions in block-owned files:
 
 | File | Tests | Covers |
 | --- | --- | --- |
-| [`test_primitives.ml`](../test/test_primitives.ml) | 24 | P2.1 to P2.6: pin bank, input events, timing, FIFOs, shift lane, observed transfer, UART. |
-| [`test_protocol_core.ml`](../test/test_protocol_core.ml) | 3 | P3 core fetch/execute against an inline program-store model. |
-| [`test_hardcaml_protemu.ml`](../test/test_hardcaml_protemu.ml) | 2 | The P0 observable wrapper. |
+| [`test/primitives/`](../test/primitives) | 23 | P2.1 to P2.7: pin bank, input events, timing, FIFOs, shift lane, observed transfer, and UART. |
+| [`primitive_demo_unit_tests.ml`](../test/integration/primitive_demo/primitive_demo_unit_tests.ml) | 1 | Concurrent timer/transfer integration. |
+| [`protocol_core_unit_tests.ml`](../test/core/protocol_core/protocol_core_unit_tests.ml) | 3 | P3 core fetch/execute against a local program-store stub. |
+| [`wrapper_unit_tests.ml`](../test/integration/wrapper/wrapper_unit_tests.ml) | 2 | The P0 observable wrapper. |
 
 Each builds a `Cyclesim.With_interface` simulator, assigns inputs by hand, calls
-`Cyclesim.cycle`, and asserts with `[%test_result: int]`. `test_protocol_core.ml`
-additionally carries its own `Program_store_stub`, a test-only stand-in for
+`Cyclesim.cycle`, and asserts with `[%test_result: int]`. The protocol-core
+testbench additionally carries its own `Program_store_stub`, a test-only stand-in for
 `hardcaml_asic`'s `Single_port_ram` following the program-memory contract —
 latency-one reads, output held while disabled, and a poison value after a write or
 for a never-written word — so those tests stay independent of the ASIC library.
@@ -87,14 +89,16 @@ none of which reaches `lib/` or `f_model/`:
 
 | Module | Lines | What it is |
 | --- | --- | --- |
-| [`observation.ml`](../test/observation.ml) | 162 | The unavailable/unspecified/defined distinction, named observation sets, and the first-difference checker. |
-| [`replay.ml`](../test/replay.ml) | 226 | The reproduction record: settings, failing trial, configuration, source identity, rerun command, artifact directory. |
-| [`env.ml`](../test/env.ml) | 618 | The `Device` signature, the runner, monitor plumbing, the Quickcheck driver, the shrinker, and the failure report. |
-| [`pin_bank_env.ml`](../test/pin_bank_env.ml) | 689 | P2.1 described once as a `Device`, plus a bounded generator and an injectable defect. |
+| [`observation.ml`](../test/common/observation.ml) | 162 | The unavailable/unspecified/defined distinction, named observation sets, and the first-difference checker. |
+| [`replay.ml`](../test/common/replay.ml) | 233 | The reproduction record: settings, failing trial, configuration, source identity, rerun command, artifact directory. |
+| [`env.ml`](../test/common/env.ml) | 625 | The `Device` signature, the runner, monitor plumbing, the Quickcheck driver, the shrinker, and the failure report. |
+| [`pin_bank_testbench.ml`](../test/primitives/pin_bank/pin_bank_testbench.ml) | 696 | P2.1 described once as a `Device`, plus a bounded generator and an injectable defect. |
 
-[`test_pin_bank_harness.ml`](../test/test_pin_bank_harness.ml) is the evidence: four
-expect tests covering the checker's validity rules, a directed transcript, a bounded
-Quickcheck run, and the controlled-mismatch reproduction.
+The four preserved harness expect tests now have explicit owners: checker and replay
+fixtures under [`test/common/`](../test/common), and the directed transcript plus
+bounded Quickcheck run under
+[`test/primitives/pin_bank/`](../test/primitives/pin_bank). A fifth common expect
+test checks artifact creation and cleanup from a Dune runner directory.
 
 #### Emitted RTL — `tinytapeout/test/`
 
@@ -120,7 +124,7 @@ nothing else may advance the simulation. `Env.Make` then yields `directed` for a
 expect transcript and `quickcheck`/`require_agreement` for generated scenarios.
 
 The pin-bank state reference lives in [`f_model/pin_bank.ml`](../f_model/pin_bank.ml),
-not in the testbench. `pin_bank_env.ml` adds the port-level acceptance/rejection
+not in the testbench. `pin_bank_testbench.ml` adds the port-level acceptance/rejection
 contract and sticky conflict behavior without calling RTL implementation helpers.
 The adapter reads separate `Before` and `After` output maps; `settle` also invokes
 `Cyclesim.cycle_check` before `cycle_before_clock_edge`. Each side has its own monitor
@@ -170,9 +174,9 @@ both are recorded rather than absorbed:
   skipped rather than dropped, so the hole is visible. Moving it into
   `required_post_edge` is the single change that would turn it into a failure.
 
-Nothing else has been migrated. The existing `%test_unit` tests in
-[`test_primitives.ml`](../test/test_primitives.ml) and the model tests under
-`test/f_model/` still use their own loops, which P1.6 does not require changing.
+The other primitive, core, and integration tests are structurally migrated into
+block-owned suites but still use their existing directed Cyclesim loops. Structural
+relocation does not claim shared-harness adoption or new generated coverage.
 
 ### Current limitations and evidence boundaries
 
@@ -554,10 +558,10 @@ Historical run reports are not fresh results for later source revisions.
 | Obligation | Current evidence/owner | Next evidence still owed |
 | --- | --- | --- |
 | ISA, encoding, reference cycle schedule, firmware examples | `test/f_model/`, 95 expect tests | Preserve independently; extend with new contracts |
-| Pin bank cycle agreement and harness diagnostics | `test_pin_bank_harness.ml`; recorded 200 trials and seed sweeps above | Move without losing validity/replay fixtures; per-module paired suite |
-| Other primitive cycle behavior | 24 directed tests in `test_primitives.ml` | Per-primitive shared testbenches and bounded generated properties |
-| Core memory/fetch/execute behavior | Three directed tests in `test_protocol_core.ml` | Per-core paired suite, broader instruction/stall/reset cases as contracts land |
-| P0 wrapper | Two OCaml tests plus `@rtl` wrapper checks | Integration suite, later host/load/recovery evidence |
+| Pin bank cycle agreement and harness diagnostics | `test/primitives/pin_bank/` plus generic fixtures in `test/common/`; recorded 200 trials and seed sweeps above | Extend properties as the block contract grows |
+| Other primitive cycle behavior | 23 block-owned directed tests under `test/primitives/` and one integration case under `test/integration/primitive_demo/` | Add bounded generated properties where they provide distinct evidence |
+| Core memory/fetch/execute behavior | Three directed tests in `test/core/protocol_core/` | Broader instruction/stall/reset cases as contracts land |
+| P0 wrapper | Two tests in `test/integration/wrapper/` plus `@rtl` wrapper checks | Later host/load/recovery evidence |
 | P2.2 external phase and pulse capture | No timed suite | Two-state Evsim sweep with explicit sampling/pulse assumptions |
 | P2.6 event-to-engine/core-to-pin latency | Cycle behavior only; integration incomplete | Timed integrated path and independent timestamped monitor |
 | Unknown propagation / resolved external buses | No four-state suite | Named properties, explicit X/Z model, targeted tests |

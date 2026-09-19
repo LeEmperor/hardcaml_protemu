@@ -1,4 +1,34 @@
+open! Core
+open! Pin_bank_testbench
+
 let fixture_settings = Replay.Settings.create ~seed:20260919 ~trials:64 ~size:12
+
+let%expect_test "artifact paths are valid from a dune runner directory" =
+  let directory = [%string "protemu-artifacts-test-%{Replay.Posix.getpid ()#Int}"] in
+  let path =
+    Replay.Artifacts.write_to
+      ~directory
+      ~test:"artifact_path"
+      ~settings:(Replay.Settings.create ~seed:1 ~trials:1 ~size:1)
+      ~trial:0
+      ~contents:"artifact path check\n"
+    |> Option.value_exn
+  in
+  print_s
+    [%message
+      (Filename.is_relative path : bool)
+        (String.equal (Filename.dirname path) directory : bool)
+        (Stdlib.Sys.file_exists path : bool)];
+  Stdlib.Sys.remove path;
+  Replay.Posix.rmdir directory;
+  [%expect
+    {|
+    (("Filename.is_relative path" true)
+     ("String.equal (Filename.dirname path) directory" true)
+     ("Stdlib.Sys.file_exists path" true))
+    |}]
+;;
+
 let%expect_test "a controlled mismatch is found, shrunk, and reproduced from its seed" =
   (* The same generator, the same seed, the same settings; only the environment's
      reference is wrong. No artifact is written: this run is expected and a regression
@@ -87,5 +117,3 @@ let%expect_test "a controlled mismatch is found, shrunk, and reproduced from its
         ~same_trial:(Option.equal Int.equal first.replay.trial again.replay.trial : bool)];
   [%expect {| ((same_first_mismatch true) (same_trial true)) |}]
 ;;
-open! Core
-open! Pin_bank_testbench

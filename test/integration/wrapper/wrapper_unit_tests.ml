@@ -1,3 +1,8 @@
+open! Core
+open! Hardcaml
+open! Hardcaml_protemu
+open! Wrapper_testbench
+
 let%test_unit "P0 pin/timer command commits at k+n" =
   let sim = Sim.create (P0_observable.create (Scope.create ~flatten_design:true ())) in
   let i = Cyclesim.inputs sim in
@@ -58,6 +63,3 @@ let%test_unit "P0 rejects delay zero and disable aborts safely" =
   check_output ~name:"disable releases pins" o.pin_oe_o 0;
   check_output ~name:"not ready while disabled" o.ready_o 0
 ;;
-open! Core
-open! Hardcaml
-open! Wrapper_testbench

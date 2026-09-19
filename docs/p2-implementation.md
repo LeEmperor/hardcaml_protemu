@@ -9,7 +9,7 @@ evidence, not a mapped CMOS5L cost report.
 
 | Block | Interface and behavior | Evidence |
 | --- | --- | --- |
-| [`Pin_bank`](../lib/pin_bank.ml) | Eight registered value/enable pins; masked commits; software and one engine claim masks; conflicting claims/writes are refused with sticky conflict status. Open-drain writes force data low regardless of supplied data. Reset, abort, and disable release outputs and claims. | [`test_primitives.ml`](../test/test_primitives.ml): model comparison, masking, open drain, conflict, reset/disable/abort. |
+| [`Pin_bank`](../lib/pin_bank.ml) | Eight registered value/enable pins; masked commits; software and one engine claim masks; conflicting claims/writes are refused with sticky conflict status. Open-drain writes force data low regardless of supplied data. Reset, abort, and disable release outputs and claims. | [`test/primitives/pin_bank/`](../test/primitives/pin_bank): model comparison, masking, open drain, conflict, reset/disable/abort. |
 | [`Input_events`](../lib/input_events.ml) | Two synchronizer stages, one registered snapshot, rise/fall pulses, six sticky event bits, set-wins acknowledgement, and per-bit overflow. | Model comparison over 100 deterministic cycles, set/ack/overflow and reset tests. |
 | [`Timing`](../lib/timing.ml) | 16-bit delay, level/edge wait with optional timeout, and a free-running periodic tick with phase restart. A delay accepted at edge `k` completes at `k+n`; zero is rejected. Immediate level success does not produce a delayed completion event, matching the model. | Reference-machine comparison, exact delay, stale edge, event-over-timeout, periodic activity during waits, and phase restart tests. |
 | [`Primitive_demo`](../lib/primitive_demo.ml) | Composes a wait and an independent transfer lane on the same clock without gating the lane on timer busy. | Transfer output changes and completes while the core wait remains active. |
@@ -60,11 +60,9 @@ Re-run in this checkout on 2026-09-19, through the pinned switch:
 ```
 
 `@runtest` and `@lint` pass. **`@fmt` fails**: now that `ocamlformat` is
-installed it can run for the first time, and it reports diffs in thirteen
-committed files — `lib/pin_bank.ml`, `input_events.ml`, `timing.ml`,
-`primitive_demo.ml`, `byte_fifo.ml`, `shift_lane.ml`, `observed_transfer.ml`,
-`uart_tx.ml`, `f_model/fifo.ml`, `f_model/shift_engine.ml`,
-`test/test_primitives.ml`, `bin/generate_p2.ml`, and `bin/asic_bundle.ml`. The
+installed it can run for the first time, and it reports diffs across the P2 RTL/model
+sources, the block-owned suites under `test/primitives/`, `bin/generate_p2.ml`, and
+`bin/asic_bundle.ml`. The
 P2 sources have never been through the formatter. That is unrelated to their
 behavior, but it is an open cleanup, not a passing check.
 

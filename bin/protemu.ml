@@ -48,27 +48,49 @@ let flag_arg name = function
 let bootstrap_toolchain = "tinytapeout/scripts/bootstrap-toolchain.sh"
 let ocaml_deps = "scripts/ocaml-deps.sh"
 
+(* The canonical ASIC flow. Every command here that implements or hardens goes through
+   this one script, so there is a single implementation path and a single set of exit
+   codes. See docs/flow_migration.md. *)
+let flow_script = "flow.sh"
+
 let bootstrap =
   Command.basic
     ~summary:"Converge the OCaml and flow environments on the lockfile"
     ~readme:(fun () ->
       "Checks the opam switch and dependencies, then creates or updates .venv, \
-       .venv-precheck, the PDK and the support-tools checkout. Rerun after a pull that \
-       changes toolchain.lock or the opam file. Installing into the opam switch itself \
-       needs ./bootstrap.sh --install-deps.")
+       .venv-precheck, the PDK, the support-tools checkout and the pinned LibreLane \
+       image. Rerun after a pull that changes toolchain.lock or the opam file. This \
+       command only reports on the opam switch; ./bootstrap.sh is what installs into it. \
+       It prepares an environment and stages no design: the legacy project is \
+       -legacy-project, and implementation is ./flow.sh.")
     (let%map_open.Command offline =
        flag "offline" no_arg ~doc:" reuse the environment; fetch and install nothing"
      and check = flag "check" no_arg ~doc:" validate and change nothing"
      and no_container =
        flag "no-container" no_arg ~doc:" skip the Docker/Podman prerequisite"
+     and legacy_project =
+       flag
+         "legacy-project"
+         no_arg
+         ~doc:
+           " also stage and configure the legacy P0 project (./flow.sh does not use it)"
+     (* ./bootstrap.sh checks the OCaml layer before it can run dune at all. Without this,
+        that check runs a second time here: same opam calls, same output, one invocation.
+        Each layer is checked exactly once per bootstrap. *)
+     and skip_ocaml_check =
+       flag
+         "skip-ocaml-check"
+         no_arg
+         ~doc:" the caller already checked the OCaml layer (./bootstrap.sh does)"
      in
      fun () ->
-       if not (run ocaml_deps []) then exit 2;
+       if (not skip_ocaml_check) && not (run ocaml_deps []) then exit 2;
        exec
          bootstrap_toolchain
          (flag_arg "offline" offline
           @ flag_arg "check" check
-          @ flag_arg "no-container" no_container))
+          @ flag_arg "no-container" no_container
+          @ flag_arg "legacy-project" legacy_project))
 ;;
 
 (* Activation is optional for the scripts but is what a new terminal lacks, so it is
@@ -108,21 +130,76 @@ let doctor =
        if not (ocaml_ok && flow_ok) then exit 2)
 ;;
 
-let check =
+let flow =
   Command.basic
-    ~summary:"RTL regression: dune build, tests, RTL checks, staging"
-    (Command.Param.return (fun () -> exec "tinytapeout/scripts/check-p0.sh" []))
+    ~summary:"Run the adopted ASIC flow (an alias for ./flow.sh)"
+    ~readme:(fun () ->
+      "Passes the named steps to ./flow.sh and returns its exit status unchanged. With \
+       no step it runs the whole flow, hardening included, which takes hours.\n\n\
+       ./flow.sh --help is the help for the steps and the PROTEMU_* overrides; this \
+       alias cannot show it, because -help is read by this command line first. ./flow.sh \
+       is the canonical spelling and the one the documentation uses: the alias exists so \
+       a `protemu` habit still reaches the same runner, and it needs neither dune nor an \
+       activated switch.")
+    (let%map_open.Command steps = anon (sequence ("STEP" %: string)) in
+     fun () -> exec flow_script steps)
 ;;
 
-let stage =
-  Command.basic
-    ~summary:"Regenerate RTL and stage the Tiny Tapeout project"
-    (Command.Param.return (fun () -> exec "tinytapeout/scripts/stage-project.sh" []))
-;;
-
+(* The adopted path and the legacy path both harden, but from different inputs, so one
+   name cannot mean both. [harden] is the adopted physical run; the staged-project one
+   keeps its script and an explicitly legacy name. *)
 let harden =
   Command.basic
-    ~summary:"Mapped CMOS5L synthesis and place-and-route, gated on timing"
+    ~summary:"Harden the emitted bundle: an alias for ./flow.sh run"
+    ~readme:(fun () ->
+      "Runs the adopted flow's physical step on the bundle in $PROTEMU_FLOW_OUT: mapped \
+       CMOS5L synthesis and place-and-route, into a new run directory. It does not emit \
+       the bundle first, so `./flow.sh build emit preflight` (or the whole `./flow.sh`) \
+       comes before it.\n\n\
+       This used to harden the legacy staged project, which is a different input. That \
+       command is now `legacy-harden`, and its -tag and -no-docker flags belong to it: \
+       they are rejected here rather than reinterpreted.")
+    (let%map_open.Command no_docker =
+       flag "no-docker" no_arg ~doc:" (legacy only) use a native LibreLane"
+     and tag =
+       flag
+         "tag"
+         (optional string)
+         ~doc:"NAME (legacy only) label for the archived previous run"
+     in
+     fun () ->
+       (* Translating these would be a guess. The adopted runner is dockerized with the
+          pinned image, and it never archives a previous run to make room for this one:
+          each attempt already gets its own directory under $PROTEMU_RUNS. *)
+       let reject flag ~spelling reason =
+         eprintf "error: %s is a legacy-harden flag\n" flag;
+         eprintf "       %s\n" reason;
+         eprintf "       Use: dune exec protemu -- legacy-harden %s\n" spelling;
+         exit 2
+       in
+       if no_docker
+       then
+         reject
+           "-no-docker"
+           ~spelling:"-no-docker"
+           "the adopted run uses the pinned LibreLane image from toolchain.lock.";
+       Option.iter tag ~f:(fun tag ->
+         reject
+           "-tag"
+           ~spelling:(sprintf "-tag %s" tag)
+           "the adopted run gives every attempt its own directory; none is archived.");
+       exec flow_script [ "run" ])
+;;
+
+let legacy_harden =
+  Command.basic
+    ~summary:"Legacy: harden the staged project (tinytapeout/build/p0-staged)"
+    ~readme:(fun () ->
+      "The pre-adoption physical path: it hardens the staged legacy P0 project built \
+       from the committed RTL and the hand-maintained info.yaml and src/config.json, not \
+       an emitted bundle. It needs `./bootstrap.sh --legacy-project` to have staged that \
+       project. Kept until the adopted route is validated; new work belongs in \
+       ./flow.sh.")
     (let%map_open.Command no_docker =
        flag "no-docker" no_arg ~doc:" use a native LibreLane"
      and tag =
@@ -135,9 +212,36 @@ let harden =
           @ Option.value_map tag ~default:[] ~f:(fun tag -> [ "--tag"; tag ])))
 ;;
 
+let check =
+  Command.basic
+    ~summary:"RTL regression on the committed RTL: build, tests, lint, staging"
+    ~readme:(fun () ->
+      "Legacy inputs: the committed tinytapeout/src RTL and the hand-maintained \
+       info.yaml and src/config.json. It runs dune build, the Hardcaml tests, the \
+       wrapper simulation, Verilator lint and generic Yosys synthesis, then stages the \
+       legacy project. The adopted bundle is checked instead by \
+       tinytapeout/scripts/check-adopted-bundle.py, and built by ./flow.sh build emit.")
+    (Command.Param.return (fun () -> exec "tinytapeout/scripts/check-p0.sh" []))
+;;
+
+let stage =
+  Command.basic
+    ~summary:"Legacy: regenerate RTL and stage the Tiny Tapeout project"
+    ~readme:(fun () ->
+      "Writes tinytapeout/build/p0-staged from the committed RTL and the hand-maintained \
+       metadata and configuration, for legacy-harden and precheck. The adopted flow \
+       reads none of it: ./flow.sh emit renders its inputs from the declaration in \
+       bin/asic_bundle.ml.")
+    (Command.Param.return (fun () -> exec "tinytapeout/scripts/stage-project.sh" []))
+;;
+
 let precheck =
   Command.basic
-    ~summary:"Tiny Tapeout precheck on the current hardening run (needs Nix)"
+    ~summary:"Legacy: Tiny Tapeout precheck on a legacy hardening run (needs Nix)"
+    ~readme:(fun () ->
+      "Reads the run left by legacy-harden under tinytapeout/runs. The adopted flow runs \
+       the same upstream precheck as part of ./flow.sh postcheck, against its own run \
+       directory, and needs no separate command.")
     (Command.Param.return (fun () -> exec "tinytapeout/scripts/precheck.sh" []))
 ;;
 
@@ -147,13 +251,16 @@ let command =
     ~readme:(fun () ->
       "First time on a machine or clone: ./bootstrap.sh\n\
        Each new shell: source env.sh\n\
+       The ASIC flow: ./flow.sh (./flow.sh --help)\n\
        See docs/environment.md.")
     [ "bootstrap", bootstrap
     ; "doctor", doctor
+    ; "flow", flow
+    ; "harden", harden
     ; "check", check
     ; "stage", stage
-    ; "harden", harden
     ; "precheck", precheck
+    ; "legacy-harden", legacy_harden
     ]
 ;;
 

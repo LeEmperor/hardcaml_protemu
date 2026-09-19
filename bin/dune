@@ -22,6 +22,15 @@
 ; bound by the env stanza in the root dune file, so nothing is installed.
 
 (executable
+ (name asic_bundle)
+ (libraries core hardcaml hardcaml_asic hardcaml_protemu)
+ (modules asic_bundle)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style)))
+
+(executable
  (name protemu)
  (libraries
   core
@@ -30,6 +39,17 @@
   core_unix.filename_unix
   core_unix.sys_unix)
  (modules protemu)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))
+
+; Direct P2 block emitter. Kept separate from the P0 generator and its wrapper.
+
+(executable
+ (name generate_p2)
+ (libraries core hardcaml jane_rope hardcaml_protemu)
+ (modules generate_p2)
  (preprocess
   (pps ppx_jane))
  (lint

@@ -331,8 +331,15 @@ count = first("design__instance__count")
 util = first("design__instance__utilization", "design__core__utilization")
 wirelength = first("route__wirelength", "detailedroute__route__wirelength")
 
+# Detailed routing reports its convergence history as well as its result:
+# route__drc_errors__iter:0..N are the violations left after each routing pass,
+# and route__drc_errors is what the router finished with. A run that starts at
+# 17 and ends at 0 is a router doing its job, not a design with 17 errors, so
+# the per-iteration keys are excluded. Without this every successful run whose
+# first routing pass left anything behind is reported as not closing.
 drc = {k: v for k, v in rows.items()
-       if "drc" in k.lower() and ("error" in k.lower() or "violation" in k.lower())}
+       if "drc" in k.lower() and ("error" in k.lower() or "violation" in k.lower())
+       and "__iter:" not in k}
 
 summary = {
     "run_tag": os.environ["RUN_TAG"],

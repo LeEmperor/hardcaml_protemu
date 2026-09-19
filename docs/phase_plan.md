@@ -93,9 +93,10 @@ phase numbers describe gates and dependencies, not the order work happens in:
 
 - **P0.6 is adopted; P0.7 remains deferred.** P0.6 adopted the then-current
   observable top after ASIC P5.1 became available. P0.7 follows with registered
-  program memory. The existing `tinytapeout/` scripts remain the legacy physical
-  path until P0.5b reruns that path from the adopted bundle. P0 stays open until
-  those physical and memory checks complete.
+  program memory. Both physical runs are done: P0.5a recorded the legacy
+  scripts' own result and P0.5b reran the same design from the adopted bundle,
+  so the `tinytapeout/` scripts are now a retired baseline rather than the
+  physical path. P0 stays open on P0.7's memory evidence alone.
 - **P3 splits at the adoption boundary.** P3.1a (program-store consumer logic against
   the contract port) and P3.2–P3.5 proceed without adoption; only P3.1b
   (context-registered `Single_port_ram` at the top) waits for P0.6/P0.7.
@@ -144,7 +145,7 @@ results. Simulation work can progress while the physical environment is prepared
 The harness may issue typed commands directly; runtime loading and a full control
 core are P3 deliverables. This early demonstration does not complete baseline UART.
 Its functional work does not wait for the ASIC APIs, an SRAM macro, or Workbench.
-Full P0 closure also requires P0.5b and P0.7 evidence below.
+Full P0 closure now requires only P0.7 evidence below; P0.5b has its record.
 
 ## 3. P0 — Make the tool path real
 
@@ -184,28 +185,49 @@ with the first pin/timer work in P1/P2.
   mapped CMOS5L synthesis remains to be run. Revisions and staging are recorded in
   [`toolchain.lock`](../tinytapeout/toolchain.lock) and the
   [P0 experiment record](../tinytapeout/reports/2026-09-14-p0-tool-path.md).
-- [ ] **P0.5 — Complete the first physical run.** Split at the adoption boundary;
+- [x] **P0.5 — Complete the first physical run.** Split at the adoption boundary;
   P0.5 is checked only when both parts are.
-  - [ ] **P0.5a — Legacy physical run.** Using the existing `tinytapeout/` scripts,
+  *Done:* both parts have records; see each below.
+  - [x] **P0.5a — Legacy physical run.** Using the existing `tinytapeout/` scripts,
     run placement/routing, timing, required physical checks, precheck, and a
     gate-level wrapper test for the small circuit. Save an
     [experiment record](../tinytapeout/reports/README.md) labeled legacy, with
     commands, exact inputs, artifacts, results, and remaining limitations.
     Evidence: that record. This satisfies the first working slice's physical
     step, not the P0 exit gate.
-  - [ ] **P0.5b — Adopted-bundle physical run.** After P0.6, repeat P0.5a's run
+    *Done:* the [legacy physical record](../tinytapeout/reports/2026-09-19-p0.5a-legacy-physical.md)
+    covers the 2026-09-19 run at source `7e29ecd` from a clean tree. The design
+    closes on all three reported corners (worst setup 11.3135 ns, worst hold
+    0.15566 ns, no total negative slack); routing DRC converged to zero, Magic
+    DRC, LVS and antenna are zero, precheck passes all nine rows, and the
+    gate-level wrapper test passes. Producing it required three workarounds on
+    that path, recorded in the same note: `harden-cmos5l.sh` counted the
+    router's `route__drc_errors__iter:N` convergence history as violations and
+    reported a false "does not close" (fixed here, and re-applied to the
+    preserved metrics); `tinytapeout/test/Makefile` omits the PDK's
+    `sg13cmos5l_udp.v`, so the gate-level target cannot elaborate a design with
+    flops; and that target assumes a host `iverilog` this machine no longer
+    has. Only the first is fixed in the repository.
+  - [x] **P0.5b — Adopted-bundle physical run.** After P0.6, repeat P0.5a's run
     from the emitted bundle, with scripts as bundle consumers (no library runner
     is required). Evidence: a new record linked to the build manifest, with
     source sets and generated configuration checked against the declaration and
     any differences from P0.5a explained.
-    *Progress:* [`./flow.sh`](../flow.sh), its orchestration in
-    [`adopted-flow.sh`](../tinytapeout/scripts/adopted-flow.sh), and the
-    [adoption guide](asic-adoption.md) provide consumer-owned provisioning,
-    preflight, physical execution, postcheck, collection, and reporting as one
-    command path, with per-attempt run records and orchestration checks
-    ([flow_migration.md](flow_migration.md)). That is interface work: the full
-    run and its physical evidence remain, and P0.5b does not move until they
-    exist.
+    *Done:* the [adopted physical record](../tinytapeout/reports/2026-09-19-p0.5b-adopted-physical.md)
+    covers build identity `5edf30f9…` / run `05f650428c…`, with curated
+    artifacts at [`flow_results/20260918-230920-05f65042`](../flow_results/20260918-230920-05f65042/README.md).
+    `./flow.sh` ran `build → emit → preflight → run → postcheck → collect →
+    report → archive` unattended. Worst setup 15.5891 ns and worst hold
+    0.14745 ns with no unconstrained mode; DRC, LVS, antenna, all nine precheck
+    rows and the gate-level wrapper test pass; inferred latches, unmapped
+    instances and synthesis errors are zero. Differences from P0.5a are
+    explained in the record and trace to one cause: the legacy configuration
+    supplies no SDC, so its slack figures describe LibreLane's defaults rather
+    than this design's declared constraints, and the two numbers are not
+    directly comparable. The run predates the `Tt_cmos5l` template adoption,
+    but re-emitting from the current declaration at `7e29ecd` produces
+    byte-identical `config.json`, `top.sdc`, `info.yaml` and RTL, so it still
+    describes what this repository emits today.
 - [x] **P0.6 — Adopt the ASIC project declaration.** Integrate the planned
   `Project`/`Elaboration_context`/`Build` path with the observable circuit and
   emulator-owned wrapper. Declare TT harness plus CMOS5L technology, clocks,
@@ -221,7 +243,8 @@ with the first pin/timer work in P1/P2.
   pinning and emission. [`check-adopted-bundle.py`](../tinytapeout/scripts/check-adopted-bundle.py)
   passes repeatable emission, metadata and configuration conflicts, and the
   existing wrapper regression, Verilator lint, and generic synthesis against
-  emitted RTL in the pinned LibreLane image. P0.5b tracks the physical rerun.
+  emitted RTL in the pinned LibreLane image. P0.5b has since recorded the
+  physical rerun.
 - [ ] **P0.7 — Exercise registered program memory.** After P0.6 and library
   backend conformance, elaborate a small load/readback design using context-
   registered `Single_port_ram` and an explicitly selected flop implementation.

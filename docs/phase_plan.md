@@ -277,14 +277,49 @@ bundle, or synthesis alone does not establish physical closure.
   raises the sticky queue fault; a transfer descriptor is validated and latched but
   not executed, which is P2.5. The module is named `Operation` rather than
   `Command` only because `Core.Command` shadows that name inside the library.
-- [ ] **P1.3 — Build the first firmware helpers.** Add labels, validation, and
+- [x] **P1.3 — Build the first firmware helpers.** Add labels, validation, and
   helpers for UART TX, a mode-0 SPI exchange, and explicit I2C drive/sample/wait
   sequences. Evidence: model traces show the expected transactions and record
   operation counts and response latency. No textual DSL is required.
-  *Progress:* [`firmware_uart.ml`](../model/firmware_uart.ml) supplies a typed,
-  validated 8N1 TX descriptor and matches the Hardcaml waveform in
-  [`test_primitives.ml`](../test/test_primitives.ml). SPI/I2C helpers, labels, and
-  operation/latency records remain.
+  Evidence: [`firmware.ml`](../model/firmware.ml) is the labeled sequence
+  library: steps, label uniqueness, structural validation of every operation
+  against the rule the machine applies at acceptance, a board model for the device
+  on the other end, and a runner that records each operation's offer, acceptance,
+  and completion edges beside a per-edge log of what the bank drove and what the
+  input front end presented. [`firmware_uart.ml`](../model/firmware_uart.ml)
+  builds the 8N1 frame two ways, as one transfer descriptor and as a bit-banged
+  sequence; [`firmware_spi.ml`](../model/firmware_spi.ml) builds a mode-0 exchange
+  against an independent target that launches on the falling edge; and
+  [`firmware_i2c.ml`](../model/firmware_i2c.ml) builds a single-master write
+  transaction from open-drain writes, acknowledge samples, and clock-stretch level
+  waits, against a target that acknowledges by address and can hold the clock
+  down. [`test_firmware.ml`](../test/model/test_firmware.ml) holds the traces and
+  the recorded costs, at half and quarter period four:
+
+  | Sequence | Operations | Cycles | Max response |
+  | --- | --- | --- | --- |
+  | UART 8N1 transmit | 22 | 88 | 7 |
+  | SPI mode-0 eight-bit exchange | 36 | 72 | 3 |
+  | I2C write, address plus one byte | 105 | 224 | 10 |
+
+  The same UART frame as one `Configure_transfer` is a single operation, and the
+  engine then occupies eighty cycles without the core; the bit-banged sequence and
+  the descriptor run through [`shift_engine.ml`](../model/shift_engine.ml) both
+  decode to the transmitted byte under an independent bit-center receiver. That
+  pair of numbers is what P1.4 needs to weigh an instruction stream against a
+  transfer engine. An I2C acknowledge slot's clock phase costs 14 cycles against
+  an ordinary bit slot's 6 while the target stretches for 12, and a target that
+  stretches past the timeout produces `Wait_timeout` rather than a blind clock. On
+  a bus with no target the pull-ups hold both lines high and every acknowledge
+  slot reads a one, so nothing infers a bus level from what it meant to drive.
+  *Carried forward:* a label is a program point that structures the trace and its
+  per-region counts, not a branch target, because no branch operation exists until
+  P1.5 chooses the encoding. Sampling a pin is a trace marker rather than an
+  operation, since reading one into a register needs the register file and
+  input-read operation of P1.4 and P1.5. The runner offers one operation per edge
+  and nothing fetches or decodes, so every cycle count above is a floor that P3.2
+  can only raise. The SPI and I2C targets are model-side evidence; independent
+  peer hardware and the full baseline modes are P4.
 - [ ] **P1.4 — Compare instruction and storage candidates.** Evaluate 16-bit
   instructions with extensions against fixed 32-bit instructions using the same
   examples. Use the settled 1RW latency-one memory contract; record memory-word

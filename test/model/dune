@@ -1,4 +1,4 @@
-; Tests for the reference execution model (phase_plan.md P1.1 and P1.2).
+; Tests for the reference execution model (phase_plan.md P1.1 to P1.3).
 ;
 ; A separate library from test/, and with no hardcaml dependency, for the same reason
 ; model/ is separate from lib/: if the model and the RTL shared a harness they could share

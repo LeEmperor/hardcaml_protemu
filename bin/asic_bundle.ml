@@ -1,51 +1,27 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
 (* Module: "asic_bundle.ml" *)
-(* ASIC project declaration for the current Tiny Tapeout observable top. *)
+(* ASIC project declaration for the current Tiny Tapeout observable top.
+
+   Everything the Tiny Tapeout CMOS5L template fixes -- the wrapper ports, the LibreLane
+   template settings and the reset and pad-gating idiom -- comes from Tt_cmos5l. What is
+   left below is this chip: which core it wraps, how its pins are used, how fast it runs,
+   and what it declares as its own source inputs. *)
 
 open! Core
 open! Hardcaml
 open! Hardcaml_asic
 open! Hardcaml_protemu
 
-module I = struct
-  type 'a t =
-    { ui_in : 'a [@bits 8]
-    ; uio_in : 'a [@bits 8]
-    ; ena : 'a
-    ; clk : 'a
-    ; rst_n : 'a
-    }
-  [@@deriving hardcaml]
-end
-
-module O = struct
-  type 'a t =
-    { uo_out : 'a [@bits 8]
-    ; uio_out : 'a [@bits 8]
-    ; uio_oe : 'a [@bits 8]
-    }
-  [@@deriving hardcaml]
-end
-
 module Design = struct
-  module I = I
-  module O = O
+  module I = Tt_cmos5l.I
+  module O = Tt_cmos5l.O
 
   let name = "tt_um_leemperor_hardcaml_protemu"
 
   let create context (i : _ I.t) =
     let open Signal in
-    (* Match the legacy wrapper: asynchronous assertion, two clock edges of
-       synchronous release, and immediate pad gating on reset or disable. *)
-    let reset_sync =
-      reg_fb
-        (Reg_spec.create ~clock:i.clk ~reset:((~:) i.rst_n) ())
-        ~reset_to:(Bits.of_int_trunc ~width:2 3)
-        ~width:2
-        ~f:(fun previous -> concat_msb [ bit previous ~pos:0; zero 1 ])
-    in
-    let core_reset = bit reset_sync ~pos:1 in
+    let core_reset = Tt_cmos5l.synchronised_reset ~clock:i.clk ~rst_n:i.rst_n () in
     let core =
       P0_observable.create
         (Elaboration_context.scope context)
@@ -58,20 +34,16 @@ module Design = struct
         ; pin_oe_i = concat_msb [ zero 7; bit i.ui_in ~pos:5 ]
         }
     in
+    (* The status byte is held low through the core reset as well, so a reader cannot
+       mistake the reset state of the timer for a command result. *)
     let pads_enabled = i.rst_n &: i.ena in
     { O.uo_out =
-        mux2
-          (pads_enabled &: (~:) core_reset)
+        Tt_cmos5l.gate
+          ~enable:(pads_enabled &: (~:) core_reset)
           (concat_msb
-             [ core.rejected_o
-             ; core.done_o
-             ; core.busy_o
-             ; core.ready_o
-             ; core.timer_o
-             ])
-          (zero 8)
-    ; uio_out = mux2 pads_enabled core.pins_o (zero 8)
-    ; uio_oe = mux2 pads_enabled core.pin_oe_o (zero 8)
+             [ core.rejected_o; core.done_o; core.busy_o; core.ready_o; core.timer_o ])
+    ; uio_out = Tt_cmos5l.gate ~enable:pads_enabled core.pins_o
+    ; uio_oe = Tt_cmos5l.gate ~enable:pads_enabled core.pin_oe_o
     }
   ;;
 end
@@ -93,34 +65,7 @@ let pinout : Pinout.t =
       { Pinout.bank; bit; description }))
 ;;
 
-let overrides : Flow.Librelane.Override.t list =
-  let reason = "P0 CMOS5L template b86a2a781484bcab7ba522dc5de540086695a430" in
-  List.map
-    [ "PL_TARGET_DENSITY_PCT", `Int 60
-    ; "PL_RESIZER_HOLD_SLACK_MARGIN", `Float 0.1
-    ; "GRT_RESIZER_HOLD_SLACK_MARGIN", `Float 0.05
-    ; "LINTER_INCLUDE_PDK_MODELS", `Int 1
-    ; "RUN_KLAYOUT_XOR", `Int 0
-    ; "RUN_KLAYOUT_DRC", `Int 0
-    ; "DESIGN_REPAIR_BUFFER_OUTPUT_PORTS", `Int 0
-    ; "TOP_MARGIN_MULT", `Int 1
-    ; "BOTTOM_MARGIN_MULT", `Int 1
-    ; "LEFT_MARGIN_MULT", `Int 6
-    ; "RIGHT_MARGIN_MULT", `Int 6
-    ; "GRT_ALLOW_CONGESTION", `Int 1
-    ; "FP_IO_HLENGTH", `Int 2
-    ; "FP_IO_VLENGTH", `Int 2
-    ; "FP_PDN_VPITCH", `Float 50.
-    ; "FP_PDN_VWIDTH", `Float 2.1
-    ; "RUN_CTS", `Int 1
-    ; "FP_PDN_MULTILAYER", `Int 0
-    ; "MAGIC_DEF_LABELS", `Int 0
-    ; "MAGIC_WRITE_LEF_PINONLY", `Int 1
-    ]
-    ~f:(fun (key, value) -> { Flow.Librelane.Override.key; value; reason })
-;;
-
-let project ?(overrides = overrides) () =
+let project ?(overrides = Tt_cmos5l.overrides ()) () =
   Project.create
     ~name:"protemu_observable"
     ~metadata:
@@ -177,7 +122,7 @@ let check_conflicts () =
         { key; value = `Int 1; reason = "negative integration check" }
       in
       let result =
-        project ~overrides:(conflicting :: overrides) ()
+        project ~overrides:(Tt_cmos5l.overrides ~extra:[ conflicting ] ()) ()
         |> Or_error.bind ~f:Project.elaborate_for_flow
       in
       match result with

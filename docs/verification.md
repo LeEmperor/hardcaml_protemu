@@ -1,7 +1,7 @@
 # System verification
 
-Status: current implementation surveyed on 2026-09-19; the next-state architecture
-below is the migration target, not a claim of completed coverage.
+Status: current implementation updated on 2026-09-19 after the functional-model
+rename; the next-state architecture below is not a claim of completed coverage.
 
 This is the enduring source of truth for verification architecture, suite ownership,
 current evidence, and the intended next state. It incorporates the former test
@@ -14,8 +14,8 @@ verification policy rather than maintaining another test architecture.
 
 ## Current state
 
-Paths in this section describe files that exist now. The rename to `f_model` and
-all proposed directory/backend changes remain unimplemented.
+Paths in this section describe files that exist now. The rename to `f_model` is
+implemented; the proposed per-block suite layout and backend changes are not.
 
 ### Backend and test inventory
 
@@ -38,25 +38,25 @@ deliberately kept apart so that a disagreement between two of them is evidence r
 
 | Layer | Library | Depends on Hardcaml | Contents |
 | --- | --- | --- | --- |
-| Reference model | `test_protemu_model` ([`test/model/`](../test/model/dune)) | No | 95 expect tests over [`model/`](../model/dune). |
+| Reference model | `test_protemu_f_model` ([`test/f_model/`](../test/f_model/dune)) | No | 95 expect tests over [`f_model/`](../f_model/dune). |
 | Model/RTL comparison | `test_hardcaml_protemu` ([`test/`](../test/dune)) | Yes | 29 `%test_unit` directed tests, 4 expect tests, the `Env` harness. |
 | Emitted RTL | none — Dune rules | n/a | iverilog, verilator and yosys checks behind `dune build @rtl`. |
 
-#### Model tests — `test/model/`
+#### Model tests — `test/f_model/`
 
 Pure OCaml against the independent execution model, with no Hardcaml dependency at
-all; [`test/model/dune`](../test/model/dune) states why, and it is the same reason
-`model/` sits outside `lib/`.
+all; [`test/f_model/dune`](../test/f_model/dune) states why, and it is the same reason
+`f_model/` sits outside `lib/`.
 
 | File | Expect tests | Covers |
 | --- | --- | --- |
-| [`test_encoding.ml`](../test/model/test_encoding.ml) | 20 | P1.4/P1.5 instruction encoding and the assembler's refusals. |
-| [`test_isa.ml`](../test/model/test_isa.ml) | 20 | Instruction semantics against the reference machine. |
-| [`test_cycle.ml`](../test/model/test_cycle.ml) | 22 | The P1.5 core schedule, edge by edge. |
-| [`test_mechanisms.ml`](../test/model/test_mechanisms.ml) | 22 | Pin bank, FIFOs, transfers, faults and events in the model. |
-| [`test_firmware.ml`](../test/model/test_firmware.ml) | 11 | Bit-banged UART/SPI/I²C firmware sequences. |
+| [`test_encoding.ml`](../test/f_model/test_encoding.ml) | 20 | P1.4/P1.5 instruction encoding and the assembler's refusals. |
+| [`test_isa.ml`](../test/f_model/test_isa.ml) | 20 | Instruction semantics against the reference machine. |
+| [`test_cycle.ml`](../test/f_model/test_cycle.ml) | 22 | The P1.5 core schedule, edge by edge. |
+| [`test_mechanisms.ml`](../test/f_model/test_mechanisms.ml) | 22 | Pin bank, FIFOs, transfers, faults and events in the model. |
+| [`test_firmware.ml`](../test/f_model/test_firmware.ml) | 11 | Bit-banged UART/SPI/I²C firmware sequences. |
 
-[`harness.ml`](../test/model/harness.ml) is 88 lines and deliberately thin: `reset`,
+[`harness.ml`](../test/f_model/harness.ml) is 88 lines and deliberately thin: `reset`,
 `step`, `steps`, `load`, and three printers. One call is one rising edge, so a test
 body reads as a cycle-by-cycle transcript and "the next edge" is literally the next
 line. `show` prints registered state and the record of the edge just taken, never a
@@ -77,13 +77,13 @@ Two styles coexist here, and the split is the current migration boundary.
 
 Each builds a `Cyclesim.With_interface` simulator, assigns inputs by hand, calls
 `Cyclesim.cycle`, and asserts with `[%test_result: int]`. `test_protocol_core.ml`
-additionally carries its own `Program_store_model`, a test-only stand-in for
+additionally carries its own `Program_store_stub`, a test-only stand-in for
 `hardcaml_asic`'s `Single_port_ram` following the program-memory contract —
 latency-one reads, output held while disabled, and a poison value after a write or
 for a never-written word — so those tests stay independent of the ASIC library.
 
 **The P1.6 `Env` harness** is the existing synchronous foundation. Four modules,
-none of which reaches `lib/` or `model/`:
+none of which reaches `lib/` or `f_model/`:
 
 | Module | Lines | What it is |
 | --- | --- | --- |
@@ -111,7 +111,7 @@ Hardcaml tests do not require host tools:
 
 ### What a block has to supply
 
-An `Env.Device` is a `Config`, an `Item` (one edge's stimulus), a `Dut`, a `Model`,
+An `Env.Device` is a `Config`, an `Item` (one edge's stimulus), a `Dut`, an `F_model`,
 a `Monitor`, and the two lists of required observations. The runner calls exactly
 five things on the design, in this order, once per edge: `drive`, `settle`,
 `pre_edge`, `edge`, `post_edge`. `settle` is `Cyclesim.cycle_before_clock_edge` and
@@ -119,7 +119,7 @@ five things on the design, in this order, once per edge: `drive`, `settle`,
 nothing else may advance the simulation. `Env.Make` then yields `directed` for an
 expect transcript and `quickcheck`/`require_agreement` for generated scenarios.
 
-The pin-bank state reference lives in [`model/pin_bank.ml`](../model/pin_bank.ml),
+The pin-bank state reference lives in [`f_model/pin_bank.ml`](../f_model/pin_bank.ml),
 not in the testbench. `pin_bank_env.ml` adds the port-level acceptance/rejection
 contract and sticky conflict behavior without calling RTL implementation helpers.
 The adapter reads separate `Before` and `After` output maps; `settle` also invokes
@@ -155,7 +155,7 @@ A run that cannot reach git records `unavailable` rather than inventing a revisi
 
 ### What P2.1 through the harness established
 
-The recorded P1.6 runs report that the pin bank agrees with [`model/pin_bank.ml`](../model/pin_bank.ml) on every edge
+The recorded P1.6 runs report that the pin bank agrees with [`f_model/pin_bank.ml`](../f_model/pin_bank.ml) on every edge
 of 200 generated scenarios and of the directed transcript, and on 150-trial sweeps
 at seeds 1, 7, 99, 424242 and 20261231. Two things came out of getting there, and
 both are recorded rather than absorbed:
@@ -172,7 +172,7 @@ both are recorded rather than absorbed:
 
 Nothing else has been migrated. The existing `%test_unit` tests in
 [`test_primitives.ml`](../test/test_primitives.ml) and the model tests under
-`test/model/` still use their own loops, which P1.6 does not require changing.
+`test/f_model/` still use their own loops, which P1.6 does not require changing.
 
 ### Current limitations and evidence boundaries
 
@@ -276,9 +276,9 @@ separate evidence.
 Proposed paths (not yet present):
 
 ```text
-f_model/                         independent reference library
+f_model/                           independent reference library
 test/
-  f_model/                       standalone reference tests
+  f_model/                         standalone reference tests
   common/                        cycle/event runners, checks, replay, diagnostics
   primitives/
     pin_bank/
@@ -407,8 +407,8 @@ Use the UVM separation of responsibilities without introducing a UVM framework:
 Model execution remains independent of RTL execution logic. Shared ISA definitions,
 scenario data, scheduling, and reporting helpers are allowed. Expected results must
 not be computed using DUT implementation helpers. Keep the functional model and
-its standalone tests free of Hardcaml (`model/` and `test/model/` today; `f_model/` and `test/f_model/`
-after migration); model/Hardcaml comparison environments belong under `test/`.
+its standalone tests free of Hardcaml (`f_model/` and `test/f_model/`);
+functional-model/Hardcaml comparison environments belong under `test/`.
 
 ### 2. One cycle-exact contract
 
@@ -553,7 +553,7 @@ Historical run reports are not fresh results for later source revisions.
 
 | Obligation | Current evidence/owner | Next evidence still owed |
 | --- | --- | --- |
-| ISA, encoding, reference cycle schedule, firmware examples | `test/model/`, 95 expect tests | Preserve independently under `test/f_model/`; extend with new contracts |
+| ISA, encoding, reference cycle schedule, firmware examples | `test/f_model/`, 95 expect tests | Preserve independently; extend with new contracts |
 | Pin bank cycle agreement and harness diagnostics | `test_pin_bank_harness.ml`; recorded 200 trials and seed sweeps above | Move without losing validity/replay fixtures; per-module paired suite |
 | Other primitive cycle behavior | 24 directed tests in `test_primitives.ml` | Per-primitive shared testbenches and bounded generated properties |
 | Core memory/fetch/execute behavior | Three directed tests in `test_protocol_core.ml` | Per-core paired suite, broader instruction/stall/reset cases as contracts land |

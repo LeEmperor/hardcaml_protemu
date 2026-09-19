@@ -14,9 +14,9 @@ evidence, not a mapped CMOS5L cost report.
 | [`Timing`](../lib/timing.ml) | 16-bit delay, level/edge wait with optional timeout, and a free-running periodic tick with phase restart. A delay accepted at edge `k` completes at `k+n`; zero is rejected. Immediate level success does not produce a delayed completion event, matching the model. | Reference-machine comparison, exact delay, stale edge, event-over-timeout, periodic activity during waits, and phase restart tests. |
 | [`Primitive_demo`](../lib/primitive_demo.ml) | Composes a wait and an independent transfer lane on the same clock without gating the lane on timer busy. | Transfer output changes and completes while the core wait remains active. |
 | [`Byte_fifo`](../lib/byte_fifo.ml) | Eight-bit flop queue, selectable depth 4/8/16, explicit ready/valid, simultaneous full pop/push, sticky overflow/starvation. Reset and disable clear occupancy without clearing data cells. Instantiate separately for TX and RX. | Reference-model comparison and boundary tests at all three depths. |
-| [`Shift_lane`](../lib/shift_lane.ml) | Validated 1..32-bit descriptor, LSB/MSB order, TX/RX/duplex, first-bit preload, separate launch/sample half-edges, internal or observed pacing, arming, and safe release on abort/underrun/overrun. Drive claims are exposed as a mask; conflicts are checked at direct start or at the event that starts an armed transfer. | [`Shift_engine`](../model/shift_engine.ml) comparison for internal and observed schedules, both bit orders, and both clock idle levels; direction, width, conflict, fault, and abort tests. |
+| [`Shift_lane`](../lib/shift_lane.ml) | Validated 1..32-bit descriptor, LSB/MSB order, TX/RX/duplex, first-bit preload, separate launch/sample half-edges, internal or observed pacing, arming, and safe release on abort/underrun/overrun. Drive claims are exposed as a mask; conflicts are checked at direct start or at the event that starts an armed transfer. | [`Shift_engine`](../f_model/shift_engine.ml) comparison for internal and observed schedules, both bit orders, and both clock idle levels; direction, width, conflict, fault, and abort tests. |
 | [`Observed_transfer`](../lib/observed_transfer.ml) | Connects asynchronous start, pacing, and data pins to one input snapshot before the lane consumes them. Rise, fall, or either edge can start or pace a transaction. | Synchronized start/data/pace and response-latency test. |
-| [`Firmware_uart`](../model/firmware_uart.ml) | Typed, validated 8N1 TX descriptor used as the independent model-side sequence for the first slice. The same module's bit-banged sequence is P1.3 evidence and is not part of this record. | Its cycle trace matches the UART hardware transmitter for the same byte and timing. |
+| [`Firmware_uart`](../f_model/firmware_uart.ml) | Typed, validated 8N1 TX descriptor used as the independent model-side sequence for the first slice. The same module's bit-banged sequence is P1.3 evidence and is not part of this record. | Its cycle trace matches the UART hardware transmitter for the same byte and timing. |
 | [`Uart_tx`](../lib/uart_tx.ml) | One clockless 10-bit lane transaction per 8N1 frame: start 0, byte LSB first, stop 1. Each bit is `2 * half_period_i` clocks. Idle is driven high while enabled; reset/disable/abort release the pin. | Independent bit-center receiver test, back-to-back start, and disable test. [`p2_uart_tb.v`](../tinytapeout/test/p2_uart_tb.v) covers emitted Verilog when HDL tools are available. |
 
 [`generate_p2.ml`](../bin/generate_p2.ml) emits standalone Verilog for every
@@ -55,7 +55,7 @@ Re-run in this checkout on 2026-09-19, through the pinned switch:
 ./scripts/with-switch.sh dune build @runtest   # passes
 ./scripts/with-switch.sh dune build @lint      # passes
 ./scripts/with-switch.sh dune build @fmt       # FAILS; see below
-./scripts/with-switch.sh dune build @rtl       # needs host iverilog/verilator/yosys
+./scripts/with-switch.sh dune build @rtl       # passes with host HDL tools
 ./scripts/with-switch.sh dune exec bin/generate_p2.exe -- uart_tx /tmp/uart_tx.v
 ```
 
@@ -63,17 +63,21 @@ Re-run in this checkout on 2026-09-19, through the pinned switch:
 installed it can run for the first time, and it reports diffs in thirteen
 committed files — `lib/pin_bank.ml`, `input_events.ml`, `timing.ml`,
 `primitive_demo.ml`, `byte_fifo.ml`, `shift_lane.ml`, `observed_transfer.ml`,
-`uart_tx.ml`, `model/fifo.ml`, `model/shift_engine.ml`,
+`uart_tx.ml`, `f_model/fifo.ml`, `f_model/shift_engine.ml`,
 `test/test_primitives.ml`, `bin/generate_p2.ml`, and `bin/asic_bundle.ml`. The
 P2 sources have never been through the formatter. That is unrelated to their
 behavior, but it is an open cleanup, not a passing check.
 
-`@rtl` still needs `iverilog`, `verilator`, and `yosys`, which this host does not
-have; the emitted-RTL simulation below therefore remains unrun here. The pinned
-LibreLane image supplies those tools for the adopted flow's own checks.
+`@rtl` passes with host Icarus Verilog 12.0 (including `vvp`), Verilator 5.020,
+and Yosys 0.33. It passes the P0 wrapper and P2 UART emitted-RTL simulations,
+wrapper lint, and a generic synthesis smoke test. The generic Yosys result is not
+CMOS5L-mapped evidence; the pinned LibreLane image remains authoritative for the
+adopted physical flow.
 
 The first working slice remains open: its typed UART descriptor matches the
-model and Hardcaml transmitter, but emitted RTL simulation has not run here.
+model and Hardcaml transmitter, and the emitted UART RTL passes its independent
+testbench, but the firmware sequence is not yet connected through the complete
+hardware path and matching model/RTL traces have not been saved.
 The rest of P1.3's helpers and labels also remain. P2.8 remains open because no generic or liberty-mapped Yosys estimate,
 CMOS5L flow run, mapped sequential/combinational area, or formal check has been
 recorded. P2.2 still needs asynchronous-phase sweeps with a time-resolved pad

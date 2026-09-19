@@ -386,8 +386,8 @@ verification may use a separate runner under the shared contracts defined there.
 
 Functional-model source retains the four-part header and direction-neutral naming
 of section 5. The `_i`/`_o` suffixes apply to hardware ports, not model value records.
-The current paths are `model/` and `test/model/`; the planned names are `f_model/`
-and `test/f_model/`. Do not treat those planned paths as already implemented.
+The functional model lives in `f_model/`, with standalone tests in `test/f_model/`.
+Keep both outside synthesizable source lists and free of Hardcaml dependencies.
 
 ## 11. Formatting and verification
 

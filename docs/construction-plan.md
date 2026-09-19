@@ -144,11 +144,11 @@ that rework.
   `encoding.ml` the opcodes and field layout, `descriptor.ml` the descriptor fields
   firmware writes, and `program.ml`/`assembler.ml` the labels, images and refusals;
   `kinds.ml`, `pins.ml` and `event_kind.ml` are the enumerations an instruction field
-  names. It sits below both `lib/` and `model/` because an installed library cannot
+  names. It sits below both `lib/` and `f_model/` because an installed library cannot
   depend on a private one, which is what "shared by assembler and decoder" requires
   here. `Encoding.forms` publishes the field layout as data so P3.2's decoder is built
   from the same values the assembler encodes with.
-- `model/`: the independent reference execution model (Dune library `protemu_model`,
+- `f_model/`: the independent reference execution model (Dune library `protemu_f_model`,
   no Hardcaml dependency), covering P1.1 to P1.5. `machine.ml` holds all model state
   and one rising edge; `operation.ml` is the typed mechanism vocabulary with its
   structural validation; `pin_bank.ml`, `input_pins.ml`, `event.ml`, `fifo.ml`, and
@@ -163,13 +163,13 @@ that rework.
   ([the report](p1.4-encoding-study.md)). It is kept out of `lib/` so a diagnostic
   model cannot reach a synthesis source set. Transfers are validated and latched but
   not executed (P2.5), and the RTL core still has no decoder of its own (P3.2).
-  Tests are in `test/model/`.
+  Tests are in `test/f_model/`.
 - `lib/protemu_types.ml`: candidate pin/configure/transfer instruction variants.
 - `lib/p0_observable.ml` and `bin/generate.ml`: an observable pin/timer circuit
   and working parameterized Verilog emitter, separate from the control scaffold.
 - The P2 primitives in `lib/`: `pin_bank.ml`, `input_events.ml`, `timing.ml`,
   `byte_fifo.ml`, `shift_lane.ml`, `observed_transfer.ml`, `uart_tx.ml`, and
-  `primitive_demo.ml`, each compared against a `model/` reference in
+  `primitive_demo.ml`, each compared against a `f_model/` reference in
   `test/test_primitives.ml`, with `bin/generate_p2.ml` emitting standalone Verilog
   for every block. Their interfaces, contracts, and the latencies measured in
   digital simulation are in the [P2 record](p2-implementation.md). Mapped CMOS5L
@@ -342,7 +342,7 @@ Use an OCaml assembler/library with labels and validation before designing a
 textual DSL. Firmware helpers such as `uart_tx` should expand into this ISA.
 Keep the instruction specification shared by assembler and decoder, while the
 reference execution model stays independent of the Hardcaml implementation.
-P1.5 has done this: `isa/` is the shared specification, `model/control_core.ml` the
+P1.5 has done this: `isa/` is the shared specification, `f_model/control_core.ml` the
 independent execution, and [the decision](p1.5-encoding-decision.md) records what was
 chosen. The comparison below is P1.4's and is now settled evidence rather than open
 work; sizes and cycle counts remain in [its report](p1.4-encoding-study.md).
@@ -515,7 +515,7 @@ a separate product decision; neither is required for hardware acceptance.
 
 Stages 0 and 1 should interleave: a small early physical-flow experiment gives
 useful evidence while the model prevents premature commitment to a large ISA.
-Run two tracks alongside each other: emulator model/RTL work, and the helper
+Run two tracks alongside each other: emulator functional-model/RTL work, and the helper
 library's implementation followed by emulator adoption in P0.6/P0.7. The stages are
 not a strict execution order (section 1, decoupling): P1–P3 RTL, including the
 program-store consumer logic, proceeds against the memory contract, and adoption

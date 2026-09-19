@@ -1,0 +1,15 @@
+(library
+ (name protemu_observed_transfer_tests)
+ (wrapped false)
+ (modules observed_transfer_testbench observed_transfer_unit_tests)
+ ; Keep the ppx_expect source-tree workaround described in test/common/dune.
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries core hardcaml hardcaml_protemu protemu_f_model protemu_isa)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

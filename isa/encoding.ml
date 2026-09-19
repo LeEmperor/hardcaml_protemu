@@ -511,7 +511,7 @@ let reserved_opcodes =
 
 module Word_error = struct
   (* Why a fetched word is not an instruction. [Unspecified] is the program store's own
-     answer (model/program_store.ml) and arrives before decoding; the rest are the
+     answer (f_model/program_store.ml) and arrives before decoding; the rest are the
      decoder's. *)
   type t =
     | Unspecified

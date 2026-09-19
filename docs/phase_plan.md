@@ -35,12 +35,12 @@ the corresponding decision has evidence.
 
 Follow [formatting_guide.md](formatting_guide.md) for source changes. Existing
 locations are `lib/` for hardware, `bin/` for executables, `test/` for tests,
-`isa/` for the instruction specification and assembler, `model/` for the reference
-execution model, and `tinytapeout/` for ASIC integration. `model/` is a separate Dune
-library, `protemu_model`, with no Hardcaml dependency, so a diagnostic model can never
+`isa/` for the instruction specification and assembler, `f_model/` for the reference
+execution model, and `tinytapeout/` for ASIC integration. `f_model/` is a separate Dune
+library, `protemu_f_model`, with no Hardcaml dependency, so a diagnostic model can never
 reach a synthesis source set and cannot share a mistake with the RTL; its tests live in
-`test/model/`. `isa/` is a third library, `hardcaml_protemu.isa`, below both of them:
-P1.5 put the encoding there because `lib/` is installed and `model/` is not, so the
+`test/f_model/`. `isa/` is a third library, `hardcaml_protemu.isa`, below both of them:
+P1.5 put the encoding there because `lib/` is installed and `f_model/` is not, so the
 assembler and the RTL decoder could not otherwise share one description of the
 instruction word. New host and firmware locations should be chosen when their first real
 implementation lands.
@@ -134,7 +134,7 @@ Use this sequence as the initial implementation queue:
 1. `P1.1` and the pin/timer portion of `P1.2`: specify cycle edges, pin commits,
    reset, and timed waits in a small executable model.
 2. `P2.1` and the countdown portion of `P2.3`: implement atomic pin updates and
-   timing with focused model/Hardcaml comparisons.
+   timing with focused functional-model/Hardcaml comparisons.
 3. Reuse `P0.1`–`P0.3`'s completed tool path for the evolving observable circuit;
    rerun its checks without treating the original P0 tests as UART evidence.
 4. `P1.3` and `P2.7`: drive a typed UART 8N1 transmit sequence through a test
@@ -254,7 +254,7 @@ with the first pin/timer work in P1/P2.
   backend conformance, elaborate a small load/readback design using context-
   registered `Single_port_ram` and an explicitly selected flop implementation.
   Evidence: latency-one read, disabled-output hold, whole-word writes, consumer
-  validity/access gating, and independence from unspecified outputs pass model/
+  validity/access gating, and independence from unspecified outputs pass f_model/
   RTL integration checks; the manifest records shape, identity, and selection.
   Consume the emitted bundle with the pinned flow and record mapped synthesis
   cost. This fixture does not complete P3's loader or instruction execution.
@@ -280,9 +280,9 @@ bundle, or synthesis alone does not establish physical closure.
   assert exact edge behavior, including simultaneous-event cases. Model the
   program store's shared port, latency-one reads, disabled-output hold, and
   fetch validity; unspecified memory results cannot be accepted as instructions.
-  Evidence: [`machine.ml`](../model/machine.ml) holds the whole model state and one
-  rising edge, with [`program_store.ml`](../model/program_store.ml) as the contract
-  model of the 1RW port; [`test_cycle.ml`](../test/model/test_cycle.ml) asserts each
+  Evidence: [`machine.ml`](../f_model/machine.ml) holds the whole model state and one
+  rising edge, with [`program_store.ml`](../f_model/program_store.ml) as the contract
+  model of the 1RW port; [`test_cycle.ml`](../test/f_model/test_cycle.ml) asserts each
   listed behavior edge by edge, including set-with-acknowledge and
   event-with-timeout at the same edge. *Carried forward:* the model has no decoder
   (P1.5 chooses the encoding), so an instruction boundary is modeled as a fetched
@@ -293,12 +293,12 @@ bundle, or synthesis alone does not establish physical closure.
   ownership, blocking/nonblocking behavior, and safe abort results before opcode
   encoding. Evidence: legal examples run and invalid descriptors, conflicts,
   zero delays, and queue boundary cases produce specified outcomes. Evidence:
-  [`operation.ml`](../model/operation.ml) (the vocabulary and structural
-  validation), [`transfer.ml`](../model/transfer.ml) (descriptor and its rules),
-  [`pin_bank.ml`](../model/pin_bank.ml) (masked atomic commits and exclusive drive
-  ownership), [`event.ml`](../model/event.ml), [`fifo.ml`](../model/fifo.ml), and
-  [`fault.ml`](../model/fault.ml), checked by
-  [`test_mechanisms.ml`](../test/model/test_mechanisms.ml), which pins down which
+  [`operation.ml`](../f_model/operation.ml) (the vocabulary and structural
+  validation), [`transfer.ml`](../f_model/transfer.ml) (descriptor and its rules),
+  [`pin_bank.ml`](../f_model/pin_bank.ml) (masked atomic commits and exclusive drive
+  ownership), [`event.ml`](../f_model/event.ml), [`fifo.ml`](../f_model/fifo.ml), and
+  [`fault.ml`](../f_model/fault.ml), checked by
+  [`test_mechanisms.ml`](../test/f_model/test_mechanisms.ml), which pins down which
   reason each refusal reports rather than only that one occurred. *Carried
   forward:* nothing drains a queue until P2.5's engine or P3.4's host port exists,
   so a blocking queue operation ends only through ABORT, reset, or disable, which
@@ -309,19 +309,19 @@ bundle, or synthesis alone does not establish physical closure.
   helpers for UART TX, a mode-0 SPI exchange, and explicit I2C drive/sample/wait
   sequences. Evidence: model traces show the expected transactions and record
   operation counts and response latency. No textual DSL is required.
-  Evidence: [`firmware.ml`](../model/firmware.ml) is the labeled sequence
+  Evidence: [`firmware.ml`](../f_model/firmware.ml) is the labeled sequence
   library: steps, label uniqueness, structural validation of every operation
   against the rule the machine applies at acceptance, a board model for the device
   on the other end, and a runner that records each operation's offer, acceptance,
   and completion edges beside a per-edge log of what the bank drove and what the
-  input front end presented. [`firmware_uart.ml`](../model/firmware_uart.ml)
+  input front end presented. [`firmware_uart.ml`](../f_model/firmware_uart.ml)
   builds the 8N1 frame two ways, as one transfer descriptor and as a bit-banged
-  sequence; [`firmware_spi.ml`](../model/firmware_spi.ml) builds a mode-0 exchange
+  sequence; [`firmware_spi.ml`](../f_model/firmware_spi.ml) builds a mode-0 exchange
   against an independent target that launches on the falling edge; and
-  [`firmware_i2c.ml`](../model/firmware_i2c.ml) builds a single-master write
+  [`firmware_i2c.ml`](../f_model/firmware_i2c.ml) builds a single-master write
   transaction from open-drain writes, acknowledge samples, and clock-stretch level
   waits, against a target that acknowledges by address and can hold the clock
-  down. [`test_firmware.ml`](../test/model/test_firmware.ml) holds the traces and
+  down. [`test_firmware.ml`](../test/f_model/test_firmware.ml) holds the traces and
   the recorded costs, at half and quarter period four:
 
   | Sequence | Operations | Cycles | Max response |
@@ -332,7 +332,7 @@ bundle, or synthesis alone does not establish physical closure.
 
   The same UART frame as one `Configure_transfer` is a single operation, and the
   engine then occupies eighty cycles without the core; the bit-banged sequence and
-  the descriptor run through [`shift_engine.ml`](../model/shift_engine.ml) both
+  the descriptor run through [`shift_engine.ml`](../f_model/shift_engine.ml) both
   decode to the transmitted byte under an independent bit-center receiver. That
   pair of numbers is what P1.4 needs to weigh an instruction stream against a
   transfer engine. An I2C acknowledge slot's clock phase costs 14 cycles against
@@ -357,14 +357,14 @@ bundle, or synthesis alone does not establish physical closure.
   unmeasured until P5 supplies results.
   Evidence: the [P1.4 encoding study](p1.4-encoding-study.md) carries the tables and
   what they recommend; every number in it is an expect-test output from
-  [`test_encoding.ml`](../test/model/test_encoding.ml). One operation set
-  ([`study_isa.ml`](../model/study_isa.ml)) is encoded two ways and stored four ways
-  ([`study_encoding.ml`](../model/study_encoding.ml)): 16-bit instructions with
+  [`test_encoding.ml`](../test/f_model/test_encoding.ml). One operation set
+  ([`study_isa.ml`](../f_model/study_isa.ml)) is encoded two ways and stored four ways
+  ([`study_encoding.ml`](../f_model/study_encoding.ml)): 16-bit instructions with
   extension words and fixed 32-bit instructions, each in a 16-bit and a 32-bit memory
   word. The same UART, SPI and I2C work P1.3 built out of operations is written once
-  as programs ([`study_examples.ml`](../model/study_examples.ml)), assembled by every
-  candidate, and run by a control core ([`study_core.ml`](../model/study_core.ml))
-  that fetches real words from a [`Program_store`](../model/program_store.ml) through
+  as programs ([`study_examples.ml`](../f_model/study_examples.ml)), assembled by every
+  candidate, and run by a control core ([`study_core.ml`](../f_model/study_core.ml))
+  that fetches real words from a [`Program_store`](../f_model/program_store.ml) through
   the 1RW latency-one port and issues their operations into `Machine`; the SPI and
   I2C runs are answered by P1.3's independent peers and receive `0x3c` and
   acknowledge `0x84`/`0xa5` under all four candidates. At equal memory width the
@@ -393,7 +393,7 @@ bundle, or synthesis alone does not establish physical closure.
   decoded meanings, and model execution traces.
   Evidence: the [P1.5 encoding decision](p1.5-encoding-decision.md) records the choice
   and what it gives up. The specification is a library of its own,
-  [`isa/`](../isa/dune), below both `lib/` and `model/` because an installed library
+  [`isa/`](../isa/dune), below both `lib/` and `f_model/` because an installed library
   cannot depend on a private one: [`instruction.ml`](../isa/instruction.ml) is the
   instruction set, [`encoding.ml`](../isa/encoding.ml) the opcodes and field layout,
   [`descriptor.ml`](../isa/descriptor.ml) the descriptor fields firmware writes, and
@@ -404,13 +404,13 @@ bundle, or synthesis alone does not establish physical closure.
   table. [`kinds.ml`](../isa/kinds.ml), [`pins.ml`](../isa/pins.ml) and
   [`event_kind.ml`](../isa/event_kind.ml) moved down into it for the same reason: an
   instruction field names them. Reference execution is
-  [`control_core.ml`](../model/control_core.ml), which shares `Encoding` with the RTL and
+  [`control_core.ml`](../f_model/control_core.ml), which shares `Encoding` with the RTL and
   nothing else and has no Hardcaml dependency.
-  [`test_isa.ml`](../test/model/test_isa.ml) holds the evidence: a 111-instruction
+  [`test_isa.ml`](../test/f_model/test_isa.ml) holds the evidence: a 111-instruction
   boundary corpus that round trips, the published layout table, labeled programs as
   instruction words, memory words and transport bytes in both memory layouts, every
   assembler refusal, and the UART, SPI and I2C transactions executed out of a
-  [`Program_store`](../model/program_store.ml) against the same independent peers P1.3
+  [`Program_store`](../f_model/program_store.ml) against the same independent peers P1.3
   and P1.4 used. Sixteen-bit instructions with extension words were chosen on P1.4's
   evidence; the memory word stays a caller's choice with a 16-bit default until P5
   measures it; and the call P1.4 left open was added and measured — the I2C transaction
@@ -425,7 +425,7 @@ bundle, or synthesis alone does not establish physical closure.
 - [x] **P1.6 — Define the verification harness.** Planning decisions are recorded
   in [verification.md](verification.md), and the harness now exists. Use
   directed expect tests paired with bounded Quickcheck generators and one
-  cycle-exact model/core contract, including P1.5's fetch/execute schedule. The
+  cycle-exact functional-model/core contract, including P1.5's fetch/execute schedule. The
   environment owns drivers, pin-to-item monitors, the independent model, and checker;
   one runner owns simulation time and feeds the same scheduled stimuli to DUT and
   model. Use seed-based replay with recorded configuration, generator settings,
@@ -435,7 +435,7 @@ bundle, or synthesis alone does not establish physical closure.
   boundary/error metadata without implementing stretch engines. Testbench guidance
   is in [formatting_guide.md](formatting_guide.md#101-testbench-architecture).
   Evidence: at least one existing primitive uses the shared harness in both a
-  directed expect test and a Quickcheck model/Hardcaml comparison; a controlled
+  directed expect test and a Quickcheck functional-model/Hardcaml comparison; a controlled
   failing case reproduces the same first mismatch from its recorded seed/settings.
   Link ASIC backend conformance separately from emulator consumer checks; compare
   only defined memory outputs across backends and check held outputs within each
@@ -458,11 +458,11 @@ bundle, or synthesis alone does not establish physical closure.
   P2.1 is the first consumer. [`pin_bank_env.ml`](../test/pin_bank_env.ml) describes it
   once and [`test_pin_bank_harness.ml`](../test/test_pin_bank_harness.ml) uses that one
   description four ways: the checker's validity rules, a directed expect transcript, a
-  200-trial Quickcheck run against [`model/pin_bank.ml`](../model/pin_bank.ml) from a
+  200-trial Quickcheck run against [`f_model/pin_bank.ml`](../f_model/pin_bank.ml) from a
   recorded seed, and a controlled mismatch that is found, shrunk to two items, reported
   with its reproduction record, and found again at the same trial and edge when the
   recorded seed and settings are rerun. The injected defect lives in the environment's
-  config, so nothing in `lib/`, `model/` or the suite is left intentionally failing.
+  config, so nothing in `lib/`, `f_model/` or the suite is left intentionally failing.
   *Carried forward:* the harness's first run disagreed with the design about the sticky
   ownership conflict on an edge refused for offering two requests at once; the contract
   was ambiguous and [construction-plan.md section 3](construction-plan.md#3-initial-architecture)
@@ -496,7 +496,7 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   rejection, set-wins acknowledgement, and reset cases pass. Record the observed
   digital latency range and assumptions about minimum pulse width.
   *Progress:* [`input_events.ml`](../lib/input_events.ml) and
-  [`observed_transfer.ml`](../lib/observed_transfer.ml) pass digital model/Hardcaml
+  [`observed_transfer.ml`](../lib/observed_transfer.ml) pass digital functional-model/Hardcaml
   comparisons; time-resolved asynchronous-phase sweeps remain. See the
   [P2 implementation record](p2-implementation.md).
   *Verification dependency:* P2.2 needs a time-resolved pad driver; the current
@@ -529,7 +529,7 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   bit placement, pin conflicts, invalid phase combinations, completion, and
   underrun/overrun safe aborts match the model. Evidence:
   [`shift_lane.ml`](../lib/shift_lane.ml),
-  [`shift_engine.ml`](../model/shift_engine.ml),
+  [`shift_engine.ml`](../f_model/shift_engine.ml),
   [`test_primitives.ml`](../test/test_primitives.ml), and the
   [P2 implementation record](p2-implementation.md).
 - [ ] **P2.6 — Observed-event transfers.** Add generic preconfigured arming/start
@@ -545,10 +545,11 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   to the pin/timer hardware and the emitted-RTL harness. Evidence: an independent
   monitor checks idle, start, data, stop, bit periods, and reset/disable during
   transmission. Save matching model and RTL traces for the first working slice.
-  *Progress:* [`firmware_uart.ml`](../model/firmware_uart.ml)'s typed TX
-  descriptor matches [`uart_tx.ml`](../lib/uart_tx.ml) in the model/Hardcaml
+  *Progress:* [`firmware_uart.ml`](../f_model/firmware_uart.ml)'s typed TX
+  descriptor matches [`uart_tx.ml`](../lib/uart_tx.ml) in the functional-model/Hardcaml
   trace and an independent receiver test. [`p2_uart_tb.v`](../tinytapeout/test/p2_uart_tb.v)
-  is wired into `@rtl`; emitted RTL simulation remains. See the
+  is wired into `@rtl`, and its emitted-RTL simulation passes. The complete firmware-to-
+  hardware connection and saved matching model/RTL traces remain. See the
   [P2 implementation record](p2-implementation.md).
 - [ ] **P2.8 — Record primitive costs and invariants.** Measure mapped sequential
   and combinational area per block/configuration using P0's flow. Exercise pin

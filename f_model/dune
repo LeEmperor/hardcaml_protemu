@@ -1,0 +1,24 @@
+; The independent reference execution model (phase_plan.md P1).
+;
+; Deliberately outside lib/, which is "the whole synthesizable surface of this repository":
+; a diagnostic model must never be picked up by an RTL source list, and it must stay
+; independent of Hardcaml so that a disagreement with the RTL is evidence rather than a
+; shared mistake (formatting_guide.md section 10.1, construction-plan.md section 9).
+;
+; Note the absence of `hardcaml` from (libraries). That is the point of this directory.
+;
+; Not installed: nothing outside this repository consumes it yet. Give it a public_name
+; when the P3.4 host API needs to be depended on from elsewhere.
+
+(library
+ (name protemu_f_model)
+ (libraries core protemu_isa)
+ (flags
+  ; The instruction specification is opened into every module here, so [Kinds], [Pins],
+  ; [Encoding] and the rest are reached by their own names. The model consumes the
+  ; specification; it does not own it, and nothing in this directory may redefine it.
+  (:standard -open Protemu_isa))
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))

@@ -1,0 +1,68 @@
+; `dune build @rtl`: checks on the committed wrapper RTL that need host tools
+; (iverilog, verilator, yosys). Kept out of runtest so the Hardcaml tests do not
+; require them. The Makefile remains for the staged project and gate-level runs.
+
+(rule
+ (alias rtl)
+ (deps
+  tb.v
+  ../src/p0_observable.v
+  ../src/project.v
+  (sandbox always))
+ (action
+  (progn
+   (run
+    iverilog
+    -g2012
+    -Wall
+    -Wno-timescale
+    -s
+    tb
+    -o
+    p0_wrapper
+    ../src/p0_observable.v
+    ../src/project.v
+    tb.v)
+   (run vvp p0_wrapper))))
+
+(rule
+ (alias rtl)
+ (deps ../src/p0_observable.v ../src/project.v)
+ (action
+  (run
+   verilator
+   --lint-only
+   --top-module
+   tt_um_leemperor_hardcaml_protemu
+   -Wno-DECLFILENAME
+   ../src/p0_observable.v
+   ../src/project.v)))
+
+; Generic synthesis smoke test only. It is not CMOS5L mapped synthesis.
+
+(rule
+ (alias rtl)
+ (deps ../src/p0_observable.v ../src/project.v)
+ (action
+  (run
+   yosys
+   -q
+   -p
+   "read_verilog ../src/p0_observable.v ../src/project.v; hierarchy -check -top tt_um_leemperor_hardcaml_protemu; synth -top tt_um_leemperor_hardcaml_protemu; stat")))
+
+(rule
+ (alias rtl)
+ (deps p2_uart_tb.v ../src/uart_tx.generated.v)
+ (action
+  (progn
+   (run
+    iverilog
+    -g2012
+    -Wall
+    -s
+    p2_uart_tb
+    -o
+    p2_uart
+    ../src/uart_tx.generated.v
+    p2_uart_tb.v)
+   (run vvp p2_uart))))

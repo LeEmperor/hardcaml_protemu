@@ -1,0 +1,60 @@
+# Per-shell activation. Source it; do not run it:
+#
+#   source ./env.sh
+#
+# Installs nothing and is safe to source repeatedly. It sets up what a new shell
+# lacks after a reboot or in a new terminal: the opam switch, the flow variables
+# written by the bootstrap, and the project Python environment on PATH.
+#
+# None of this is needed by the repository's scripts, which locate their own
+# tools; it is for running dune, python, librelane, etc. by hand. Precheck's
+# separate .venv-precheck is never activated: precheck.sh calls it directly.
+
+# Sourced into an interactive shell, where the user's aliases and functions are
+# live: a `paste`, `grep` or `cd` of their own would run in place of the real
+# command. So this file uses only shell builtins and parameter expansion, never
+# external text tools, and `builtin cd`/`builtin pwd`.
+_protemu_src=${BASH_SOURCE[0]:-$0}
+case $_protemu_src in
+    */*) _protemu_root=${_protemu_src%/*} ;;
+    *) _protemu_root=. ;;
+esac
+_protemu_root=$(CDPATH='' builtin cd -- "$_protemu_root" && builtin pwd)
+unset _protemu_src
+
+# 1. OCaml
+if command -v opam >/dev/null 2>&1; then
+    eval "$(opam env --switch="${OPAM_SWITCH:-5.2.0+ox}" --set-switch)"
+else
+    echo "env.sh: opam not found; run ./bootstrap.sh" >&2
+fi
+
+# 2. Flow variables (PDK, PDK_ROOT, TT_SUPPORT_TOOLS_DIR)
+if [ -f "$_protemu_root/tinytapeout/build/toolchain-env.sh" ]; then
+    . "$_protemu_root/tinytapeout/build/toolchain-env.sh"
+else
+    echo "env.sh: flow environment not bootstrapped; run ./bootstrap.sh" >&2
+fi
+
+# 3. Python environment. The same effect as .venv/bin/activate without changing
+#    the prompt. Any previously active environment (another worktree's, or this
+#    one from an earlier source) is removed from PATH first, so re-sourcing
+#    switches rather than stacks, and .venv always leads the opam bin.
+if [ -x "$_protemu_root/.venv/bin/python" ]; then
+    _protemu_path=
+    _protemu_rest=$PATH:
+    while [ -n "$_protemu_rest" ]; do
+        _protemu_entry=${_protemu_rest%%:*}
+        _protemu_rest=${_protemu_rest#*:}
+        if [ -n "$_protemu_entry" ] \
+            && { [ -z "${VIRTUAL_ENV:-}" ] || [ "$_protemu_entry" != "$VIRTUAL_ENV/bin" ]; } \
+            && [ "$_protemu_entry" != "$_protemu_root/.venv/bin" ]; then
+            _protemu_path=${_protemu_path:+$_protemu_path:}$_protemu_entry
+        fi
+    done
+    export VIRTUAL_ENV="$_protemu_root/.venv"
+    export PATH="$VIRTUAL_ENV/bin:$_protemu_path"
+    unset PYTHONHOME _protemu_path _protemu_rest _protemu_entry
+fi
+
+unset _protemu_root

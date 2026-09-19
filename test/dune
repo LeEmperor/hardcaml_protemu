@@ -1,3 +1,33 @@
-(test
+(library
  (name test_hardcaml_protemu)
- (libraries hardcaml_protemu))
+ ; ppx_expect v0.18~preview drops the directory from a test file's path when registering
+ ; the test, then rebuilds it at exit from the bare filename plus -source-tree-root. The
+ ; trailing `.` points it at the runner's cwd, where dune has copied the sources. Drop
+ ; this if a later ppx_expect fixes the path handling.
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries
+  core
+  hardcaml
+  hardcaml_protemu
+  protemu_isa
+  protemu_model
+  hardcaml_waveterm
+  ; Time-resolved pad driving: sub-cycle transitions and narrow pulses, which
+  ; Cyclesim cannot express. Used by the P2.2/P2.6 phase sweeps.
+  hardcaml_event_driven_sim
+  hardcaml_step_testbench
+  base_quickcheck
+  ; The harness's own dependencies (env.ml, replay.ml). [splittable_random] is the seed
+  ; a Quickcheck trial is generated from, and [unix] is how a failure report records the
+  ; revision it was produced in; neither reaches lib/.
+  splittable_random
+  unix
+  alcotest)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

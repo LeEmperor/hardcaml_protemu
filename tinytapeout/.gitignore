@@ -1,0 +1,10 @@
+# Local flow environments and caches (the python env lives at the repo root)
+/pdk/
+/tt/
+
+# Generated physical-design runs and export packages
+/build/
+/runs/
+/artifacts/
+/tt_submission/
+/gds_render.*

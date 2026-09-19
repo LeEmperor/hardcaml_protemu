@@ -1,0 +1,5 @@
+; Only these directories hold dune rules. The rest are scripts and docs, or
+; ignored multi-gigabyte flow state (pdk/, build/, tt/, runs/) that dune must not
+; scan.
+
+(dirs src test)

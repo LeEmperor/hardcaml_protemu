@@ -1,0 +1,7 @@
+; Makes `dune exec protemu -- <command>` work from anywhere in the repository
+; without installing the executable. See bin/protemu.ml.
+
+(env
+ (_
+  (binaries
+   (bin/protemu.exe as protemu))))

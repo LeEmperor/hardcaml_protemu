@@ -1,0 +1,24 @@
+# Phase-P0 CMOS5L flow inputs inspected 2026-09-14.
+template_repository=https://github.com/TinyTapeout/ttihp-verilog-template.git
+template_branch=cmos5l
+template_revision=b86a2a781484bcab7ba522dc5de540086695a430
+gds_action_repository=https://github.com/TinyTapeout/tt-gds-action.git
+gds_action_branch=ihp-cmos5l
+gds_action_revision=3412659307918422f3f0727917cf9b499aaca588
+support_tools_repository=https://github.com/TinyTapeout/tt-support-tools.git
+support_tools_branch=ihp-sg13cmos5l
+support_tools_revision=da63c9927411e3aca350977d653d24bbf5bca972
+pdk=ihp-sg13cmos5l
+pdk_repository=https://github.com/IHP-GmbH/IHP-Open-PDK.git
+pdk_revision=2bbec755dc67ca3db0261c3d6163e15735d66710
+librelane_version=3.1.0.dev3
+runner=ubuntu-24.04
+python=3.11
+tiles=6x4
+floorplan_def=tech/ihp-sg13cmos5l/def/tt_block_6x4_pgvdd.def
+floorplan_def_sha256=b46d9a0ee8352160e48dbc8312f092f985629061df736c7f46d58686535a76f4
+floorplan_die_area=0,0,1289.28,710.64
+floorplan_status=validated_present
+
+# The competition may expand the maximum to 8x4 later. Until Jane Street and
+# Tiny Tapeout announce that support, 6x4 is the authoritative build target.

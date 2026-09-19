@@ -1,0 +1,39 @@
+# dune
+_build/
+*.install
+
+# ocaml
+*.cm[iox]
+*.annot
+*.cmt*
+*.merlin
+
+# editor
+*.swp
+*~
+.DS_Store
+
+*.exe
+*.bc
+CLAUDE.md
+
+# build system
+_opam/
+# env.sh is tracked: it is the per-shell activation, not local state
+*.vcd
+
+# verification harness failure reports (docs/verification.md section 8)
+protemu-artifacts/
+
+# ASIC flow python environments (created by tinytapeout/scripts/bootstrap-toolchain.sh)
+/.venv/
+/.venv-precheck/
+
+# release staging (build products; regenerated per release)
+MANIFEST.txt
+SHA256SUMS
+release-group/*
+!release-group/README.md
+
+# python scratch
+__pycache__/

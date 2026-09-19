@@ -1,0 +1,22 @@
+; The instruction specification: one description of the ISA, shared by the assembler
+; and by the RTL decoder (construction-plan.md section 4, phase_plan.md P1.5).
+;
+; It sits BELOW both lib/ and model/ and depends on neither. That is the whole reason it
+; is its own library: lib/ is installed and model/ is not, so a public RTL module cannot
+; depend on a private model one, and two hand-written copies of a field layout is exactly
+; the failure P1.5 is asked to prevent. Field positions, opcode numbers and the extension
+; rule are written once here; [Encoding.forms] publishes them as data so a decoder can be
+; built from the same numbers the assembler encodes with.
+;
+; Note the absence of `hardcaml`. The specification is bits and their meanings; it holds
+; no execution and no circuit. The reference execution model stays in model/, independent
+; of the RTL, as construction-plan.md section 4 requires.
+
+(library
+ (name protemu_isa)
+ (public_name hardcaml_protemu.isa)
+ (libraries core)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))

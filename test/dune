@@ -11,6 +11,7 @@
   core
   hardcaml
   hardcaml_protemu
+  protemu_isa
   protemu_model
   hardcaml_waveterm
   hardcaml_step_testbench

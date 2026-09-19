@@ -12,7 +12,12 @@
 
 (library
  (name protemu_model)
- (libraries core)
+ (libraries core protemu_isa)
+ (flags
+  ; The instruction specification is opened into every module here, so [Kinds], [Pins],
+  ; [Encoding] and the rest are reached by their own names. The model consumes the
+  ; specification; it does not own it, and nothing in this directory may redefine it.
+  (:standard -open Protemu_isa))
  (preprocess
   (pps ppx_jane))
  (lint

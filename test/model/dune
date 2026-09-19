@@ -9,7 +9,11 @@
  (inline_tests
   (flags
    (:standard -source-tree-root .)))
- (libraries core protemu_model)
+ (libraries core protemu_isa protemu_model)
+ (flags
+  ; Same as model/dune: the instruction specification is opened, so a test names [Kinds]
+  ; or [Encoding] exactly as the module under test does.
+  (:standard -open Protemu_isa))
  (preprocess
   (pps ppx_jane))
  (lint

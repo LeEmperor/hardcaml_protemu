@@ -17,27 +17,13 @@
 
 open! Core
 
+(* The kinds themselves are [Event_kind], in the instruction-specification library: their
+   order is the bit order of the status word [Read_status] hands firmware, so the encoding
+   has to see it too. What this module adds is the comparison structure the latch needs -
+   the sets below - which is model state and belongs nowhere near an encoding. *)
 module Kind = struct
-  module T = struct
-    type t =
-      | (* A [Wait_cycles] countdown reached its deadline. *)
-        Delay_expired
-      | (* A level or edge wait observed its condition. *)
-        Wait_complete
-      | (* A level or edge wait reached its deadline without observing its condition. *)
-        Wait_timeout
-      | (* A periodic tick generator rolled over. *)
-        Tick
-      | (* Work in flight was abandoned by ABORT or by the design being disabled. The
-           transaction is incomplete; nothing here says how far it got. *)
-        Aborted
-      | (* One or more sticky bits in [Fault.t] became set. *)
-        Fault
-    [@@deriving sexp, compare, equal, enumerate]
-  end
-
-  include T
-  include Comparable.Make (T)
+  include Event_kind
+  include Comparable.Make (Event_kind)
 end
 
 type t =

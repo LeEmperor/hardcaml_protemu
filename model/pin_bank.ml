@@ -21,13 +21,11 @@
 open! Core
 open! Kinds
 
-(* The first logical bank (construction-plan.md section 3). Wider banks are a later
-   decision, so nothing outside this module assumes the number eight. *)
-let count = 8
-let all_pins = (1 lsl count) - 1
-let is_valid_pin pin = pin >= 0 && pin < count
-let bit mask pin = mask land (1 lsl pin) <> 0
-let pins_of_mask mask = List.filter (List.init count ~f:Fn.id) ~f:(bit mask)
+(* The bank's shape - how many pins, and what a mask over them means - is [Pins], in the
+   instruction-specification library, because an instruction field encodes a pin number
+   and a pin mask and has to agree with it. Re-exported rather than restated so that there
+   is one eight (P1.5). *)
+include Pins
 
 module Write = struct
   (* One atomic commit. Every pin selected by [mask] takes its [value] and [output_enable]

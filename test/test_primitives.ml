@@ -317,6 +317,10 @@ let%test_unit "P2.7 independent 8N1 receiver sees idle, start, data, and stop" =
 
 module Model = Protemu_model
 
+(* The shared enumerations moved below the model when P1.5 gave the encoding and the RTL
+   one specification to read them from; [Pin_bank]'s owner is still the same type. *)
+module Kinds = Protemu_isa.Kinds
+
 let%test_unit "P2.1 pin commits and ownership track the independent model" =
   let sim = Pin_sim.create (Pin_bank.create (Scope.create ~flatten_design:true ())) in
   let i = Cyclesim.inputs sim in
@@ -335,7 +339,7 @@ let%test_unit "P2.1 pin commits and ownership track the independent model" =
       Model.Pin_bank.commit
         !state
         { Model.Pin_bank.Write.mask; value; output_enable }
-        ~owner:Model.Kinds.Owner.Software
+        ~owner:Kinds.Owner.Software
     in
     Cyclesim.cycle sim;
     i.write_valid_i := Bits.gnd;
@@ -350,7 +354,7 @@ let%test_unit "P2.1 pin commits and ownership track the independent model" =
   i.claim_valid_i := Bits.vdd;
   i.claim_engine_i := Bits.vdd;
   i.claim_mask_i := bits 8 0x30;
-  (match Model.Pin_bank.claim !state ~owner:(Model.Kinds.Owner.Engine 0) ~mask:0x30 with
+  (match Model.Pin_bank.claim !state ~owner:(Kinds.Owner.Engine 0) ~mask:0x30 with
    | Ok next -> state := next
    | Error _ -> failwith "model claim was unexpectedly rejected");
   Cyclesim.cycle sim;
@@ -416,7 +420,7 @@ let%test_unit "P2.4 simultaneous queue operations track the independent model" =
   i.enable_i := Bits.vdd;
   Cyclesim.cycle sim;
   i.reset_i := Bits.gnd;
-  let fifo = ref (Model.Fifo.create ~id:Model.Kinds.Fifo_id.Tx ~depth:4) in
+  let fifo = ref (Model.Fifo.create ~id:Kinds.Fifo_id.Tx ~depth:4) in
   for cycle = 0 to 99 do
     let push = if cycle mod 7 < 5 then Some (cycle land 255) else None in
     let pop = cycle mod 5 < 3 in
@@ -640,19 +644,19 @@ let%test_unit "P2.5/P2.6 shift timing and results match the independent model" =
     i.enable_i := Bits.vdd;
     Cyclesim.cycle sim;
     i.reset_i := Bits.gnd;
-    let direction = Model.Kinds.Direction.Duplex in
+    let direction = Kinds.Direction.Duplex in
     let pacing =
       if observed
       then
         Model.Transfer.Pacing.Observed_edge
-          { pin = 3; edge = Model.Kinds.Edge.Either }
+          { pin = 3; edge = Kinds.Edge.Either }
       else Model.Transfer.Pacing.Internal { half_period = 2 }
     in
     let leading =
-      if idle_clock then Model.Kinds.Clock_phase.On_falling else On_rising
+      if idle_clock then Kinds.Clock_phase.On_falling else On_rising
     in
     let trailing =
-      if idle_clock then Model.Kinds.Clock_phase.On_rising else On_falling
+      if idle_clock then Kinds.Clock_phase.On_rising else On_falling
     in
     let descriptor : Model.Transfer.t =
       { direction
@@ -775,7 +779,7 @@ let%test_unit "P2.3 waits and periodic ticks track the independent machine" =
      | Some (Wait_edge { pin; edge; timeout }) ->
        i.wait_valid_i := Bits.vdd;
        i.wait_kind_i :=
-         bits 2 (if Model.Kinds.Edge.equal edge Rising then 2 else 3);
+         bits 2 (if Kinds.Edge.equal edge Rising then 2 else 3);
        i.wait_pin_i := bits 3 pin;
        i.wait_timeout_enable_i :=
          (if Option.is_some timeout then Bits.vdd else Bits.gnd);

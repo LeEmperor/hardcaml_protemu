@@ -15,21 +15,24 @@
  (name hardcaml_protemu)
  (synopsis "Protocol emulator ASIC written in Hardcaml")
  (description
-  "Synthesizable protocol emulator blocks written in Hardcaml. Installs as one wrapped\nlibrary named hardcaml_protemu.")
+  "Synthesizable protocol emulator blocks written in Hardcaml. Installs as hardcaml_protemu,\nthe wrapped RTL library, and hardcaml_protemu.isa, the instruction specification and\nassembler it shares with the reference model.")
  (depends
   (ocaml
    (>= 5.1))
   (dune
    (>= 3.17))
-  ; The installed library surface (lib/). Everything below is test or repo tooling
-  ; and must not be forced on a consumer.
+  ; The installed library surface (lib/ and isa/). Everything below is test or repo
+  ; tooling and must not be forced on a consumer. isa/ needs core alone: it holds the
+  ; instruction specification and no circuit.
   core
   hardcaml
   ppx_hardcaml
   ppx_jane
-  ; Test frameworks: test/ only.
+  ; Test frameworks: test/ only. hardcaml_event_driven_sim carries the time-resolved
+  ; pad driver P2.2/P2.6 need; Cyclesim can only change an input on a cycle boundary.
   (hardcaml_step_testbench :with-test)
   (hardcaml_waveterm :with-test)
+  (hardcaml_event_driven_sim :with-test)
   (ppx_expect :with-test)
   (base_quickcheck :with-test)
   (alcotest :with-test)

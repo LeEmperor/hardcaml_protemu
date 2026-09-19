@@ -19,8 +19,11 @@
    - read and write never share a cycle.
 
    Not yet present (P3.1): readback, loaded-image validity and bounds, and a load-complete
-   condition before RUN. Decode and Execute are placeholders; the word width and depth
-   below are study points, not an ISA decision.
+   condition before RUN. Decode and Execute are placeholders. The word width and depth
+   below predate the ISA: P1.5 settled the instruction word at sixteen bits and published
+   the field layout as [Protemu_isa.Encoding], which is what P3.2's decoder is to be built
+   from; this scaffold has not been rewidened to it, because doing so changes emitted RTL
+   and belongs with the decoder rather than ahead of it.
 *)
 
 open! Core

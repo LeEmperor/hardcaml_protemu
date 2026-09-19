@@ -1,8 +1,9 @@
 # Phase 2 primitive implementation record
 
-Date: 2026-09-18. Baseline revision: `626ece9`. The sources described here are
-uncommitted working-tree changes. This record is functional evidence, not a mapped
-CMOS5L cost report.
+Date: 2026-09-18, verification re-run 2026-09-19. Baseline revision: `626ece9`.
+The sources described here were uncommitted working-tree changes when the record
+was written; they are committed as of `9fd703d`. This record is functional
+evidence, not a mapped CMOS5L cost report.
 
 ## Blocks and contracts
 
@@ -42,24 +43,34 @@ results for the current digital topology, not a supported external clock envelop
 
 ## Verification run
 
-The repository's selected `5.2.0+ox` switch lacks `hardcaml_circuits`,
-`core_unix`, `alcotest`, and `ocamlformat`. It also lacks `iverilog`,
-`verilator`, and `yosys`. The full repository build and `@fmt` therefore could
-not run; `@lint` passed. To compile and test the P2 sources without altering the
-repository's declared dependencies, a temporary Dune project under `/tmp` used
-the installed `core`, `hardcaml`, `ppx_hardcaml`, `ppx_jane`, and `jane_rope` packages.
-It copied the new RTL modules and the separate `model/` library. Its `dune runtest`
-passed all 24 tests from `test/test_primitives.ml`. Each block's Verilog was
-emitted twice and compared byte for byte. `git diff --check` passed.
+These sources were first tested from a temporary Dune project under `/tmp`,
+because the switch then lacked `core_unix`, `alcotest`, and `ocamlformat` and the
+repository build could not run. That workaround is obsolete: `./bootstrap.sh`
+installs those packages, and the tests now run in place. `hardcaml_circuits` is
+not a dependency of anything in this repository.
 
-Reproduction in a fully provisioned checkout:
+Re-run in this checkout on 2026-09-19, through the pinned switch:
 
 ```sh
-./scripts/with-switch.sh dune build @fmt
-./scripts/with-switch.sh dune build @lint
-./scripts/with-switch.sh dune build @runtest @rtl
+./scripts/with-switch.sh dune build @runtest   # passes
+./scripts/with-switch.sh dune build @lint      # passes
+./scripts/with-switch.sh dune build @fmt       # FAILS; see below
+./scripts/with-switch.sh dune build @rtl       # needs host iverilog/verilator/yosys
 ./scripts/with-switch.sh dune exec bin/generate_p2.exe -- uart_tx /tmp/uart_tx.v
 ```
+
+`@runtest` and `@lint` pass. **`@fmt` fails**: now that `ocamlformat` is
+installed it can run for the first time, and it reports diffs in thirteen
+committed files — `lib/pin_bank.ml`, `input_events.ml`, `timing.ml`,
+`primitive_demo.ml`, `byte_fifo.ml`, `shift_lane.ml`, `observed_transfer.ml`,
+`uart_tx.ml`, `model/fifo.ml`, `model/shift_engine.ml`,
+`test/test_primitives.ml`, `bin/generate_p2.ml`, and `bin/asic_bundle.ml`. The
+P2 sources have never been through the formatter. That is unrelated to their
+behavior, but it is an open cleanup, not a passing check.
+
+`@rtl` still needs `iverilog`, `verilator`, and `yosys`, which this host does not
+have; the emitted-RTL simulation below therefore remains unrun here. The pinned
+LibreLane image supplies those tools for the adopted flow's own checks.
 
 The first working slice remains open: its typed UART descriptor matches the
 model and Hardcaml transmitter, but emitted RTL simulation has not run here.

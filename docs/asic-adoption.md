@@ -70,114 +70,17 @@ of the HDL binaries. `--metadata-only` runs the
 bundle and declaration checks without Docker. Physical flow execution and
 registered program memory remain separate P0.5b/P0.7 work.
 
-## The flow
+## Running the flow
 
-[`./flow.sh`](../flow.sh) is the canonical command for the ASIC implementation
-flow, and the only one. Its orchestration lives in the consumer-owned
-[`adopted-flow.sh`](../tinytapeout/scripts/adopted-flow.sh), which drives
-[`adopted_phase4.py`](../tinytapeout/scripts/adopted_phase4.py): that runner
-stages the emitted bundle, checks its hashes and requested revisions against the
-actual collateral, runs LibreLane, and preserves run records. `adopted_report.py`
-reads the collected result. They use no path into a `hardcaml_asic` source
-checkout. The Python runner is adapted from the library's phase 4 runner at the
-revision recorded in `asic-dependencies.lock`; this consumer copy uses protemu's
-own `tb.v` for the gate-level wrapper test.
+The emitted bundle is consumed by [`./flow.sh`](../flow.sh), the canonical and
+only entry point for the implementation flow. Its stages, environment overrides,
+resuming rules, failure behavior, archiving, and verification status are in
+**[flow.md](flow.md)**, which is the source of truth for all of it.
 
-The stages, in the order a bare `./flow.sh` runs them:
-
-```text
-build → emit → preflight → run → postcheck → collect → report → archive
-```
-
-`build` compiles the tooling and runs the development tests through the pinned
-switch. `emit` writes the immutable bundle. `preflight` checks the bundle and
-the environment without running LibreLane. `run` is the physical step —
-hardening — and creates a unique run directory and `run.json`; failed runs
-retain their logs. `postcheck` uses the support-tools Nix precheck and the
-pinned LibreLane image's Icarus for gate-level simulation. `collect` writes
-`results.json`, `report` fails if the required physical or timing verdicts do
-not pass, and `archive` promotes the run into `flow_results/`.
-
-A bare `./flow.sh` allocates a fresh output directory, prints its absolute path,
-and runs all of that, hardening included. Prepare a named experiment without
-starting a physical run by naming the stages:
-
-```sh
-./bootstrap.sh
-source env.sh
-export PROTEMU_FLOW_OUT="$PWD/tinytapeout/build/my-experiment"
-./flow.sh build emit preflight
-./flow.sh run postcheck collect report
-```
-
-No stage runs an earlier one for you, so `./flow.sh run` hardens the bundle that
-is already in `$PROTEMU_FLOW_OUT`. Emission refuses a bundle directory that has
-any file in it: choose a new `PROTEMU_FLOW_OUT` rather than deleting one.
-
-`./bootstrap.sh` provisions support tools, PDK, the LibreLane Python
-environments, and the matching Docker image from this repository's lock. It does
-not stage the legacy P0 project. If those exact tools are already available
-elsewhere, set `PROTEMU_TT`, `PROTEMU_PDK_ROOT`, and `PROTEMU_FLOW_PY` instead;
-`./flow.sh --help` lists every override.
-
-Each `run` gets its own directory, and the stages after it in the same
-invocation use the one that invocation produced. A separate invocation must name
-it — the newest run under `PROTEMU_RUNS` is never assumed to be the intended
-one:
-
-```sh
-PROTEMU_RUN=/absolute/path/to/run ./flow.sh postcheck collect report
-PROTEMU_RUN=/absolute/path/to/run ./flow.sh report
-```
-
-`collect` and `report` read recorded artifacts with the system `python3` only,
-so a finished or failed run can be inspected on a machine with no opam switch
-and no PDK.
-
-`PROTEMU_STAGE=synthesis` stops `run` after mapped synthesis. Use it with
-`build emit preflight run collect report`: `postcheck` requires a completed full
-run, and mapped synthesis is not physical closure.
-
-## Where results are kept
-
-A run directory is scratch: roughly 240 MB of tool output under the gitignored
-`tinytapeout/build/`, most of it intermediate stage state that nothing reads
-again. `archive` copies out the records and reports an acceptance decision is
-actually read from — about 1 MB — into `flow_results/<date>-<run id>/`, which
-is committed. It re-verifies every hash the run's own records pin, so the
-archive stands in for the run directory: the bytes it carries are provably the
-bytes that passed.
-
-The directory name comes from the run's own start time and ID, not from
-anything the invocation chose, so archiving one run twice lands in the same
-place and names sort chronologically. What the run *meant* goes in a
-`README.md` written beside the records; re-archiving replaces only the files
-the tool writes and leaves that note alone. `PROTEMU_FLOW_RESULTS` moves the
-tree; `PROTEMU_ARCHIVE` names one destination outright.
-
-[`adopted_archive.py`](../tinytapeout/scripts/adopted_archive.py) is a consumer
-copy of the library's `scripts/archive.py` at the revision in
-`asic-dependencies.lock`, differing only in which phase4 module it loads. A run
-that did not reach `completed` is refused rather than archived: the flow summary
-still names its directory, and that directory is where a failed run is read.
-
-Whatever happens, the last thing printed is a summary — each stage's elapsed
-time, the end-to-end time, the stage that failed or was interrupted, and the
-absolute path of every record and log that actually exists, including the
-archive when one was made. The first adopted physical run is archived at
+The first adopted physical run is archived at
 [`flow_results/20260918-230920-05f65042`](../flow_results/20260918-230920-05f65042/README.md);
 it is the P0.5b record.
 
-### Orchestration checks
-
-[`check-flow.sh`](../tinytapeout/scripts/check-flow.sh) exercises the
-orchestration itself — argument handling, output allocation, resuming, stage
-failure, the summary, and signal handling — with a stub in place of dune, so it
-runs in seconds and implements nothing:
-
-```sh
-tinytapeout/scripts/check-flow.sh
-```
-
-It is not part of `dune runtest`: no ordinary build or test starts a physical
-run, and this check writes outside the source tree.
+Note that `adopted-flow.sh` does not invoke `check-adopted-bundle.py`. A physical
+run is physical evidence only; the adoption invariants above are checked
+separately.

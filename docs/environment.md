@@ -15,12 +15,9 @@ it left and never provisions. Nothing else is implied by either: a bare
 `./flow.sh` deliberately starts a physical run and takes hours, so read
 `./flow.sh --help` first and name the steps when you want only some of them.
 
-```sh
-./flow.sh --help                  # steps, PROTEMU_* overrides, and how to resume
-./flow.sh build emit preflight    # prepare and check a bundle; no hardening
-./flow.sh run postcheck collect report
-PROTEMU_RUN=/path/to/run ./flow.sh report    # inspect a finished run
-```
+This document owns the environment — the layers, what provisions each one, and
+what to run when something is missing. The flow itself, its stages, overrides,
+artifacts and verification status, is **[flow.md](flow.md)**.
 
 Dune builds and checks the tooling; it never implements:
 
@@ -34,11 +31,9 @@ dune exec protemu -- flow        # alias for ./flow.sh, same runner and exit sta
 
 The remaining `protemu` commands (`check`, `stage`, `legacy-harden`, `precheck`)
 drive the legacy staged project, which is a different input from the emitted
-bundle: see [the adopted flow guide](asic-adoption.md#the-flow) and
-[the migration handoff](flow_migration.md). They need
-`./bootstrap.sh --legacy-project`, which is the only way that project is staged
-now. `protemu harden` is an alias for `./flow.sh run` and rejects the legacy
-`-tag` and `-no-docker` flags rather than reinterpreting them.
+bundle. They need `./bootstrap.sh --legacy-project`, which is the only way that
+project is staged now. See [flow.md](flow.md#the-legacy-path) for that path and
+for the aliases `flow`, `harden` and their flag handling.
 
 ## Layers
 
@@ -84,6 +79,21 @@ yourself.
 | Offline | Nothing may be fetched | `./bootstrap.sh --offline` validates and reuses what exists. |
 | Editor or LSP launched outside a shell | Layer 3 is invisible to it | Point the editor at switch `5.2.0+ox`. `env.sh` only affects terminals. |
 
+## What owns what
+
+Provisioning, design inputs, and generated artifacts stay separate, and the
+boundary between them is what keeps a bootstrap from quietly becoming a build:
+
+| Category | Examples | Owner |
+| --- | --- | --- |
+| Host prerequisites | git, python3, a container runtime, basic shell utilities | you or your OS administrator; the bootstrap only detects and prints |
+| Project-local toolchain | `.venv`, `.venv-precheck`, support-tools checkout, IHP PDK | the bootstrap, in the root `.venv` and ignored paths under `tinytapeout/` |
+| Tracked design inputs | Hardcaml source, the typed declaration, `toolchain.lock`, integration scripts | this repository |
+| Generated bundle | RTL, source sets, constraints, TT metadata/configuration, immutable manifest | `hardcaml_asic`, emitted from the declaration; see [flow.md](flow.md) |
+
+The legacy path's hand-maintained `tinytapeout/info.yaml` and `src/config.json`
+are tracked design inputs of that path only; the adopted path derives both.
+
 ## Boundaries
 
 The bootstrap does not:
@@ -94,6 +104,18 @@ The bootstrap does not:
 - move to newer tools. Changing a version is a reviewed edit to `toolchain.lock` or the opam file.
 - delete environments, PDKs, or runs
 
+These stay outside it as well, because each is a decision rather than a step:
+
+- selecting a different tile allocation, PDK, template, or clock target. `8x4`
+  in particular is not accepted before an explicit competition update and a
+  reviewed `toolchain.lock` change; `6x4` is authoritative until then.
+- choosing or editing RTL, wrapper pins, timing assumptions, or flow overrides.
+  The declaration owns configuration on the adopted path, and a conflicting
+  override is an error rather than a precedence rule.
+- deleting physical runs or submission artifacts, uploading them, enabling CI,
+  or submitting the design.
+
 Per-worktree duplication of layer 2 is the known cost of this layout. A shared cache
-keyed by lockfile revision is deferred until usage justifies it; see section 1 of
-[bootstrap-toolchain-plan.md](bootstrap-toolchain-plan.md).
+keyed by lockfile revision is deferred until usage justifies it: no reusable
+provisioning package or new cache layout is required by the current milestone, and
+the long-term home for one is a decision to make from actual use.

@@ -2,8 +2,9 @@
 
 This records why the ASIC path is split between OCaml and Python where it is,
 so the next person to feel the seam knows which side of it to push on. It is a
-rationale document, not a specification: `asic-adoption.md` describes what the
-flow does, and `hardcaml_asic/docs/architecture.md` describes the library.
+rationale document, not a specification: `flow.md` describes what the flow
+does, `asic-adoption.md` the bundle it consumes, and
+`hardcaml_asic/docs/architecture.md` the library.
 
 ## The split
 
@@ -101,7 +102,13 @@ hatch. Not a pile of hooks — five consumers with five divergent override sets
 and no way to tell which divergences were deliberate is the failure mode that
 `reason` exists to prevent.
 
-The defaults half of that pattern is not built yet, which is the next section.
+The defaults half of that pattern now exists on the library side:
+`Tt_cmos5l.template_overrides` is the template's twenty LibreLane settings, each
+carrying its own `reason` and the template revision it was taken from, and
+`Tt_cmos5l.overrides` composes them — `~extra` to replace a default, `~without`
+to drop one and let LibreLane choose. A consumer reads the defaults without
+running the flow, and a deliberate divergence is spelled as one of those two
+arguments rather than as an edited copy of the list.
 
 ## What is actually wrong right now
 
@@ -123,10 +130,13 @@ whenever the lock moves. Only the `adopted_phase4.py` delta is real — it uses
 this repository's `tinytapeout/test/tb.v` for the gate-level check. The other
 two deltas are an import line and a docstring.
 
-The same disease shows in the declaration. The 20 LibreLane overrides in
-`bin/asic_bundle.ml` are byte-identical to the ones in the library's own
-`examples/tt_bundle_example.ml`, both citing TT CMOS5L template commit
-`b86a2a7`. Two copies, one real consumer.
+The declaration used to show the same disease — twenty LibreLane overrides
+byte-identical to the ones in the library's own `examples/tt_bundle_example.ml`,
+two copies with one real consumer. That one is fixed: `bin/asic_bundle.ml` is
+153 lines, takes its settings from `Tt_cmos5l.overrides ()`, and its wrapper
+ports, reset and pad gating come from `Tt_cmos5l` as well. The fix was the
+pattern above — defaults in the library, a named escape hatch beside them — and
+it is the shape the Python side still needs.
 
 This is a maintenance and adoption problem, not a reproducibility problem.
 Reproducibility is already handled by content hashing and the lock; the copies
@@ -146,5 +156,5 @@ rather than generated, so an odd environment stays fixable.
 ## Summary
 
 Keep the boundary at the bundle. Keep OCaml out of the flow and Python out of
-the declaration. The remaining work is packaging on the Python side and
-template defaults on the OCaml side; neither requires moving the line.
+the declaration. Template defaults on the OCaml side are done; the remaining
+work is packaging on the Python side, and it does not require moving the line.

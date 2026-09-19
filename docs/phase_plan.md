@@ -343,13 +343,43 @@ bundle, or synthesis alone does not establish physical closure.
   and nothing fetches or decodes, so every cycle count above is a floor that P3.2
   can only raise. The SPI and I2C targets are model-side evidence; independent
   peer hardware and the full baseline modes are P4.
-- [ ] **P1.4 — Compare instruction and storage candidates.** Evaluate 16-bit
+- [x] **P1.4 — Compare instruction and storage candidates.** Evaluate 16-bit
   instructions with extensions against fixed 32-bit instructions using the same
   examples. Use the settled 1RW latency-one memory contract; record memory-word
   width, instruction packing, byte order, extension fetches, register/flag
   semantics, branch paths, and invalid-instruction behavior. Evidence: an initial
   report of encoded program sizes and cycle counts; leave physical area columns
   unmeasured until P5 supplies results.
+  Evidence: the [P1.4 encoding study](p1.4-encoding-study.md) carries the tables and
+  what they recommend; every number in it is an expect-test output from
+  [`test_encoding.ml`](../test/model/test_encoding.ml). One operation set
+  ([`study_isa.ml`](../model/study_isa.ml)) is encoded two ways and stored four ways
+  ([`study_encoding.ml`](../model/study_encoding.ml)): 16-bit instructions with
+  extension words and fixed 32-bit instructions, each in a 16-bit and a 32-bit memory
+  word. The same UART, SPI and I2C work P1.3 built out of operations is written once
+  as programs ([`study_examples.ml`](../model/study_examples.ml)), assembled by every
+  candidate, and run by a control core ([`study_core.ml`](../model/study_core.ml))
+  that fetches real words from a [`Program_store`](../model/program_store.ml) through
+  the 1RW latency-one port and issues their operations into `Machine`; the SPI and
+  I2C runs are answered by P1.3's independent peers and receive `0x3c` and
+  acknowledge `0x84`/`0xa5` under all four candidates. At equal memory width the
+  16-bit encoding costs 26% to 50% fewer program bits and the same cycles except
+  where an extension word is executed, where it costs 9% to 14%; packing two 16-bit
+  instructions per 32-bit word is the fastest candidate and the only one whose
+  bit-banged timing depends on instruction alignment; 32-bit instructions in a 16-bit
+  word are largest and slowest on every example. A 16-bit word is an instruction
+  15,518 times in 65,536, against 1.79% of a million sampled 32-bit words, which is
+  the fixed-width format's clearest advantage. *Carried forward:* the cycle counts
+  belong to one deliberately simple reference core - fetch not overlapped with
+  execution, one buffered memory word, one edge per instruction - so P3.2 may lower
+  every absolute number; the fetch and execute columns are reported separately so
+  that bound can be taken without rerunning anything. No engine executes a transfer
+  yet (P2.5), so the descriptor programs stop at acceptance and the engine's eighty
+  wire cycles are quoted from P1.3. Both encodings are two-address, so the 32-bit
+  format is measured without the three-address form its spare bits would allow, and
+  neither has a call instruction: 31 of the I2C transaction's 85 instructions are one
+  inlined byte loop. P1.5 owns all three decisions, and physical area stays
+  unmeasured until P5.
 - [ ] **P1.5 — Establish shared encoding and independent execution.** Choose a
   provisional encoding through a recorded architecture decision, implement the
   assembler with validation, and expose one instruction specification for the

@@ -1,9 +1,12 @@
 # ASIC flow entry-point migration
 
-Status: implemented, 2026-09-18. The root `flow.sh` interface described below
-exists; [the handoff](#implementation-handoff) at the end of this document records
-what changed, what was verified, and what was not. Everything before that section
-is the plan as written, kept as the statement of intent it was judged against.
+Status: implemented, 2026-09-18. **This is history.** The flow as it exists now
+— stages, overrides, artifacts, aliases, and what has been verified about it —
+is [flow.md](flow.md), and that document is the source of truth. This one is
+kept for why the interface is shaped the way it is: everything before
+[the handoff](#implementation-handoff) is the plan as written, the statement of
+intent the work was judged against, and the handoff records what changed and
+what was checked at the time. Where the two disagree, `flow.md` is current.
 
 ## Objective
 
@@ -50,9 +53,10 @@ not interchangeable spellings of the same operation. The default bootstrap also
 staged the legacy project; its `--adopted-only` mode already skipped that work.
 
 Read [asic-adoption.md](asic-adoption.md) for the bundle contract and current
-commands, and [environment.md](environment.md) and
-[bootstrap-toolchain-plan.md](bootstrap-toolchain-plan.md) for environment
-ownership. The library's [example runner](../../hardcaml_asic/scripts/flow.sh)
+commands, and [environment.md](environment.md) for environment ownership.
+(That plan document, which this section also cited, has since been deleted:
+its script was implemented and its acceptance checks were closed by the P0.5a
+and P0.5b runs, and what remained durable is in `environment.md`.) The library's [example runner](../../hardcaml_asic/scripts/flow.sh)
 is a reference for stage sequencing, duration reporting, and failure summaries.
 That sibling link is for development reference only.
 
@@ -210,24 +214,11 @@ claim that the user's bootstrap or a physical run has passed.
 
 ### Compatibility decisions
 
-- `adopted-flow.sh` still prints help when called with no arguments. Only
-  `./flow.sh` turns a bare invocation into a full physical run; the runner is not
-  given that meaning, because anything already calling it bare would start
-  hardening. `--full` is the explicit spelling, and the two differ in nothing else.
-- `protemu harden` rejects `-tag` and `-no-docker` with a diagnostic naming
-  `legacy-harden`, rather than translating them. The adopted runner is dockerized
-  with the pinned image and archives nothing — every attempt already gets its own
-  run directory — so neither flag has an honest equivalent.
-- Named steps keep the previous default output directory,
-  `tinytapeout/build/adopted`. Only a full default invocation allocates a fresh
-  one, so `./flow.sh postcheck collect report` still finds an existing experiment.
-- `--adopted-only` is still accepted by `bootstrap-toolchain.sh` so the commands
-  recorded in earlier documents and notes keep working.
-- `--adopted-only` combined with `--no-container` was previously a hard error.
-  It is now a warning that skips resolving the pinned image, so `--no-container`
-  remains usable with the default provisioning mode for someone supplying a
-  native LibreLane.
-- The legacy scripts, the staged project, and `dune build @rtl` are untouched.
+The decisions this migration made about `adopted-flow.sh`'s bare invocation, the
+rejected `-tag`/`-no-docker` flags, the default output directory for named steps,
+and `bootstrap-toolchain.sh`'s retained `--adopted-only` are current behavior and
+live in [flow.md](flow.md#aliases-and-compatibility). The legacy scripts, the
+staged project, and `dune build @rtl` were left untouched.
 
 ### Checks performed
 
@@ -253,15 +244,7 @@ claim that the user's bootstrap or a physical run has passed.
 
 ### Remaining limitations
 
-- **No end-to-end physical run was performed**, so the acceptance item asking for
-  an adopted smoke run with preserved evidence is unverified. Orchestration is
-  checked; `run` and `postcheck` have been exercised only as far as `preflight`.
-  Nothing here says the design closes.
-- Reporting on a failed or interrupted run is therefore also unverified against a
-  real failed run; only the missing-run and stub paths were exercised.
-- A SIGTERM sent to the flow alone (rather than to the process group, as Ctrl-C
-  does) is acted on after the running stage's command returns, because bash defers
-  a trap until the foreground command completes. The status and the summary are
-  correct; the wait is not shortened.
-- `PROTEMU_STAGE=synthesis` is documented and passed through, but has not been
-  run since this change.
+At the time of the handoff no end-to-end physical run had been performed. One has
+since been run and archived; see
+[flow.md](flow.md#verified-behavior-and-known-limits) for what is established now
+and what still is not.

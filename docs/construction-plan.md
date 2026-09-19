@@ -139,21 +139,40 @@ that rework.
   and image validity are placeholders. `test/test_protocol_core.ml` checks it against
   a contract model of the store.
 - `model/`: the independent reference execution model (Dune library `protemu_model`,
-  no Hardcaml dependency), covering P1.1 and P1.2. `machine.ml` holds all model state
+  no Hardcaml dependency), covering P1.1 to P1.4. `machine.ml` holds all model state
   and one rising edge; `operation.ml` is the typed mechanism vocabulary with its
   structural validation; `pin_bank.ml`, `input_pins.ml`, `event.ml`, `fifo.ml`, and
   `transfer.ml` are the mechanisms; `program_store.ml` is a contract model of the 1RW
-  store. It is kept out of `lib/` so a diagnostic model cannot reach a synthesis
-  source set. Transfers are validated and latched but not executed (P2.5), and there
-  is no decoder yet (P1.5). Tests are in `test/model/`.
+  store. `firmware.ml` and the `firmware_*.ml` builders are P1.3's labelled operation
+  sequences and their independent peers. The `study_*.ml` modules are P1.4's encoding
+  comparison and are a study rather than the ISA: one operation set, two encodings,
+  four instruction/memory-word combinations, and a reference core that executes them
+  ([the report](p1.4-encoding-study.md)). It is kept out of `lib/` so a diagnostic
+  model cannot reach a synthesis source set. Transfers are validated and latched but
+  not executed (P2.5), and the machine still has no decoder of its own (P1.5, P3.2).
+  Tests are in `test/model/`.
 - `lib/protemu_types.ml`: candidate pin/configure/transfer instruction variants.
 - `lib/p0_observable.ml` and `bin/generate.ml`: an observable pin/timer circuit
   and working parameterized Verilog emitter, separate from the control scaffold.
+- The P2 primitives in `lib/`: `pin_bank.ml`, `input_events.ml`, `timing.ml`,
+  `byte_fifo.ml`, `shift_lane.ml`, `observed_transfer.ml`, `uart_tx.ml`, and
+  `primitive_demo.ml`, each compared against a `model/` reference in
+  `test/test_primitives.ml`, with `bin/generate_p2.ml` emitting standalone Verilog
+  for every block. Their interfaces, contracts, and the latencies measured in
+  digital simulation are in the [P2 record](p2-implementation.md). Mapped CMOS5L
+  cost for them is not measured (P2.8), and the lane's claim mask is not yet wired
+  through pin-bank arbitration at a project top.
 - `test/test_hardcaml_protemu.ml` and `tinytapeout/test/tb.v`: focused P0
   Hardcaml/wrapper tests. They do not establish complete pin-bank or UART support.
-- `tinytapeout/`: wrapper, metadata, pinned flow inputs, staging and local checks;
-  bootstrap/hardening scripts exist, but no completed mapped/physical run is
-  recorded. See the [P0 record](../tinytapeout/reports/2026-09-14-p0-tool-path.md).
+- `tinytapeout/`: wrapper, metadata, pinned flow inputs, staging, local checks,
+  and the flow scripts. The observable circuit has hardened to GDS on CMOS5L on
+  both paths — the legacy hand-maintained one and the emitted bundle — with
+  signoff, precheck, and gate-level wrapper tests passing. See the
+  [P0 record](../tinytapeout/reports/2026-09-14-p0-tool-path.md), the
+  [P0.5a legacy record](../tinytapeout/reports/2026-09-19-p0.5a-legacy-physical.md),
+  the [P0.5b adopted record](../tinytapeout/reports/2026-09-19-p0.5b-adopted-physical.md),
+  and [flow.md](flow.md) for the flow itself. Registered program memory (P0.7)
+  has not been through it.
 - `hardcaml_asic` (its [phase plan](../../hardcaml_asic/docs/phase_plan.md), reviewed
   2026-09-17): P0–P3 and P4.1–P4.4 have evidence. Implemented are the
   `Project`/`Elaboration_context`/`Build` lifecycle with resource identity and
@@ -162,9 +181,15 @@ that rework.
   validated flow configuration; deterministic bundle emission (RTL, source sets, SDC,
   TT metadata, manifest); and run records with structured result collection. Mapped
   CMOS5L synthesis evidence exists for a 4x8 flop-memory example (179 cells, about
-  3,480 µm²). Still open: its small physical path (ASIC P4.5), consumer packaging
-  and adoption (ASIC P5), and the SRAM investigation (ASIC S). This repository does
-  not depend on the library yet; `lib/dune` lists no `hardcaml_asic`.
+  3,480 µm²). Its small physical path (ASIC P4.5) and consumer packaging (ASIC
+  P5.1) have since closed as well. Still open: supporting this repository's P0.6
+  and P0.7 adoption (ASIC P5.2–P5.4), usage documentation (ASIC P5.5), and the
+  SRAM investigation (ASIC S). This repository now depends on the library:
+  `bin/asic_bundle.ml` declares the adopted design against it and takes its
+  wrapper ports, reset idiom, and LibreLane defaults from `Tt_cmos5l`, pinned by
+  revision in [`asic-dependencies.lock`](../tinytapeout/asic-dependencies.lock).
+  `lib/` itself still lists no `hardcaml_asic`, which keeps the hardware library
+  independent of the build path.
 - Dune, Hardcaml dependencies, and `scripts/with-switch.sh` are already present.
 
 Keep developing this scaffold, but do not let the current 8-bit instruction memory
@@ -529,7 +554,7 @@ remain `not run` or `unknown`; an emitted bundle is not physical closure. Use
 | Decision | Proposed starting point | Evidence needed before committing |
 | --- | --- | --- |
 | Core and engine count | One core, one duplex shift lane | Independent UART RX/TX and target-mode reaction measurements |
-| ISA encoding | Compare 16-bit plus extensions with 32-bit fixed | Program sizes, decoder area, and instruction timing |
+| ISA encoding | Compare 16-bit plus extensions with 32-bit fixed | Program sizes and instruction timing are recorded in the [P1.4 study](p1.4-encoding-study.md); decoder area is still unmeasured (P5) |
 | Program storage | `Single_port_ram`, 1RW, latency one, explicit flop implementation; host access halted and engines idle | Width/depth/packing and total placed area; macro capability gate before a supported backend comparison |
 | Clock/rates | Sweep clocks in simulation and physical constraints | Routed timing, pad/board path, and protocol jitter budgets |
 | Filtering | Synchronization first; per-input filtering if required | Glitch rejection versus latency and protocol pulse widths |

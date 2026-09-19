@@ -1,7 +1,8 @@
 # Verification suite migration
 
 Status: in progress on 2026-09-19. Baseline capture, the functional-model rename,
-and suite reorganization are complete; new simulation backends are not implemented.
+suite reorganization, and cycle/event adapter conformance are complete; timed product
+verification and four-state properties are not implemented.
 
 This is a temporary implementation guide. [verification.md](verification.md) owns
 the current-state inventory, target architecture, model/driver/monitor contracts,
@@ -273,24 +274,72 @@ stage.
 **Recommended effort: Sol 5.6 high.** Establish scheduling and sampling semantics
 through experiments, including the installed implementation/comment discrepancy.
 
-- [ ] Keep the current cycle runner and its pre/post-edge checks operational.
+- [x] Keep the current cycle runner and its pre/post-edge checks operational.
   Extract only reporting/checking/scenario facilities that the event pilot actually needs.
-- [ ] Specify time unit, clock phase/period, reset sequence, settle points, and
+- [x] Specify time unit, clock phase/period, reset sequence, settle points, and
   coincident-event ordering before implementing timed scenarios. Include time/edge
   budgets and cancellation/termination behavior.
-- [ ] Characterize a tiny register and ready/valid circuit on both backends. Verify
+- [x] Characterize a tiny register and ready/valid circuit on both backends. Verify
   input application, reset, pre-edge acceptance, settled registered outputs, timeout,
   and completion. The installed `cyclesim_compatible` implementation/comment
   disagree about edge order; establish behavior experimentally rather than copying
   the former documentation's assumption.
-- [ ] Use step-testbench only where it helps author concurrent two-state stimulus.
+- [x] Use step-testbench only where it helps author concurrent two-state stimulus.
   Keep its handler lifetime local. Drive the Evsim clock and asynchronous pads from
   scheduler processes with explicit ownership. No producer advances time privately.
-- [ ] Reuse a small set of known synchronous scenarios to compare adapters;
+- [x] Reuse a small set of known synchronous scenarios to compare adapters;
   benchmark startup and representative trial costs before deciding regression budgets.
 
 Exit: matching known-value observations at documented sampling points, with a
 reproducible result and a measured cost. This does not claim timed feature coverage.
+
+#### Adapter conformance result — 2026-09-19
+
+[`test/common/backend_conformance.ml`](../test/common/backend_conformance.ml) defines
+one test-only four-bit register and one-entry ready/valid sink. The same five items load
+nonzero state, clear it with synchronous reset, exercise a disabled register edge, accept
+an offer, and refuse a later offer after the sink becomes full. The Cyclesim and two-state
+Evsim adapters consume the same item values and produce identical known-value before/after
+observations. The existing `Env` cycle runner and its dependencies are unchanged; the
+conformance library is separate so event-simulator dependencies do not leak into it.
+
+The experiment establishes this adapter contract:
+
+- Evsim time is an abstract integer tick, not a claim about nanoseconds. The clock is
+  initially low, has a five-tick half-period and ten-tick period, rises first at time 5,
+  and falls at time 10. A dedicated scheduler process is the sole clock owner.
+- Synchronous inputs, including reset, are applied at time 0 or immediately after the
+  preceding falling-edge sample and remain stable through the next rising edge. The first
+  edge loads nonzero state, reset is asserted for the second edge, and it is deasserted for
+  the third, proving clear behavior rather than merely observing zero-initialized state.
+- `before` is captured when the rising-edge change wakes the step adapter, before the
+  register update has propagated through Evsim delta cycles. It therefore carries the
+  acceptance decision and old registered state. `after` is read on the following falling
+  edge, after the registered state has settled. Five steps return at times 10, 20, 30,
+  40, and 50. This observed implementation order is rising then falling; the installed
+  interface comment that says falling then rising is not the operative contract.
+- A future asynchronous-pad scheduler owns only its declared pad signals. For an event
+  specified at the same timestamp as a clock edge, the common event runner must enqueue
+  and settle the pad update before enqueueing the clock transition; that case means
+  "before the edge." An "after the edge" transition uses a later tick. Producers submit
+  timestamps and never call a private delay or simulator step. Scheduled transitions have
+  transport semantics, retaining every transition rather than suppressing short pulses.
+  Stage 4 has no asynchronous product stimulus, so this is a runner convention to enforce
+  in the Stage 5 pilot, not evidence about pad capture.
+- The conformance scenario has an eight-step adapter budget and a 51-tick simulator cap;
+  it completes in five steps/50 ticks. A separate never-completing fixture is stopped by
+  a three-step budget on both backends. Evsim processes wait forever after completion or
+  timeout, and the finite top-level run terminates the trial; a fresh simulator is created
+  for every run, so no process or handler escapes its trial.
+
+The inline conformance test is run by
+`./scripts/with-switch.sh dune runtest test/common --force`. The reproducible microbenchmark
+is `./scripts/with-switch.sh dune exec test/common/backend_conformance_bench.exe -- 10000`.
+On commit `8fc23f51845cb230db68f99dd5dace4cd90ed0f0` plus the Stage 4 diff, OCaml
+`5.2.0+ox`, Linux `6.8.0-139-generic`, and an AMD Ryzen Threadripper PRO 5955WX, it
+measured 44.658 microseconds per Cyclesim startup, 50.124 per Evsim startup, 48.159 per
+five-edge Cyclesim trial, and 69.864 per five-edge Evsim trial over 10,000 iterations.
+These are local regression-budget measurements, not general performance guarantees.
 
 ### 5. Pilot timed verification on `Input_events`
 

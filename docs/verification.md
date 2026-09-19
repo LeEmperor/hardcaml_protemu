@@ -1,7 +1,8 @@
 # System verification
 
 Status: current implementation updated on 2026-09-19 after the functional-model
-rename and per-block suite reorganization; new simulation backends remain unimplemented.
+rename, per-block suite reorganization, and cycle/event adapter conformance experiment;
+timed product verification and four-state properties remain unimplemented.
 
 This is the enduring source of truth for verification architecture, suite ownership,
 current evidence, and the intended next state. It incorporates the former test
@@ -15,21 +16,22 @@ verification policy rather than maintaining another test architecture.
 ## Current state
 
 Paths in this section describe files that exist now. The rename to `f_model` and
-the per-block suite layout are implemented; the proposed backend changes are not.
+the per-block suite layout are implemented. Backend sampling is characterized, but
+timed product and four-state suites are not.
 
 ### Backend and test inventory
 
 | Question | Answer |
 | --- | --- |
-| OCaml RTL simulation backend | `Hardcaml.Cyclesim` throughout; emitted-Verilog checks use separate tools. |
-| `hardcaml_step_testbench` | Declared `:with-test`, not yet used by a suite. |
-| `hardcaml_event_driven_sim` | Same: declared, wired, unused. The adoption is designed but unstarted. |
-| `hardcaml_waveterm`, `alcotest` | Same again. No waveforms are produced and no Alcotest suite exists. |
-| Test styles | 100 `let%expect_test`, 29 `let%test_unit`, one Quickcheck driver built on `base_quickcheck`. |
+| OCaml RTL simulation backend | Product suites use `Hardcaml.Cyclesim`; the isolated conformance fixture also runs two-state Evsim. Emitted-Verilog checks use separate tools. |
+| `hardcaml_step_testbench` | Used by the isolated cycle/event adapter conformance suite; production block suites have not migrated to it. |
+| `hardcaml_event_driven_sim` | Two-state Evsim is exercised by adapter conformance only; no timed product obligation is claimed. |
+| `hardcaml_waveterm`, `alcotest` | Declared `:with-test` but unused. No waveforms are produced and no Alcotest suite exists. |
+| Test styles | 101 `let%expect_test`, 30 `let%test_unit`, one Quickcheck driver built on `base_quickcheck`. |
 | Blocks on the shared harness | One: P2.1 `Pin_bank`. Everything else still runs its own loop. |
 
-Dependency wiring precedes event-driven implementation; a declared dependency is
-not evidence of a running suite.
+The conformance fixture is evidence about adapter scheduling only; a declared dependency
+or a synthetic fixture is not evidence for a product obligation.
 
 ### Existing evidence layers
 
@@ -39,7 +41,7 @@ deliberately kept apart so that a disagreement between two of them is evidence r
 | Layer | Library | Depends on Hardcaml | Contents |
 | --- | --- | --- | --- |
 | Reference model | `test_protemu_f_model` ([`test/f_model/`](../test/f_model/dune)) | No | 95 expect tests over [`f_model/`](../f_model/dune). |
-| Model/RTL comparison | uniquely named libraries under [`test/common/`](../test/common/dune), [`test/primitives/`](../test/primitives), [`test/core/`](../test/core), and [`test/integration/`](../test/integration) | Yes, except generic support | 29 `%test_unit` directed tests, 5 expect tests, and the `Env` harness. |
+| Model/RTL comparison and backend conformance | uniquely named libraries under [`test/common/`](../test/common/dune), [`test/primitives/`](../test/primitives), [`test/core/`](../test/core), and [`test/integration/`](../test/integration) | Yes, except generic support | 29 product `%test_unit` tests, 5 harness expect tests, one adapter `%test_unit`, one adapter expect test, and the `Env` harness. |
 | Emitted RTL | none — Dune rules | n/a | iverilog, verilator and yosys checks behind `dune build @rtl`. |
 
 #### Model tests — `test/f_model/`
@@ -178,6 +180,43 @@ The other primitive, core, and integration tests are structurally migrated into
 block-owned suites but still use their existing directed Cyclesim loops. Structural
 relocation does not claim shared-harness adoption or new generated coverage.
 
+### Cycle/event adapter conformance
+
+[`backend_conformance.ml`](../test/common/backend_conformance.ml) isolates the event
+dependencies from `protemu_test_common` and characterizes the installed step-testbench
+adapters with a test-only four-bit register and one-entry ready/valid sink. One shared
+five-edge scenario loads nonzero state, clears it with reset, and checks input application,
+pre-edge acceptance, settled registered outputs, completion, and refusal after the sink
+fills. Cyclesim and two-state
+Evsim produce identical known-value observations. A separate non-completing testbench
+times out after three adapter steps on both backends.
+
+The established event convention uses abstract integer ticks, a clock initially low,
+a five-tick half-period, and rising edges at times 5, 15, 25, 35, and 45. Synchronous inputs
+are applied at time 0 or after the preceding falling-edge sample and remain stable through
+the rising edge. The installed `cyclesim_compatible` implementation wakes on rising to
+capture the old/pre-edge values, then wakes on falling to return settled post-edge values;
+the five scenario steps consequently return at times 10, 20, 30, 40, and 50. Its installed
+interface comment describes the waits in the opposite order and is not used as the
+contract. The Evsim step-testbench handler remains local to its process.
+
+The clock scheduler alone drives the clock. A timed pad driver will own only its declared
+pads and submit events to the common scheduler rather than advancing simulation itself.
+At an exact clock timestamp, the convention is to enqueue and settle the pad update before
+the clock transition ("before the edge"); an after-edge transition uses a later tick. The
+Stage 5 runner must enforce this ordering before exact-coincidence cases count as product
+evidence. Scheduled transitions use transport semantics: every transition is retained;
+the runner does not silently suppress a short pulse as an inertial delay would.
+
+The conformance run has an eight-step adapter budget and a 51-tick simulator cap, although
+it completes in five steps/50 ticks. On completion or timeout, the testbench process waits
+forever and the finite top-level Evsim run ends the trial; each run discards that simulator
+and constructs fresh state. Run it with
+`./scripts/with-switch.sh dune runtest test/common --force`. The local cost probe is
+`./scripts/with-switch.sh dune exec test/common/backend_conformance_bench.exe -- 10000`;
+the recorded 2026-09-19 result and machine identity remain in the migration guide. This
+experiment establishes adapter sampling and budgeting only, not timed product coverage.
+
 ### Current limitations and evidence boundaries
 
 The runner takes one item per edge and monitors edge-indexed observations. Its
@@ -198,10 +237,11 @@ dependency/tool manifest. The stronger reproduction requirements below remain
 work to complete. Trace context is bounded (six edges by default); no waveform,
 stimulus journal, or general replay-file format is implemented.
 
-No event-driven, four-state, or coverage-collection suite is implemented. The
-existing RTL smoke checks do not establish gate-level functional behavior,
-physical timing closure, or metastability reliability. See the evidence map below
-for the distinction between implemented checks and outstanding obligations.
+No event-driven product suite, four-state property, or coverage-collection suite is
+implemented. The event-driven conformance fixture establishes adapter behavior only. The
+existing RTL smoke checks do not establish gate-level functional behavior, physical
+timing closure, or metastability reliability. See the evidence map below for the
+distinction between implemented checks and outstanding obligations.
 
 ## Next state
 
@@ -351,9 +391,10 @@ Installed `5.2.0+ox` notes, inspected on 2026-09-19:
   separately justified four-state step binding is implemented later.
 - `cyclesim_compatible` is intended to return before/after samples, but the
   installed functional implementation waits for rising then falling, while its
-  interface comment says falling then rising. Do not rely on that comment or the
-  former backend notes: characterize scheduling/settling using register and
-  handshake conformance tests before selecting the shared convention.
+  interface comment says falling then rising. The conformance fixture above established
+  that the rising wake observes old/pre-edge state and the falling wake returns settled
+  post-edge state for this version. The experiment, rather than the conflicting comment,
+  defines the shared convention.
 - `rising_edge` returns the same sample as both before and after; it does not
   satisfy a contract requiring distinct samples without additional machinery.
 - `Handler.t @ local` cannot escape its permitted lifetime; pass it down operations
@@ -558,6 +599,7 @@ Historical run reports are not fresh results for later source revisions.
 | Obligation | Current evidence/owner | Next evidence still owed |
 | --- | --- | --- |
 | ISA, encoding, reference cycle schedule, firmware examples | `test/f_model/`, 95 expect tests | Preserve independently; extend with new contracts |
+| Cycle/event adapter scheduling | `test/common/backend_conformance*.ml`; matching five-edge known-value trace, completion, and timeout on Cyclesim/two-state Evsim | Enforce the declared coincident-event convention in the Stage 5 timed runner; this is not product coverage |
 | Pin bank cycle agreement and harness diagnostics | `test/primitives/pin_bank/` plus generic fixtures in `test/common/`; recorded 200 trials and seed sweeps above | Extend properties as the block contract grows |
 | Other primitive cycle behavior | 23 block-owned directed tests under `test/primitives/` and one integration case under `test/integration/primitive_demo/` | Add bounded generated properties where they provide distinct evidence |
 | Core memory/fetch/execute behavior | Three directed tests in `test/core/protocol_core/` | Broader instruction/stall/reset cases as contracts land |

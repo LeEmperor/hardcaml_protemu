@@ -28,3 +28,42 @@
   (pps ppx_js_style))
  (flags
   (:standard -w -27-57-33-34-35-40-63-47-26)))
+
+; This experiment is intentionally separate from protemu_test_common: the established
+; cycle runner must not acquire event-simulator or step-testbench dependencies.
+(library
+ (name protemu_backend_conformance)
+ (wrapped false)
+ (modules backend_conformance)
+ (libraries core hardcaml hardcaml_event_driven_sim hardcaml_step_testbench)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))
+
+(library
+ (name protemu_backend_conformance_tests)
+ (wrapped false)
+ (modules backend_conformance_expect_tests)
+ ; Keep the ppx_expect source-tree workaround described above.
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries core protemu_backend_conformance)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))
+
+(executable
+ (name backend_conformance_bench)
+ (modules backend_conformance_bench)
+ (libraries core core_unix protemu_backend_conformance)
+ (preprocess
+  (pps ppx_jane))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

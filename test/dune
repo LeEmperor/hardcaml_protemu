@@ -10,8 +10,8 @@
  (libraries
   core
   hardcaml
-  hardcaml_circuits
   hardcaml_protemu
+  protemu_model
   hardcaml_waveterm
   hardcaml_step_testbench
   base_quickcheck

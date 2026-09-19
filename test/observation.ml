@@ -60,8 +60,10 @@ module Set = struct
   let find t name = List.Assoc.find t name ~equal:String.equal
   let names t = List.map t ~f:fst
 
-  (* Printed beside a mismatch and in a directed transcript, so it stays on one line:
-     [name=value] for a defined observation, [name=?] and [name=-] for the other two. *)
+  (* [name=value] for a defined observation, [name=?] for one the contract leaves
+     unspecified, and [name=-] for one this side cannot expose. The three spellings are
+     deliberately different: a transcript in which "unspecified" read as "0" would hide
+     the distinction the checker is enforcing. *)
   let to_string t =
     List.map t ~f:(fun (name, observation) ->
       match observation with
@@ -69,6 +71,25 @@ module Set = struct
       | Unspecified -> [%string "%{name}=?"]
       | Unavailable -> [%string "%{name}=-"])
     |> String.concat ~sep:" "
+  ;;
+
+  (* The same text wrapped to [width], for a transcript that has to stay readable in a
+     document. Declaration order is preserved, so the first line holds the observations an
+     adapter listed first. *)
+  let to_lines ?(width = 84) t =
+    let flush line lines = if String.is_empty line then lines else line :: lines in
+    let lines, last =
+      List.fold
+        (String.split (to_string t) ~on:' ')
+        ~init:([], "")
+        ~f:(fun (lines, line) word ->
+          if String.is_empty line
+          then lines, word
+          else if String.length line + 1 + String.length word <= width
+          then lines, line ^ " " ^ word
+          else line :: lines, word)
+    in
+    List.rev (flush last lines)
   ;;
 end
 

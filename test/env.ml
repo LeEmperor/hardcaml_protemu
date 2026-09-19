@@ -238,15 +238,18 @@ module Edge_record = struct
   [@@deriving sexp_of]
 
   let to_lines t =
-    let pre = Observation.Set.to_string t.pre_edge in
-    let post = Observation.Set.to_string t.post_edge in
+    (* One labelled block per phase; a continuation line is indented under its label so a
+       wrapped observation set still reads as one phase. *)
+    let block label observations =
+      List.mapi (Observation.Set.to_lines observations) ~f:(fun index line ->
+        let label = if index = 0 then label else "        " in
+        [%string "  %{label}%{line}"])
+    in
     List.concat
-      [ [ [%string "edge %{t.edge#Int}  item %{t.item#Sexp}"]
-        ; [%string "  before  %{pre}"]
-        ; [%string "  after   %{post}"]
-        ]
-      ; List.map t.items ~f:(fun item ->
-          [%string "  item    %{item#Observed_item}"])
+      [ [ [%string "edge %{t.edge#Int}  item %{t.item#Sexp}"] ]
+      ; block "before  " t.pre_edge
+      ; block "after   " t.post_edge
+      ; List.map t.items ~f:(fun item -> [%string "  item    %{item#Observed_item}"])
       ]
   ;;
 end

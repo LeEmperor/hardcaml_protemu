@@ -19,6 +19,11 @@
   hardcaml_event_driven_sim
   hardcaml_step_testbench
   base_quickcheck
+  ; The harness's own dependencies (env.ml, replay.ml). [splittable_random] is the seed
+  ; a Quickcheck trial is generated from, and [unix] is how a failure report records the
+  ; revision it was produced in; neither reaches lib/.
+  splittable_random
+  unix
   alcotest)
  (preprocess
   (pps ppx_hardcaml ppx_jane))

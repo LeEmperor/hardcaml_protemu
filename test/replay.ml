@@ -23,6 +23,11 @@
    PROTEMU_ARTIFACTS names the directory failure artifacts are written to.
 *)
 
+(* Bound before [Core] is opened, which shadows [Unix] in favour of [Core_unix]. Only
+   three calls are needed - run a command, the process id, and one directory - and none of
+   them wants the wrapped behaviour, so the plain library is enough. *)
+module Posix = Unix
+
 open! Core
 
 (* The generator settings a trial sequence is a function of. A test writes these down
@@ -79,10 +84,10 @@ module Source_identity = struct
      be the reason a test run dies. *)
   let read_command command =
     try
-      let channel = Unix.open_process_in command in
+      let channel = Posix.open_process_in command in
       let output = In_channel.input_lines channel in
-      match Unix.close_process_in channel with
-      | Unix.WEXITED 0 -> Some output
+      match Posix.close_process_in channel with
+      | Posix.WEXITED 0 -> Some output
       | _ -> None
     with
     | _ -> None
@@ -185,7 +190,7 @@ module Artifacts = struct
 
   let write ~test ~(settings : Settings.t) ~trial ~contents =
     let directory = directory () in
-    let pid = Unix.getpid () in
+    let pid = Posix.getpid () in
     let seed = settings.seed in
     let path =
       Filename.concat
@@ -193,7 +198,7 @@ module Artifacts = struct
         [%string "%{test}-seed%{seed#Int}-trial%{trial#Int}-pid%{pid#Int}.txt"]
     in
     try
-      if not (Stdlib.Sys.file_exists directory) then Unix.mkdir directory 0o755;
+      if not (Stdlib.Sys.file_exists directory) then Posix.mkdir directory 0o755;
       Out_channel.write_all path ~data:contents;
       Some path
     with

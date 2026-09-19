@@ -266,8 +266,10 @@ Conventions:
 
 - `I_Regs` holds registered values; `I_Wires` holds combinational values.
 - Fields are unsuffixed (section 5), because these records are internal, not ports.
-- Each record carries a one-line comment stating whether its fields are registered or
-  combinational, and their default behavior.
+- Each record carries a comment stating whether its fields are registered or
+  combinational, and their default behavior. Use an aligned field table when the
+  roles of several fields need explanation; see
+  [comment_guidelines.md](comment_guidelines.md).
 - If a module has no wires or no registers, omit that record. Do not declare an empty one.
 
 Instantiate them at the top of `create`, bound to `r` and `w`, with waveform name prefixes
@@ -397,7 +399,14 @@ consume those artifacts; they do not replace the CLI tests or independent model.
 
 ## 11. Formatting and verification
 
-Use the repository formatter and lint configuration rather than manually aligning code:
+Use [comment_guidelines.md](comment_guidelines.md) for the comment style and
+hand formatting of implementation bodies. Hardware modules may keep their header,
+opens, and port declarations under `ocamlformat`, then disable it for most of the
+implementation with `[@@@ocamlformat "disable"]` and re-enable it at the end.
+Within that region, align related bindings and records, separate multi-line
+bindings with blank lines, and expand muxes when it clarifies their branches.
+
+Run the repository formatter and lint checks:
 
 ```sh
 ./scripts/with-switch.sh dune build @fmt
@@ -405,9 +414,8 @@ Use the repository formatter and lint configuration rather than manually alignin
 ./scripts/with-switch.sh dune build
 ```
 
-Exception: a `create` body may be wrapped in `[@@@ocamlformat "disable"]` /
-`[@@@ocamlformat "enable"]` when hand alignment makes `Always` blocks or alias groups
-noticeably easier to read. Keep the disabled region limited to `create`.
+`@fmt` covers only formatter-managed regions. Review disabled regions manually
+and build or parse edited OCaml files to catch syntax errors.
 
 Before considering a naming or formatting change complete:
 

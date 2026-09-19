@@ -215,23 +215,43 @@ command printed by the bootstrap. Do not modify shell startup files.
 
 Implemented as the tracked root `env.sh`, which sources this file, selects the opam
 switch, and puts `.venv/bin` on `PATH`. The repository-level entry point
-`./bootstrap.sh` (or `dune exec protemu -- bootstrap`) checks the OCaml layer and
-then runs this script; see [environment.md](environment.md).
+`./bootstrap.sh` converges the OCaml layer and then runs this script directly, so
+neither layer needs dune and `--check` validates the flow tools on a machine where
+the OCaml layer is still missing. `dune exec protemu -- bootstrap` runs this script
+alone, for when the OCaml layer already exists. See [environment.md](environment.md).
 
 ## 8. Follow-on commands
 
 After bootstrap succeeds, provide repository scripts rather than requiring users
-to reconstruct long commands:
+to reconstruct long commands. Implementation is now one command, `./flow.sh`, whose
+stages cover hardening, precheck, gate-level simulation, collection and reporting
+on the emitted bundle:
+
+```text
+./flow.sh                                the adopted flow: build, emit, preflight,
+                                         run (hardening and the timing gate),
+                                         postcheck, collect, report
+tinytapeout/scripts/adopted-flow.sh      its one orchestration implementation
+tinytapeout/scripts/check-flow.sh        orchestration checks, with stubs
+tinytapeout/scripts/check-adopted-bundle.py  bundle/metadata/RTL regression
+```
+
+The pre-adoption scripts stay reachable during the transition, under explicitly
+legacy names, and read the staged legacy project rather than a bundle:
 
 ```text
 tinytapeout/scripts/check-p0.sh          existing RTL/model/generic synthesis checks
-tinytapeout/scripts/harden-cmos5l.sh     written; mapped synthesis, place-and-route,
-                                         and the pipeline's only timing gate
-tinytapeout/scripts/test-gates.sh        future flow-netlist wrapper simulation
-tinytapeout/scripts/precheck.sh          written; tt_submission from the current run,
-                                         upstream precheck in the Nix-pinned shell
-tinytapeout/scripts/report-run.sh        future artifact hashes and experiment summary
+tinytapeout/scripts/harden-cmos5l.sh     dune exec protemu -- legacy-harden; mapped
+                                         synthesis, place-and-route, and that path's
+                                         only timing gate
+tinytapeout/scripts/precheck.sh          dune exec protemu -- precheck; tt_submission
+                                         from the current legacy run, upstream
+                                         precheck in the Nix-pinned shell
 ```
+
+`tinytapeout/scripts/test-gates.sh` and `report-run.sh` were planned for the legacy
+path and were never written: the adopted flow's `postcheck`, `collect` and `report`
+stages are where that work landed.
 
 Each command must consume the same lockfile and activation data. After adoption,
 commands also identify the immutable ASIC bundle and produce separate execution

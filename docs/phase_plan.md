@@ -443,7 +443,7 @@ bundle, or synthesis alone does not establish physical closure.
   physical output value. Whole-suite migration and full-core implementation are
   not required to close this item.
   Evidence: the harness is four modules under `test/`, described in
-  [verification.md section 8](verification.md#8-the-implemented-harness).
+  [verification.md current state](verification.md#current-state).
   [`observation.ml`](../test/observation.ml) holds the unavailable/unspecified/defined
   distinction and the checker; [`replay.ml`](../test/replay.ml) the seed, generator
   settings, failing trial, configuration, source/dependency identity and rerun command;
@@ -499,25 +499,14 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   [`observed_transfer.ml`](../lib/observed_transfer.ml) pass digital model/Hardcaml
   comparisons; time-resolved asynchronous-phase sweeps remain. See the
   [P2 implementation record](p2-implementation.md).
-  *Scope note:* what remains is evidence, not logic — the blocks already implement
-  every deliverable named above. The obstacle is the simulator. `Cyclesim` can only
-  change an input on a cycle boundary, so it cannot place a pad transition at an
-  arbitrary phase within the period or drive a pulse narrower than one period, and
-  no amount of additional cycle-accurate tests can produce a phase sweep.
-  `hardcaml_event_driven_sim` supplies the missing driver (a real time axis,
-  transport delays, and four-state values for an unresolved sampling window); it is
-  declared `:with-test` in [`dune-project`](../dune-project) and available to
-  [`test/`](../test/dune). Treat the adoption itself as a simulator backend
-  conversion rather than one more test file: a second simulator brings its own
-  process/scheduling model, clock construction, and reset and stimulus conventions,
-  none of which the existing `Cyclesim` tests share, and the two backends must agree
-  on what a "cycle" means before their results can be reported side by side. Expect a
-  separate harness, not an edit to [`test_primitives.ml`](../test/test_primitives.ml),
-  and expect the choice of what stays on `Cyclesim` to be a real decision. This is
-  the same harness P2.6 needs, so size it for both. P1.6 settled the conventions it
-  should follow and shipped them: describe the block as an `Env.Device` and reuse the
-  runner, checker, seed record and failure artifacts rather than restating them for an
-  event-driven engine.
+  *Verification dependency:* P2.2 needs a time-resolved pad driver; the current
+  cycle-only suite cannot supply phase/pulse evidence. Adopt the divided cycle/event
+  responsibilities in [verification.md](verification.md#next-state), following the
+  [migration guide](verification_migration.md). Reuse reference/checking/reporting
+  conventions while allowing a separate timed runner. P2.6 consumes the same timed
+  facilities. Four-state properties are a separate, explicitly modeled obligation;
+  two-state Evsim is sufficient for deterministic phase/pulse sweeps. Neither tier
+  establishes analog metastability reliability.
 - [x] **P2.3 — Timing and waits.** Implement countdown, periodic ticks, level/edge
   waits with timeout, and event-based phase restart. Evidence: exact delay edges,
   zero-delay rejection, immediate level completion, event-over-timeout precedence,

@@ -13,9 +13,9 @@
 | [tooling_theory1.md](tooling_theory1.md) | Rationale: why the OCaml/Python boundary sits at the emitted bundle, what makes the bundle a good interface, the `reason` field as the answer to batteries-versus-hooks, and the open packaging problem on the Python side. |
 | [flow_migration.md](flow_migration.md) | History: the migration that made `./flow.sh` the one implementation path — the plan as written and what it verified at the time. |
 | [environment.md](environment.md) | Entry points and environment layers: `./bootstrap.sh`, `source env.sh`, `dune exec protemu -- <command>`, and what to run on a new machine, a fresh clone or worktree, a new shell, or after a lockfile change. |
-| [verification.md](verification.md) | P1.6 verification approach and the harness that implements it: cycle-exact model comparison, expect tests and Quickcheck, environment/runner ownership, seed replay, observation validity, and pin-to-item monitors. Section 8 names the modules, what a block has to supply, and the `PROTEMU_*` switches and artifact paths a failure report honours. |
-| [hardcaml_step_testbench_differences.md](hardcaml_step_testbench_differences.md) | How `hardcaml_step_testbench` abstracts over `Cyclesim` and `hardcaml_event_driven_sim`: what a testbench body can share between the two engines and what it cannot, the functional/imperative split, `Simulation_step` and agreeing on a cycle, the two-state limit, and the `@ local` handler in the installed switch. Read before writing the P2.2/P2.6 event-driven harness. |
-| [formatting_guide.md](formatting_guide.md) | Hardware structure: file headers, `_i`/`_o` port naming, module layout, the `I_Regs`/`I_Wires` paradigm, the `Always` vs `Signal` split, and testbench architecture. |
+| [verification.md](verification.md) | System verification authority: current suite and evidence, next-state primitives/core/integration hierarchy, independent functional-model boundaries, Cyclesim/timed/four-state responsibilities, runner contracts, replay, and outstanding obligations. |
+| [verification_migration.md](verification_migration.md) | Temporary migration checklist: baseline preservation, `model` → `f_model`, per-block suite moves, cycle/event conformance, timed and four-state pilots, and completion checks. |
+| [formatting_guide.md](formatting_guide.md) | Hardware structure: file headers, `_i`/`_o` port naming, module layout, the `I_Regs`/`I_Wires` paradigm, the `Always` vs `Signal` split, and links to verification conventions. |
 | [comment_guidelines.md](comment_guidelines.md) | Repo-specific examples for explanatory comments and hand formatting in hardware and model source. |
 
 ## Reading order
@@ -26,7 +26,9 @@
 4. **environment.md**, then **flow.md** — to set the environment up and then run
    the flow; `flow.md` is where any question about `./flow.sh` is answered.
 5. **formatting_guide.md** — before writing or editing any Hardcaml module.
-6. **comment_guidelines.md** — for comments and manually aligned source.
+6. **verification.md** — before adding tests or changing verification infrastructure;
+   **verification_migration.md** for the pending suite migration.
+7. **comment_guidelines.md** — for comments and manually aligned source.
 
 ## Related project authorities
 

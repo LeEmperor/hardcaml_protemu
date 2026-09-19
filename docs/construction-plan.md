@@ -529,35 +529,13 @@ The flow directory and required tools are described in
 
 ## 9. Verification and measurements
 
-Use directed expect tests paired with Quickcheck generators in a small environment
-that owns drivers, monitors, the independent model, and checker. The runner owns
-simulation time and feeds the same scheduled stimuli to model and DUT. Adopt one
-cycle-exact core contract: P1.5's non-overlapped fetch/execute schedule, one buffered
-memory word, and the specified execution/wait edges. Timing changes require an
-explicit architecture revision, not a relaxed comparison. Protocol monitors
-reconstruct items from actual pin activity and check timing as well as data.
-[verification.md](verification.md) records the P1.6 conventions, seed-based replay,
-observation validity, and implementation acceptance evidence.
-
-Use three layers: an independent cycle-level model, Hardcaml simulation, and
-tests of emitted Verilog through the Tiny Tapeout wrapper. Use external protocol
-peer models with assertions on wire timing; self-loopback alone can hide a
-matching encoder/decoder bug. Randomize asynchronous phase, bounded jitter,
-resets, CS interruptions, stretch length, and queue starvation.
-
-`hardcaml_asic` owns memory backend conformance. Its scoreboard compares only
-contract-defined values across backends and checks disabled-output hold within
-each backend, including after an unspecified result. Poison initialization and
-post-write poison belong to the behavioral model, not synthesized storage.
-Emulator integration tests separately assert valid instruction consumption,
-shared-port access rules, whole-word loading, and recovery; vary unspecified
-values where useful. Link library conformance evidence without duplicating its
-backend test implementation here.
-
-Apply formal properties where they add value: no double pin ownership, open-drain
-never drives high, bounded FIFO occupancy, no loss/duplication at handshakes,
-reset releases pins, waits terminate on a qualifying event or configured timeout.
-Write down environmental assumptions, especially minimum external pulse widths.
+[verification.md](verification.md) owns the system verification architecture,
+current evidence, next-state cycle/event split, functional-model and monitor
+boundaries, memory-conformance ownership, and applicable formal/CDC/reset checks.
+Use its evidence map to identify implemented suites and missing obligations; the
+[temporary migration guide](verification_migration.md) sequences the transition.
+The architectural cycle contracts in this construction plan remain authoritative;
+a backend change must not relax them.
 
 Per architecture candidate, record instruction/data storage bits, firmware words
 per protocol, mapped sequential/combinational area, routed utilization, worst

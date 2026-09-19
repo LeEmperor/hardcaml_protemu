@@ -138,18 +138,31 @@ that rework.
   later, and host writes are accepted only while halted. Decode/execute, readback,
   and image validity are placeholders. `test/test_protocol_core.ml` checks it against
   a contract model of the store.
+- `isa/`: the instruction specification (Dune library `hardcaml_protemu.isa`, no
+  Hardcaml dependency and no execution), which P1.5 chose and recorded in
+  [the decision](p1.5-encoding-decision.md). `instruction.ml` is the instruction set,
+  `encoding.ml` the opcodes and field layout, `descriptor.ml` the descriptor fields
+  firmware writes, and `program.ml`/`assembler.ml` the labels, images and refusals;
+  `kinds.ml`, `pins.ml` and `event_kind.ml` are the enumerations an instruction field
+  names. It sits below both `lib/` and `model/` because an installed library cannot
+  depend on a private one, which is what "shared by assembler and decoder" requires
+  here. `Encoding.forms` publishes the field layout as data so P3.2's decoder is built
+  from the same values the assembler encodes with.
 - `model/`: the independent reference execution model (Dune library `protemu_model`,
-  no Hardcaml dependency), covering P1.1 to P1.4. `machine.ml` holds all model state
+  no Hardcaml dependency), covering P1.1 to P1.5. `machine.ml` holds all model state
   and one rising edge; `operation.ml` is the typed mechanism vocabulary with its
   structural validation; `pin_bank.ml`, `input_pins.ml`, `event.ml`, `fifo.ml`, and
   `transfer.ml` are the mechanisms; `program_store.ml` is a contract model of the 1RW
   store. `firmware.ml` and the `firmware_*.ml` builders are P1.3's labelled operation
-  sequences and their independent peers. The `study_*.ml` modules are P1.4's encoding
-  comparison and are a study rather than the ISA: one operation set, two encodings,
-  four instruction/memory-word combinations, and a reference core that executes them
+  sequences and their independent peers. `control_core.ml` is P1.5's reference core:
+  it fetches, decodes and executes an assembled image, and shares `Encoding` with the
+  RTL and nothing else. `example_programs.ml` holds the UART, SPI and I2C programs it
+  runs. The `study_*.ml` modules are P1.4's encoding comparison and remain frozen
+  evidence rather than the ISA: one operation set, two encodings, four
+  instruction/memory-word combinations, and a reference core that executes them
   ([the report](p1.4-encoding-study.md)). It is kept out of `lib/` so a diagnostic
   model cannot reach a synthesis source set. Transfers are validated and latched but
-  not executed (P2.5), and the machine still has no decoder of its own (P1.5, P3.2).
+  not executed (P2.5), and the RTL core still has no decoder of its own (P3.2).
   Tests are in `test/model/`.
 - `lib/protemu_types.ml`: candidate pin/configure/transfer instruction variants.
 - `lib/p0_observable.ml` and `bin/generate.ml`: an observable pin/timer circuit
@@ -326,6 +339,10 @@ Use an OCaml assembler/library with labels and validation before designing a
 textual DSL. Firmware helpers such as `uart_tx` should expand into this ISA.
 Keep the instruction specification shared by assembler and decoder, while the
 reference execution model stays independent of the Hardcaml implementation.
+P1.5 has done this: `isa/` is the shared specification, `model/control_core.ml` the
+independent execution, and [the decision](p1.5-encoding-decision.md) records what was
+chosen. The comparison below is P1.4's and is now settled evidence rather than open
+work; sizes and cycle counts remain in [its report](p1.4-encoding-study.md).
 
 Compare fixed 16-bit instructions with occasional extension words against a
 simple fixed 32-bit encoding. Start the study with eight 16-bit registers,
@@ -509,6 +526,16 @@ The flow directory and required tools are described in
 
 ## 9. Verification and measurements
 
+Use directed expect tests paired with Quickcheck generators in a small environment
+that owns drivers, monitors, the independent model, and checker. The runner owns
+simulation time and feeds the same scheduled stimuli to model and DUT. Adopt one
+cycle-exact core contract: P1.5's non-overlapped fetch/execute schedule, one buffered
+memory word, and the specified execution/wait edges. Timing changes require an
+explicit architecture revision, not a relaxed comparison. Protocol monitors
+reconstruct items from actual pin activity and check timing as well as data.
+[verification.md](verification.md) records the P1.6 conventions, seed-based replay,
+observation validity, and implementation acceptance evidence.
+
 Use three layers: an independent cycle-level model, Hardcaml simulation, and
 tests of emitted Verilog through the Tiny Tapeout wrapper. Use external protocol
 peer models with assertions on wire timing; self-loopback alone can hide a
@@ -554,7 +581,7 @@ remain `not run` or `unknown`; an emitted bundle is not physical closure. Use
 | Decision | Proposed starting point | Evidence needed before committing |
 | --- | --- | --- |
 | Core and engine count | One core, one duplex shift lane | Independent UART RX/TX and target-mode reaction measurements |
-| ISA encoding | Compare 16-bit plus extensions with 32-bit fixed | Program sizes and instruction timing are recorded in the [P1.4 study](p1.4-encoding-study.md); decoder area is still unmeasured (P5) |
+| ISA encoding | **Provisionally decided (P1.5):** fixed 16-bit instructions with one-word extensions, two-address, with a call pair; the memory word stays a caller's choice with a 16-bit default. [The decision](p1.5-encoding-decision.md) | Program sizes and instruction timing are recorded in the [P1.4 study](p1.4-encoding-study.md) and the call was measured in P1.5; decoder and store area are still unmeasured (P5) |
 | Program storage | `Single_port_ram`, 1RW, latency one, explicit flop implementation; host access halted and engines idle | Width/depth/packing and total placed area; macro capability gate before a supported backend comparison |
 | Clock/rates | Sweep clocks in simulation and physical constraints | Routed timing, pad/board path, and protocol jitter budgets |
 | Filtering | Synchronization first; per-input filtering if required | Glitch rejection versus latency and protocol pulse widths |

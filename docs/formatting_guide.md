@@ -4,7 +4,7 @@
 
 This guide is the source of truth for coding style in this repository. It covers file
 headers, port naming, the `I_Regs`/`I_Wires` paradigm, and when to use `Always` versus plain
-`Signal` for registers and combinational logic. It will later cover testbench structure.
+`Signal` for registers and combinational logic, and testbench structure.
 
 New modules should follow these conventions, and existing modules should be brought in line
 when edited.
@@ -377,10 +377,13 @@ names. When a port is renamed, update:
 
 ### 10.1 Testbench architecture
 
-Concrete harness layout and APIs remain P1.6 work in the [phase plan](phase_plan.md).
-The [construction plan](construction-plan.md#9-verification-and-measurements)
-already defines the verification boundaries: independent emulator model,
-Hardcaml checks, and emitted-RTL/wrapper tests with independent protocol peers.
+Follow [verification.md](verification.md) for the accepted P1.6 approach: directed
+expect tests and bounded Quickcheck scenarios use one environment, which owns the
+drivers, independent model, pin-to-item monitors, and checker. A runner alone
+advances time, feeding matching stimuli to DUT and model and comparing defined
+observations on exact edges. Capture pre-edge acceptance and settled post-edge
+results explicitly; give each trial fresh state and a finite cycle budget.
+Concrete helper APIs remain implementation work in the [phase plan](phase_plan.md).
 
 The reference model lives in `model/` (library `protemu_model`) and its tests in
 `test/model/`, both without a Hardcaml dependency. Its files keep the four-part
@@ -393,9 +396,12 @@ recovery. Do not require physical memory outputs to match simulation poison;
 compare contract-defined values across backends and check disabled-output hold
 within each backend. Keep diagnostic models separate from synthesis source sets.
 
-P1.6 will choose shared driver/monitor helpers, expect-test versus waveform
-conventions, seeds/failure artifacts, and VCD paths. Optional Workbench views
-consume those artifacts; they do not replace the CLI tests or independent model.
+Use compact expect snapshots for directed cases and property assertions for generated
+cases. Record explicit seeds, generator settings, failing/shrunk scenarios, first
+mismatch context, and reproduction commands as specified in verification.md.
+Waveforms are optional diagnostics; keep them out of expect snapshots and document
+artifact paths with the harness. Optional Workbench views consume those artifacts;
+they do not replace CLI tests or the independent model.
 
 ## 11. Formatting and verification
 

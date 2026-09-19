@@ -1,8 +1,10 @@
 # Protocol emulator phase plan
 
-Status: working execution plan, updated 2026-09-18 for decoupled RTL development
-and P0.6 ASIC library adoption. P0.7 remains deferred; P0.5 is split into
-legacy/adopted runs, and pre-adoption P2.8 evidence is defined.
+Status: working execution plan, updated 2026-09-19 for the P1.5 encoding decision,
+and 2026-09-18 for decoupled RTL development and P0.6 ASIC library adoption. The
+instruction encoding is now provisionally chosen and lives in `isa/`; P0.7 remains
+deferred; P0.5 is split into legacy/adopted runs, and pre-adoption P2.8 evidence is
+defined.
 P0.1–P0.3 retain their recorded completion; P0.6 has adopted the observable top.
 A scaffold, accepted architecture, or emitted build is not completion evidence.
 
@@ -33,11 +35,14 @@ the corresponding decision has evidence.
 
 Follow [formatting_guide.md](formatting_guide.md) for source changes. Existing
 locations are `lib/` for hardware, `bin/` for executables, `test/` for tests,
-`model/` for the reference execution model, and `tinytapeout/` for ASIC
-integration. `model/` is a separate Dune library, `protemu_model`, with no
-Hardcaml dependency, so a diagnostic model can never reach a synthesis source set
-and cannot share a mistake with the RTL; its tests live in `test/model/`. New
-assembler, host, and firmware locations should be chosen when their first real
+`isa/` for the instruction specification and assembler, `model/` for the reference
+execution model, and `tinytapeout/` for ASIC integration. `model/` is a separate Dune
+library, `protemu_model`, with no Hardcaml dependency, so a diagnostic model can never
+reach a synthesis source set and cannot share a mistake with the RTL; its tests live in
+`test/model/`. `isa/` is a third library, `hardcaml_protemu.isa`, below both of them:
+P1.5 put the encoding there because `lib/` is installed and `model/` is not, so the
+assembler and the RTL decoder could not otherwise share one description of the
+instruction word. New host and firmware locations should be chosen when their first real
 implementation lands.
 
 ### Ownership and external prerequisites
@@ -371,30 +376,72 @@ bundle, or synthesis alone does not establish physical closure.
   15,518 times in 65,536, against 1.79% of a million sampled 32-bit words, which is
   the fixed-width format's clearest advantage. *Carried forward:* the cycle counts
   belong to one deliberately simple reference core - fetch not overlapped with
-  execution, one buffered memory word, one edge per instruction - so P3.2 may lower
-  every absolute number; the fetch and execute columns are reported separately so
-  that bound can be taken without rerunning anything. No engine executes a transfer
+  execution, one buffered memory word, one edge per instruction. P1.6 now adopts
+  that schedule as the cycle-exact core contract; P3.2 timing changes require an
+  explicit architecture revision. Fetch and execute counts remain separate evidence. No engine executes a transfer
   yet (P2.5), so the descriptor programs stop at acceptance and the engine's eighty
   wire cycles are quoted from P1.3. Both encodings are two-address, so the 32-bit
   format is measured without the three-address form its spare bits would allow, and
   neither has a call instruction: 31 of the I2C transaction's 85 instructions are one
   inlined byte loop. P1.5 owns all three decisions, and physical area stays
   unmeasured until P5.
-- [ ] **P1.5 — Establish shared encoding and independent execution.** Choose a
+- [x] **P1.5 — Establish shared encoding and independent execution.** Choose a
   provisional encoding through a recorded architecture decision, implement the
   assembler with validation, and expose one instruction specification for the
   assembler and RTL decoder. Keep reference execution independent of RTL logic.
   Evidence: encoding boundary cases and labeled programs have expected bytes,
   decoded meanings, and model execution traces.
-- [ ] **P1.6 — Define the verification harness.** Establish driver, monitor,
-  trace, seed, and failure-artifact conventions, and fill in testbench guidance
-  in the formatting guide. Reserve the logical bitstream boundary and metadata
-  from architecture section 6 without implementing stretch engines. Evidence:
-  at least one model/Hardcaml comparison uses the harness and a failing case
-  can be reproduced from its recorded inputs. Link ASIC backend conformance
-  separately from emulator consumer checks; compare only defined memory outputs
-  across backends and check held outputs within each backend. Simulation poison
-  must not become synthesized logic or a required physical output value.
+  Evidence: the [P1.5 encoding decision](p1.5-encoding-decision.md) records the choice
+  and what it gives up. The specification is a library of its own,
+  [`isa/`](../isa/dune), below both `lib/` and `model/` because an installed library
+  cannot depend on a private one: [`instruction.ml`](../isa/instruction.ml) is the
+  instruction set, [`encoding.ml`](../isa/encoding.ml) the opcodes and field layout,
+  [`descriptor.ml`](../isa/descriptor.ml) the descriptor fields firmware writes, and
+  [`assembler.ml`](../isa/assembler.ml) the labels, images and refusals.
+  `Encoding.Layout` declares each instruction's fields once; `encode` and `decode` read
+  those declarations and `Encoding.forms` publishes the same records, so P3.2's decoder
+  is built from the values the assembler encodes with rather than from a transcribed
+  table. [`kinds.ml`](../isa/kinds.ml), [`pins.ml`](../isa/pins.ml) and
+  [`event_kind.ml`](../isa/event_kind.ml) moved down into it for the same reason: an
+  instruction field names them. Reference execution is
+  [`control_core.ml`](../model/control_core.ml), which shares `Encoding` with the RTL and
+  nothing else and has no Hardcaml dependency.
+  [`test_isa.ml`](../test/model/test_isa.ml) holds the evidence: a 111-instruction
+  boundary corpus that round trips, the published layout table, labeled programs as
+  instruction words, memory words and transport bytes in both memory layouts, every
+  assembler refusal, and the UART, SPI and I2C transactions executed out of a
+  [`Program_store`](../model/program_store.ml) against the same independent peers P1.3
+  and P1.4 used. Sixteen-bit instructions with extension words were chosen on P1.4's
+  evidence; the memory word stays a caller's choice with a 16-bit default until P5
+  measures it; and the call P1.4 left open was added and measured — the I2C transaction
+  is 30% fewer instructions and 29% fewer program bits for 0.9% more cycles.
+  *Carried forward:* the committed decoder refuses a zero delay, period or timeout that
+  P1.4's 16-bit decoder accepted; across the 55,296 words of the 27 shared opcodes those
+  42 words are the only difference and nothing else decodes differently, which is what
+  lets P1.4's measurements stand for this encoding. Physical area is still unmeasured
+  (P5.1), and a packed 32-bit image still makes a bit-banged region's timing depend on
+  slot alignment, which no assembler check enforces because no way to mark a region
+  exists.
+- [ ] **P1.6 — Define the verification harness.** Planning decisions are recorded
+  in [verification.md](verification.md); implementation remains outstanding. Use
+  directed expect tests paired with bounded Quickcheck generators and one
+  cycle-exact model/core contract, including P1.5's fetch/execute schedule. The
+  environment owns drivers, pin-to-item monitors, the independent model, and checker;
+  one runner owns simulation time and feeds the same scheduled stimuli to DUT and
+  model. Use seed-based replay with recorded configuration, generator settings,
+  source/dependency identity, failing/shrunk scenario, first mismatch, and a rerun
+  command. Keep unavailable, unspecified, and defined observations distinct.
+  Reserve section 6's logical-bit versus physical-symbol distinction and stream
+  boundary/error metadata without implementing stretch engines. Testbench guidance
+  is in [formatting_guide.md](formatting_guide.md#101-testbench-architecture).
+  Evidence: at least one existing primitive uses the shared harness in both a
+  directed expect test and a Quickcheck model/Hardcaml comparison; a controlled
+  failing case reproduces the same first mismatch from its recorded seed/settings.
+  Link ASIC backend conformance separately from emulator consumer checks; compare
+  only defined memory outputs across backends and check held outputs within each
+  backend. Simulation poison must not become synthesized logic or a required
+  physical output value. Whole-suite migration and full-core implementation are
+  not required to close this item.
 
 **Exit gate:** UART/SPI/I2C examples execute in the model, execution contracts are
 testable, and program sizes and path timing are recorded. The chosen encoding is
@@ -423,6 +470,24 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   [`observed_transfer.ml`](../lib/observed_transfer.ml) pass digital model/Hardcaml
   comparisons; time-resolved asynchronous-phase sweeps remain. See the
   [P2 implementation record](p2-implementation.md).
+  *Scope note:* what remains is evidence, not logic — the blocks already implement
+  every deliverable named above. The obstacle is the simulator. `Cyclesim` can only
+  change an input on a cycle boundary, so it cannot place a pad transition at an
+  arbitrary phase within the period or drive a pulse narrower than one period, and
+  no amount of additional cycle-accurate tests can produce a phase sweep.
+  `hardcaml_event_driven_sim` supplies the missing driver (a real time axis,
+  transport delays, and four-state values for an unresolved sampling window); it is
+  declared `:with-test` in [`dune-project`](../dune-project) and available to
+  [`test/`](../test/dune). Treat the adoption itself as a simulator backend
+  conversion rather than one more test file: a second simulator brings its own
+  process/scheduling model, clock construction, and reset and stimulus conventions,
+  none of which the existing `Cyclesim` tests share, and the two backends must agree
+  on what a "cycle" means before their results can be reported side by side. Expect a
+  separate harness, not an edit to [`test_primitives.ml`](../test/test_primitives.ml),
+  and expect the choice of what stays on `Cyclesim` to be a real decision. This is
+  the same harness P2.6 needs, so size it for both. P1.6 owns the conventions it
+  should follow and is still open; settling at least the seed and failure-artifact
+  convention first avoids retrofitting the harness later.
 - [x] **P2.3 — Timing and waits.** Implement countdown, periodic ticks, level/edge
   waits with timeout, and event-based phase restart. Evidence: exact delay edges,
   zero-delay rejection, immediate level completion, event-over-timeout precedence,

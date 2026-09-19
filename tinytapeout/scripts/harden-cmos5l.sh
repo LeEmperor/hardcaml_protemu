@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Mapped CMOS5L synthesis and place-and-route for the staged Tiny Tapeout
-# project, per section 8 of docs/bootstrap-toolchain-plan.md.
+# project. This is the legacy path; see docs/flow.md#the-legacy-path. The
+# adopted path is ./flow.sh, which hardens an emitted bundle instead.
 #
 # This is a wrapper around one underlying command, which tt-support-tools builds
 # in Project.harden():

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Tiny Tapeout precheck for the current CMOS5L hardening run, per section 8 of
-# docs/bootstrap-toolchain-plan.md.
+# Tiny Tapeout precheck for the current legacy CMOS5L hardening run; see
+# docs/flow.md#the-legacy-path. The adopted path runs precheck in ./flow.sh's
+# postcheck stage.
 #
 # This mirrors the precheck job of the pinned tt-gds-action:
 #

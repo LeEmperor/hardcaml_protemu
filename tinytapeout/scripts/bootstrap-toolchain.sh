@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Prepare the project-local CMOS5L toolchain described in
-# docs/bootstrap-toolchain-plan.md.
+# Prepare the project-local CMOS5L toolchain. This is layer 2 of the environment
+# described in docs/environment.md, which owns the layer model, what provisions
+# each layer, and the boundaries this script stays inside.
 #
 # Bootstrapping prepares an environment. It does NOT prove that the design passes
 # hardening, timing, physical verification, or precheck. Those are separate

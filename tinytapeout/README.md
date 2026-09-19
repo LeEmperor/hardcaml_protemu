@@ -3,8 +3,8 @@
 This directory currently contains the emulator's ASIC wrapper, integration
 scripts/configuration, testbench, and physical-design records. The phase-P0 RTL
 generation, wrapper simulation, lint, generic synthesis smoke test, and staging
-paths are working; there is no
-completed CMOS5L hardening run or generated GDS yet.
+paths are working, and the design has hardened to GDS on CMOS5L from an emitted
+bundle (P0.5b; see [docs/flow.md](../docs/flow.md#where-results-are-kept)).
 See the [construction plan](../docs/construction-plan.md) for the architecture.
 
 ## Ownership and migration to `hardcaml_asic`
@@ -16,15 +16,16 @@ adopt that path here. The library's lifecycle, flop memory, target resolution, a
 bundle emission now exist. P0.6 has adopted the current observable top; see
 the [adopted flow guide](../docs/asic-adoption.md). P0.7 memory integration
 remains separate. The existing scripts and hand-maintained files below are the
-legacy physical path until the adopted physical run closes P0.5b.
+legacy physical path; the adopted physical run has since closed P0.5b.
 
 The flow entry point is the repository root's `./flow.sh`, which runs the adopted
 bundle path end to end; [`scripts/adopted-flow.sh`](scripts/adopted-flow.sh) is its
 one orchestration implementation, and `./bootstrap.sh` provisions what it consumes.
 The legacy scripts below are reached through explicitly named `legacy-*` commands
-and need `./bootstrap.sh --legacy-project` to have staged that project. See the
-[adopted flow guide](../docs/asic-adoption.md#the-flow) and the
-[migration handoff](../docs/flow_migration.md).
+and need `./bootstrap.sh --legacy-project` to have staged that project.
+**[docs/flow.md](../docs/flow.md) is the source of truth for the flow** — stages,
+overrides, resuming, artifacts, and verification status. This file covers the
+target, the tool stack, host prerequisites, and directory ownership.
 
 The emulator owns its design constructor, wrapper logic and reset/disable tests,
 requested TT/CMOS5L target, clocks/I/O assumptions, pin meanings, and implementation

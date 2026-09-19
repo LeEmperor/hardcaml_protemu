@@ -1,7 +1,9 @@
 # Verification approach
 
-Status: P1.6 planning decisions accepted 2026-09-19; harness implementation and
-completion evidence remain outstanding. The [construction plan](construction-plan.md)
+Status: P1.6 planning decisions accepted 2026-09-19; the harness and its first
+consumer landed the same day. Sections 1 to 6 state the approach; section 8 records
+what was built, the names and switches it exposes, and what it has covered so far.
+Whole-suite migration remains outstanding. The [construction plan](construction-plan.md)
 owns architectural contracts; this document specifies how tests exercise them.
 [Phase plan P1.6](phase_plan.md) tracks delivery.
 
@@ -160,3 +162,77 @@ evidence layers. The same functional conventions apply to ASIC RTL simulation;
 physical timing, reset/CDC assumptions, memory backends, and gate-level checks add
 separate obligations rather than requiring a more elaborate functional framework.
 No P1.6 planning decision constitutes implementation or physical acceptance evidence.
+
+## 8. The implemented harness
+
+The conventions above are code in `test/`. Four modules, none of which reaches
+`lib/` or `model/`:
+
+| Module | What it is |
+| --- | --- |
+| [`observation.ml`](../test/observation.ml) | The unavailable/unspecified/defined distinction of section 5, named observation sets, and the checker that finds the first difference between two of them. |
+| [`replay.ml`](../test/replay.ml) | The reproduction record of section 4: settings, failing trial, configuration, source identity, rerun command, and the artifact directory. |
+| [`env.ml`](../test/env.ml) | The `Device` description a block supplies once, and the runner, monitor plumbing, Quickcheck driver, shrinker and failure report built from it. |
+| [`pin_bank_env.ml`](../test/pin_bank_env.ml) | P2.1 described as a `Device`: drivers, the independent reference, pin-to-item monitors, a bounded generator, and an injectable defect for the failure-reproduction exercise. |
+
+[`test_pin_bank_harness.ml`](../test/test_pin_bank_harness.ml) is the evidence: the
+checker's validity rules, a directed expect transcript, a bounded Quickcheck run
+against the independent model, and the controlled-mismatch reproduction.
+
+### What a block has to supply
+
+An `Env.Device` is a `Config`, an `Item` (one edge's stimulus), a `Dut`, a `Model`,
+a `Monitor`, and the two lists of required observations. The runner calls exactly
+five things on the design, in this order, once per edge: `drive`, `settle`,
+`pre_edge`, `edge`, `post_edge`. `settle` is `Cyclesim.cycle_before_clock_edge` and
+`edge` is the two calls after it, which is how a pre-edge observation exists at all;
+nothing else may advance the simulation. `Env.Make` then yields `directed` for an
+expect transcript and `quickcheck`/`require_agreement` for generated scenarios.
+
+### Switches and artifacts
+
+Recorded settings are what the regression runs. These override them without editing
+a test, and whatever ran is what the report prints:
+
+| Variable | Effect |
+| --- | --- |
+| `PROTEMU_SEED`, `PROTEMU_TRIALS`, `PROTEMU_SIZE` | Replace the recorded generator settings; a seed sweep is a loop over the first. |
+| `PROTEMU_ARTIFACTS` | The directory a failure report is written to; the default is `protemu-artifacts` beside the runner's working directory. |
+| `PROTEMU_SOURCE_REVISION` | The source revision, for a build that cannot be asked through git. |
+
+A test that snapshots one seed's report passes `~environment_overrides:false` and
+runs its recorded settings regardless, so a sweep does not fail a fixture for
+reporting exactly what it was asked to report.
+
+A failure prints its own rerun command, which is `dune runtest <dir> --force` behind
+the settings that produced it: dune's inline runner needs flags and a working
+directory dune sets up, so a command naming the executable would be one that does
+not work. Artifact file names carry the test, seed, trial and process id, so
+concurrent trials do not overwrite one another, and the path is printed with the
+report. Waveforms are not produced; the bounded trace context and the failing
+scenario are the diagnostics, as section 4 allows.
+
+Source identity is read from the source tree rather than the working directory,
+because dune runs an inline test inside a sandbox whose parent holds a stub `.git`.
+A run that cannot reach git records `unavailable` rather than inventing a revision.
+
+### What P2.1 through the harness established
+
+The pin bank agrees with [`model/pin_bank.ml`](../model/pin_bank.ml) on every edge
+of 200 generated scenarios and of the directed transcript, and on 150-trial sweeps
+at seeds 1, 7, 99, 424242 and 20261231. Two things came out of getting there, and
+both are recorded rather than absorbed:
+
+- The sticky ownership conflict is set by a request that reached for another owner's
+  pin even when that edge was refused for an unrelated reason. The harness found the
+  disagreement between the design and a first reading of the contract; the contract
+  was the ambiguous one, and [construction-plan.md section 3](construction-plan.md#3-initial-architecture)
+  now says so.
+- `reject_reason` is `Unavailable` on the design's side: the model knows why a
+  request was refused and the RTL publishes only that one was. It is declared and
+  skipped rather than dropped, so the hole is visible. Moving it into
+  `required_post_edge` is the single change that would turn it into a failure.
+
+Nothing else has been migrated. The existing `%test_unit` tests in
+[`test_primitives.ml`](../test/test_primitives.ml) and the model tests under
+`test/model/` still use their own loops, which P1.6 does not require changing.

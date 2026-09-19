@@ -19,15 +19,15 @@
    which is what the controlled-failure fixture snapshots; a real failure prints it.
 
    Overrides let one recorded seed be rerun, and let a sweep run many, without editing a
-   test: PROTEMU_SEED, PROTEMU_TRIALS and PROTEMU_SIZE replace the recorded settings, and
-   PROTEMU_ARTIFACTS names the directory failure artifacts are written to.
+   test: PROTEMU_SEED, PROTEMU_TRIALS and PROTEMU_SIZE replace the recorded settings,
+   PROTEMU_ARTIFACTS names the directory failure artifacts are written to, and
+   PROTEMU_SOURCE_REVISION supplies the revision when git cannot be asked for it.
 *)
 
 (* Bound before [Core] is opened, which shadows [Unix] in favour of [Core_unix]. Only
    three calls are needed - run a command, the process id, and one directory - and none of
    them wants the wrapped behaviour, so the plain library is enough. *)
 module Posix = Unix
-
 open! Core
 
 (* The generator settings a trial sequence is a function of. A test writes these down
@@ -66,9 +66,16 @@ end
 
 (* The checkout and toolchain a recorded seed is only meaningful within.
 
-   [git] is asked for the revision and for whether the working tree differs from it. Both
-   are best effort: a build outside a checkout, or without git, records [Unavailable]
-   rather than inventing a revision. *)
+   [git] is asked for the revision and for whether the working tree differs from it, in
+   the source tree rather than in the build directory: dune runs an inline test inside a
+   sandbox whose parent holds a stub [.git], so a plain [git rev-parse] there fails by
+   design. DUNE_SOURCEROOT points back at the checkout and is what the commands are aimed
+   at; PROTEMU_SOURCE_REVISION overrides the answer outright, for a build that knows its
+   own provenance better than git does.
+
+   All of it is best effort. A run outside a checkout, or without git, records
+   [unavailable] rather than inventing a revision: a reproduction record that guessed
+   would be worse than one that admits the gap. *)
 module Source_identity = struct
   type t =
     { revision : string
@@ -93,14 +100,26 @@ module Source_identity = struct
     | _ -> None
   ;;
 
+  let git arguments =
+    let directory =
+      match Sys.getenv "DUNE_SOURCEROOT" with
+      | None -> ""
+      | Some root -> [%string "-C %{Filename.quote root} "]
+    in
+    read_command [%string "git %{directory}%{arguments} 2>/dev/null"]
+  ;;
+
   let current () =
     let revision =
-      match read_command "git rev-parse HEAD 2>/dev/null" with
-      | Some (revision :: _) -> revision
-      | _ -> unavailable
+      match Sys.getenv "PROTEMU_SOURCE_REVISION" with
+      | Some revision -> revision
+      | None ->
+        (match git "rev-parse HEAD" with
+         | Some (revision :: _) -> revision
+         | _ -> unavailable)
     in
     let local_diff =
-      match read_command "git status --porcelain 2>/dev/null" with
+      match git "status --porcelain" with
       | None -> unavailable
       | Some [] -> "clean"
       | Some changes ->
@@ -124,6 +143,7 @@ end
 
 type t =
   { test : string
+  ; source_file : string
   ; settings : Settings.t
   ; (* The failing trial's index within the run, which is its identity: the scenario is a
        function of the seed, the trial index and that trial's size. *)
@@ -134,23 +154,25 @@ type t =
   }
 [@@deriving sexp_of]
 
-(* The inline test runner is addressed by file rather than by line, so this command stays
-   correct when the test moves within its file. *)
+(* [dune runtest] rather than the inline test runner directly: dune's runner needs flags
+   and a working directory it sets up itself, so a command naming the executable would be
+   one that does not work. The recorded settings ride in front of it as overrides, and
+   [--force] is what makes dune rerun a test it already believes passed. The directory is
+   the one the failing test's source lives in, so the rerun is the smallest one that
+   includes it. *)
 let rerun_command ~source_file ~(settings : Settings.t) =
-  let file = Filename.basename source_file in
+  let directory = Filename.dirname source_file in
   String.concat
     [ [%string "PROTEMU_SEED=%{settings.seed#Int} "]
     ; [%string "PROTEMU_TRIALS=%{settings.trials#Int} "]
     ; [%string "PROTEMU_SIZE=%{settings.size#Int} "]
-    ; "dune exec "
-    ; "test/.test_hardcaml_protemu.inline-tests/"
-    ; "inline_test_runner_test_hardcaml_protemu.exe -- "
-    ; [%string "inline-test-runner test_hardcaml_protemu -only-test %{file}"]
+    ; [%string "dune runtest %{directory} --force"]
     ]
 ;;
 
 let create ~test ~source_file ~settings ~trial ~config =
   { test
+  ; source_file
   ; settings
   ; trial
   ; config
@@ -167,6 +189,7 @@ let to_lines ?(redact_source = false) t =
   in
   List.concat
     [ [ [%string "  test:             %{t.test}"]
+      ; [%string "  test file:        %{t.source_file}"]
       ; [%string "  seed:             %{t.settings.seed#Int}"]
       ; [%string "  trials:           %{t.settings.trials#Int}"]
       ; [%string "  max size:         %{t.settings.size#Int}"]

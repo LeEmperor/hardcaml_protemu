@@ -109,7 +109,7 @@ def main():
             "iverilog -g2012 -Wall -Wno-timescale -s tb -o /tmp/protemu-wrapper /bundle/src/tt_um_leemperor_hardcaml_protemu.v /test/tb.v",
             "vvp /tmp/protemu-wrapper",
             "verilator --lint-only --top-module tt_um_leemperor_hardcaml_protemu -Wno-DECLFILENAME /bundle/src/tt_um_leemperor_hardcaml_protemu.v",
-            "yosys -q -p 'read_verilog /bundle/src/tt_um_leemperor_hardcaml_protemu.v; hierarchy -check -top tt_um_leemperor_hardcaml_protemu; synth -top tt_um_leemperor_hardcaml_protemu; stat'",
+            "yosys -p 'read_verilog /bundle/src/tt_um_leemperor_hardcaml_protemu.v; hierarchy -check -top tt_um_leemperor_hardcaml_protemu; synth -top tt_um_leemperor_hardcaml_protemu; stat'",
         ])
         run(
             "docker", "run", "--rm", "--pull=never", "--network", "none",

@@ -422,8 +422,8 @@ bundle, or synthesis alone does not establish physical closure.
   (P5.1), and a packed 32-bit image still makes a bit-banged region's timing depend on
   slot alignment, which no assembler check enforces because no way to mark a region
   exists.
-- [ ] **P1.6 — Define the verification harness.** Planning decisions are recorded
-  in [verification.md](verification.md); implementation remains outstanding. Use
+- [x] **P1.6 — Define the verification harness.** Planning decisions are recorded
+  in [verification.md](verification.md), and the harness now exists. Use
   directed expect tests paired with bounded Quickcheck generators and one
   cycle-exact model/core contract, including P1.5's fetch/execute schedule. The
   environment owns drivers, pin-to-item monitors, the independent model, and checker;
@@ -442,6 +442,35 @@ bundle, or synthesis alone does not establish physical closure.
   backend. Simulation poison must not become synthesized logic or a required
   physical output value. Whole-suite migration and full-core implementation are
   not required to close this item.
+  Evidence: the harness is four modules under `test/`, described in
+  [verification.md section 8](verification.md#8-the-implemented-harness).
+  [`observation.ml`](../test/observation.ml) holds the unavailable/unspecified/defined
+  distinction and the checker; [`replay.ml`](../test/replay.ml) the seed, generator
+  settings, failing trial, configuration, source/dependency identity and rerun command;
+  [`env.ml`](../test/env.ml) the `Device` a block is described by once, the runner that
+  alone advances time, the pin-to-item monitor conventions, and the Quickcheck driver,
+  shrinker and failure report. A block supplies drivers, an independent model, monitors
+  and its required observations; the runner drives, settles, samples pre-edge, takes the
+  edge on both sides, samples settled post-edge, and stops at the first difference.
+  Section 6's distinctions are reserved in the monitor record — direction, stream
+  identity, edge timestamp, stream boundary and error — with no stretch engine
+  implemented.
+  P2.1 is the first consumer. [`pin_bank_env.ml`](../test/pin_bank_env.ml) describes it
+  once and [`test_pin_bank_harness.ml`](../test/test_pin_bank_harness.ml) uses that one
+  description four ways: the checker's validity rules, a directed expect transcript, a
+  200-trial Quickcheck run against [`model/pin_bank.ml`](../model/pin_bank.ml) from a
+  recorded seed, and a controlled mismatch that is found, shrunk to two items, reported
+  with its reproduction record, and found again at the same trial and edge when the
+  recorded seed and settings are rerun. The injected defect lives in the environment's
+  config, so nothing in `lib/`, `model/` or the suite is left intentionally failing.
+  *Carried forward:* the harness's first run disagreed with the design about the sticky
+  ownership conflict on an edge refused for offering two requests at once; the contract
+  was ambiguous and [construction-plan.md section 3](construction-plan.md#3-initial-architecture)
+  now states that the sticky bit records the attempt. `reject_reason` is declared
+  `Unavailable` on the RTL side: the comparison skips it, and the hole is visible rather
+  than absent. Waveform capture is not implemented — the bounded trace and the failing
+  scenario are the diagnostics section 4 requires. No other test has been migrated, and
+  ASIC backend conformance stays linked separately as `hardcaml_asic`'s evidence.
 
 **Exit gate:** UART/SPI/I2C examples execute in the model, execution contracts are
 testable, and program sizes and path timing are recorded. The chosen encoding is
@@ -485,9 +514,10 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   on what a "cycle" means before their results can be reported side by side. Expect a
   separate harness, not an edit to [`test_primitives.ml`](../test/test_primitives.ml),
   and expect the choice of what stays on `Cyclesim` to be a real decision. This is
-  the same harness P2.6 needs, so size it for both. P1.6 owns the conventions it
-  should follow and is still open; settling at least the seed and failure-artifact
-  convention first avoids retrofitting the harness later.
+  the same harness P2.6 needs, so size it for both. P1.6 settled the conventions it
+  should follow and shipped them: describe the block as an `Env.Device` and reuse the
+  runner, checker, seed record and failure artifacts rather than restating them for an
+  event-driven engine.
 - [x] **P2.3 — Timing and waits.** Implement countdown, periodic ticks, level/edge
   waits with timeout, and event-based phase restart. Evidence: exact delay edges,
   zero-delay rejection, immediate level completion, event-over-timeout precedence,

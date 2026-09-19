@@ -43,8 +43,8 @@ let is_defined = function
   | Unavailable | Unspecified -> false
 ;;
 
-(* Printed in a failure report, where the three cases have to stay apart: "unspecified" and
-   "0" must not read the same. *)
+(* Printed in a failure report, where the three cases have to stay apart: "unspecified"
+   and "0" must not read the same. *)
 let to_string = function
   | Unavailable -> "unavailable"
   | Unspecified -> "unspecified"

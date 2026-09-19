@@ -3,9 +3,9 @@
 (* Module: "pin_bank_env.ml" *)
 (* The P2.1 pin bank described once for the shared harness.
 
-   This is the first block to go through [Env] (phase_plan.md P1.6). It is deliberately the
-   smallest one: eight registered pins, masked commits, exclusive drive ownership and a
-   sticky conflict bit, with no internal sequencing to get in the way of reading the
+   This is the first block to go through [Env] (phase_plan.md P1.6). It is deliberately
+   the smallest one: eight registered pins, masked commits, exclusive drive ownership and
+   a sticky conflict bit, with no internal sequencing to get in the way of reading the
    conventions. A directed expect test and a bounded Quickcheck run both use what is here,
    and neither adds a runner of its own.
 
@@ -20,9 +20,9 @@
 
    What the design does not expose. The model knows why a request was refused; the RTL
    publishes only that one was. That is recorded as [reject_reason], [Unavailable] on the
-   design's side, rather than dropped: it is an observation the comparison is skipping, and
-   listing it in [required_post_edge] is the one change that would make the RTL's silence a
-   failure instead of a hole.
+   design's side, rather than dropped: it is an observation the comparison is skipping,
+   and listing it in [required_post_edge] is the one change that would make the RTL's
+   silence a failure instead of a hole.
 *)
 
 open! Core
@@ -59,8 +59,8 @@ module Reject_code = struct
 end
 
 (* A fault injected into the reference, for the failure-reproduction exercise of
-   verification.md section 4. It exists so a controlled mismatch can be produced without an
-   intentionally wrong test in the suite and without touching [lib/] or [model/]:
+   verification.md section 4. It exists so a controlled mismatch can be produced without
+   an intentionally wrong test in the suite and without touching [lib/] or [model/]:
    [Ignore_open_drain] makes this environment expect a driven high where the open-drain
    rule says the pin is released, which the design correctly refuses to do. *)
 module Defect = struct
@@ -84,8 +84,8 @@ module Config = struct
 end
 
 (* One edge's stimulus, shaped like the port rather than like an intention: the three
-   request channels are independent, so a scenario can offer two at once and the
-   "at most one request per edge" rule is exercised rather than assumed away. *)
+   request channels are independent, so a scenario can offer two at once and the "at most
+   one request per edge" rule is exercised rather than assumed away. *)
 module Item = struct
   module Ownership = struct
     type t =
@@ -116,7 +116,16 @@ module Item = struct
     }
   [@@deriving sexp_of]
 
-  let idle = { reset = false; abort = false; enable = true; claim = None; release = None; write = None }
+  let idle =
+    { reset = false
+    ; abort = false
+    ; enable = true
+    ; claim = None
+    ; release = None
+    ; write = None
+    }
+  ;;
+
   let reset = { idle with reset = true }
   let disabled = { idle with enable = false }
   let abort = { idle with abort = true }
@@ -139,7 +148,9 @@ module Item = struct
   ;;
 
   let requests t =
-    List.count [ Option.is_some t.claim; Option.is_some t.release; Option.is_some t.write ] ~f:Fn.id
+    List.count
+      [ Option.is_some t.claim; Option.is_some t.release; Option.is_some t.write ]
+      ~f:Fn.id
   ;;
 end
 
@@ -171,7 +182,14 @@ let bus_observations ~value ~output_enable =
     bus_name pin, Observation.when_defined ~defined:driven ((value lsr pin) land 1))
 ;;
 
-let held_observations ~value ~output_enable ~software_claim ~engine_claim ~rejected ~conflict =
+let held_observations
+  ~value
+  ~output_enable
+  ~software_claim
+  ~engine_claim
+  ~rejected
+  ~conflict
+  =
   [ "held.pins", Observation.int value
   ; "held.pin_oe", Observation.int output_enable
   ; "held.software_claim", Observation.int software_claim
@@ -295,7 +313,7 @@ module Dut = struct
       ~engine_claim:(port o.engine_claim_o)
       ~rejected:(port o.rejected_o = 1)
       ~conflict:(port o.conflict_o = 1)
-      (* The design reports that a request was refused, not why. *)
+        (* The design reports that a request was refused, not why. *)
       ~reject_reason:Observation.Unavailable
   ;;
 end
@@ -329,11 +347,30 @@ module Model = struct
     , Reference.mask_owned_by t.bank ~owner:(Kinds.Owner.Engine t.config.engine) )
   ;;
 
+  (* Did either of this item's drive requests name a pin some other owner holds? This is a
+     question about what was offered, not about what was accepted, which is what makes the
+     sticky conflict bit survive an edge refused for another reason. A release is not
+     asking to drive anything, so it is not counted. *)
+  let reaches_another_owner t (item : Item.t) =
+    let touches ~engine ~mask =
+      Option.is_some (Reference.conflicting_pin t.bank ~owner:(owner t ~engine) ~mask)
+    in
+    let claim =
+      Option.value_map item.claim ~default:false ~f:(fun claim ->
+        touches ~engine:claim.engine ~mask:claim.mask)
+    in
+    let write =
+      Option.value_map item.write ~default:false ~f:(fun write ->
+        touches ~engine:write.engine ~mask:write.mask)
+    in
+    claim || write
+  ;;
+
   (* Refused: the pulse is set for this edge and the bank is untouched. An ownership
      refusal is also a sticky conflict; a release of a pin the owner never held is
      ordinary flow control and is not. *)
   let refuse t ~reason ~sticky =
-    { t with rejected = true; reason; conflict = (t.conflict || sticky) }
+    { t with rejected = true; reason; conflict = t.conflict || sticky }
   ;;
 
   let accept t bank = { t with bank; rejected = false; reason = Reject_code.accepted }
@@ -367,9 +404,14 @@ module Model = struct
       }
     else if Item.requests item > 1
     then
-      (* Two requests at one edge leave ownership ambiguous, so both are refused. No
-         conflict is recorded: nothing was found to be owned by anyone else. *)
-      refuse t ~reason:Reject_code.multiple_requests ~sticky:false
+      (* Two requests at one edge leave ownership ambiguous, so both are refused. The
+         sticky bit is still set if either of them reached for a pin another owner holds:
+         it records that software went somewhere it may not, and losing that because the
+         same edge was also malformed would make the status depend on an unrelated fault.
+         The harness found this case; see the P1.6 note in docs/verification.md. *)
+      { (refuse t ~reason:Reject_code.multiple_requests ~sticky:false) with
+        conflict = t.conflict || reaches_another_owner t item
+      }
     else (
       match item.claim, item.release, item.write with
       | None, None, None -> accept t t.bank
@@ -397,7 +439,10 @@ module Model = struct
           t
           (Reference.commit
              t.bank
-             { Reference.Write.mask = write.mask; value; output_enable = write.output_enable }
+             { Reference.Write.mask = write.mask
+             ; value
+             ; output_enable = write.output_enable
+             }
              ~owner:(owner t ~engine:write.engine)))
   ;;
 
@@ -432,8 +477,8 @@ end
 (* Pin-to-item monitor. It reads observations and nothing else: it does not know what the
    scenario asked for, so a refused write cannot be reported as a commit.
 
-   Two streams. "pins" is the driven bus, reconstructed from the per-pin observations, so a
-   released pin contributes nothing rather than a zero. "ownership" is the claim spans,
+   Two streams. "pins" is the driven bus, reconstructed from the per-pin observations, so
+   a released pin contributes nothing rather than a zero. "ownership" is the claim spans,
    with [Start] and [End] at the edges where an owner acquires and drops its last pin, and
    an error item at the edge a conflict first becomes visible. *)
 module Monitor = struct
@@ -536,8 +581,8 @@ module Monitor = struct
 end
 
 (* Every registered output must be comparable on both sides. The bus levels are not
-   required, because a released pin has no level this block defines; [reject_reason] is not
-   required, because the design cannot expose it. *)
+   required, because a released pin has no level this block defines; [reject_reason] is
+   not required, because the design cannot expose it. *)
 let required_pre_edge = held_names
 let required_post_edge = registered_names
 
@@ -554,8 +599,15 @@ module Generator = struct
   let mask =
     let overlapping =
       G.of_weighted_list
-        [ 3.0, 0x01; 3.0, 0x03; 2.0, 0x0f; 2.0, 0x30; 2.0, 0xf0; 1.0, 0xff; 1.0, 0x81
-        ; 1.0, 0x18; 1.0, 0x00
+        [ 3.0, 0x01
+        ; 3.0, 0x03
+        ; 2.0, 0x0f
+        ; 2.0, 0x30
+        ; 2.0, 0xf0
+        ; 1.0, 0xff
+        ; 1.0, 0x81
+        ; 1.0, 0x18
+        ; 1.0, 0x00
         ]
     in
     G.union [ overlapping; overlapping; overlapping; byte ]
@@ -563,13 +615,13 @@ module Generator = struct
 
   let ownership =
     let%map engine = chance 0.5
-    and mask = mask in
+    and mask in
     { Item.Ownership.engine; mask }
   ;;
 
   let write_request =
     let%map engine = chance 0.5
-    and mask = mask
+    and mask
     and value = byte
     and output_enable = mask
     and open_drain = chance 0.3 in
@@ -584,7 +636,9 @@ module Generator = struct
       G.of_weighted_list
         [ 2.0, `Idle; 4.0, `Claim; 3.0, `Release; 8.0, `Write; 1.0, `Claim_and_write ]
     in
-    let base = { Item.reset; abort; enable; claim = None; release = None; write = None } in
+    let base =
+      { Item.reset; abort; enable; claim = None; release = None; write = None }
+    in
     match shape with
     | `Idle -> G.return base
     | `Claim ->

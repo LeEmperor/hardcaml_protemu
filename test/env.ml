@@ -13,8 +13,8 @@
 
    Responsibilities are split as in UVM, without a UVM framework:
 
-   - a scenario is a list of items, one per rising edge, produced by a directed test or
-     by a generator; it is data and drives nothing itself;
+   - a scenario is a list of items, one per rising edge, produced by a directed test or by
+     a generator; it is data and drives nothing itself;
    - [Dut] and [Model] are the drivers, translating one item into interface activity and
      into a model step;
    - [Monitor] reconstructs items from observations only, never from what a driver
@@ -24,11 +24,11 @@
      side, and it advances both from the same item.
 
    The per-edge order is fixed and is the whole cycle-exact contract (verification.md
-   section 2): drive the scheduled inputs, settle combinational logic, capture the pre-edge
-   acceptance conditions, take the edge on both sides, capture the settled post-edge
-   observations, then check. Nothing is realigned, no cycles are discarded, and the first
-   disagreement stops the trial. A device whose model needs an implementation detail of
-   the RTL to predict an observation has a specification gap, not a harness gap.
+   section 2): drive the scheduled inputs, settle combinational logic, capture the
+   pre-edge acceptance conditions, take the edge on both sides, capture the settled
+   post-edge observations, then check. Nothing is realigned, no cycles are discarded, and
+   the first disagreement stops the trial. A device whose model needs an implementation
+   detail of the RTL to predict an observation has a specification gap, not a harness gap.
 
    A reactive peer belongs to the environment. A device that needs one creates a separate,
    identically initialised instance inside each of [Dut] and [Model]; because the runner
@@ -126,7 +126,6 @@ module type Device = sig
     (* Acceptance conditions as they stand before the edge: a handshake is sampled here,
        never from a ready that rises after the edge. *)
     val pre_edge : t -> Observation.Set.t
-
     val edge : t -> unit
 
     (* Settled observations after the edge. *)
@@ -269,11 +268,7 @@ module Make (D : Device) = struct
       }
 
     let to_lines t =
-      let head =
-        if t.truncated
-        then [ "(earlier edges truncated)" ]
-        else []
-      in
+      let head = if t.truncated then [ "(earlier edges truncated)" ] else [] in
       head @ List.concat_map t.transcript ~f:Edge_record.to_lines
     ;;
 
@@ -293,7 +288,6 @@ module Make (D : Device) = struct
     let keep = if transcript then Int.max_value else context in
     let records = Queue.create () in
     let truncated = ref false in
-
     let push record =
       Queue.enqueue records record;
       while Queue.length records > keep do
@@ -301,11 +295,9 @@ module Make (D : Device) = struct
         truncated := true
       done
     in
-
     let finish outcome =
       { Run.outcome; transcript = Queue.to_list records; truncated = !truncated }
     in
-
     let rec advance edge items =
       match items with
       | [] -> finish (Outcome.Passed { edges = edge })
@@ -313,11 +305,9 @@ module Make (D : Device) = struct
         if edge >= edge_budget
         then
           finish
-            (Outcome.Timed_out
-               { budget = edge_budget; unscheduled = List.length items })
+            (Outcome.Timed_out { budget = edge_budget; unscheduled = List.length items })
         else (
           let item_sexp = D.Item.sexp_of_t item in
-
           (* Drive, settle, and sample the pre-edge conditions on both sides. *)
           D.Dut.drive dut item;
           D.Dut.settle dut;
@@ -368,8 +358,7 @@ module Make (D : Device) = struct
                  ~model:model_post
                  ~dut:dut_post
              with
-             | Some difference ->
-               mismatch Phase.Post_edge (Detail.Observation difference)
+             | Some difference -> mismatch Phase.Post_edge (Detail.Observation difference)
              | None ->
                if List.equal Observed_item.equal model_items dut_items
                then advance (edge + 1) rest
@@ -499,7 +488,11 @@ module Make (D : Device) = struct
      required to produce only valid scenarios, and shrinking is required to preserve them.
 
      Returns [None] when every trial agreed. The caller decides what a failure means: a
-     regression raises it, and the reproduction fixture inspects it. *)
+     regression raises it, and the reproduction fixture inspects it.
+
+     [environment_overrides:false] pins a test to its recorded settings. A fixture that
+     snapshots one seed's report has to refuse a sweep's seed, or a sweep would fail it
+     for reporting exactly what it was asked to report. *)
   let quickcheck
     ~(here : [%call_pos])
     ~test
@@ -510,10 +503,13 @@ module Make (D : Device) = struct
     ?(context = 6)
     ?(shrink_steps = 64)
     ?(write_artifact = true)
+    ?(environment_overrides = true)
     ~settings
     ()
     =
-    let settings = Replay.Settings.override settings in
+    let settings =
+      if environment_overrides then Replay.Settings.override settings else settings
+    in
     let random = Splittable_random.of_int settings.seed in
     let run_scenario scenario = run ~context config ~scenario ~edge_budget in
     let rec search trial =
@@ -555,10 +551,7 @@ module Make (D : Device) = struct
               then None
               else (
                 let result = run_scenario candidate in
-                if Option.equal
-                     String.equal
-                     (Outcome.identity result.outcome)
-                     identity
+                if Option.equal String.equal (Outcome.identity result.outcome) identity
                 then Some (candidate, result)
                 else None))
           with

@@ -383,7 +383,14 @@ drivers, independent model, pin-to-item monitors, and checker. A runner alone
 advances time, feeding matching stimuli to DUT and model and comparing defined
 observations on exact edges. Capture pre-edge acceptance and settled post-edge
 results explicitly; give each trial fresh state and a finite cycle budget.
-Concrete helper APIs remain implementation work in the [phase plan](phase_plan.md).
+
+The harness is [`test/env.ml`](../test/env.ml), with
+[`test/observation.ml`](../test/observation.ml) and
+[`test/replay.ml`](../test/replay.ml) beside it; a new block joins it by writing one
+`Env.Device` and nothing else, as [`test/pin_bank_env.ml`](../test/pin_bank_env.ml)
+does for P2.1. Do not add a second runner, a second checker, or a private cycle
+loop next to it. [verification.md section 8](verification.md#8-the-implemented-harness)
+lists what a `Device` supplies and the switches the reports honour.
 
 The reference model lives in `model/` (library `protemu_model`) and its tests in
 `test/model/`, both without a Hardcaml dependency. Its files keep the four-part

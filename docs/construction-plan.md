@@ -263,8 +263,11 @@ the value we intended to transmit.
 
 A transfer claims its configured output pins until completion or abort. Reject
 overlapping software writes or another engine's claim with a sticky ownership
-fault. Inputs may be observed by several consumers. Change ownership only at a
-defined clock boundary, and commit output value and enable together.
+fault. The sticky fault records the attempt, not the outcome: a request that named
+a pin another owner holds sets it even when that same edge was refused for an
+unrelated reason, such as two requests offered at once. Inputs may be observed by
+several consumers. Change ownership only at a defined clock boundary, and commit
+output value and enable together.
 
 On reset, release protocol pins, clear queue validity and event state, and halt
 execution. Do not depend on uninitialized program/data memory. Load and verify a

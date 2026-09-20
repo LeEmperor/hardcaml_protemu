@@ -1,9 +1,10 @@
 # Verification suite migration
 
-Status: in progress on 2026-09-19. Baseline capture, the functional-model rename,
+Status: in progress on 2026-09-20. Baseline capture, the functional-model rename,
 suite reorganization, cycle/event adapter conformance, the timed `Input_events` pilot,
-and one justified four-state property are complete; the integrated path, regression
-policy and final checks remain.
+one justified four-state property, the implemented portion of the integrated path, the
+regression policy, P2.7 suite integration, and recorded implementation checks are complete.
+Documentation retirement remains; the unrelated formatting backlog is not its blocker.
 
 This is a temporary implementation guide. [verification.md](verification.md) owns
 the current-state inventory, target architecture, model/driver/monitor contracts,
@@ -548,28 +549,136 @@ a type annotation"), which is why the lint result above is recorded per director
 than as a whole-repository `@lint`. The test counts recorded in verification.md exclude
 that in-progress block.
 
+That paragraph is the historical Stage 6 result, not a current blocker. The concurrent
+UART work subsequently added the required type annotation, and the 2026-09-20 UART
+reconciliation verified that `@test/integration/uart_slice/lint` exits 0. The suite is
+now included in verification.md's current inventory and counts.
+
 ### 7. Extend to the integrated path and regression policy
 
 **Recommended effort: Sol 5.6 high** for integrated event-to-core-to-pin behavior
 and failures spanning modules. Use medium for subsequent module migrations that
 follow a proven adapter pattern and for mechanical CI/alias wiring.
 
-- [ ] Reuse the timed facilities for `Observed_transfer` and the integrated
+- [x] Reuse the timed facilities for `Observed_transfer` and the integrated
   P2.6 event-to-engine/core-decision-to-pin path when that integration exists.
   Compare actual timestamps and independently reconstructed pin transactions.
-- [ ] Extend core and integration suites with load/readback/fetch arbitration,
+- [x] Extend core and integration suites with load/readback/fetch arbitration,
   instruction validity, image bounds, interruptions, and recovery as implemented.
   Link `hardcaml_asic` memory conformance rather than duplicating that library suite.
-- [ ] Keep bounded functional and timed regressions visible in normal CI; expose
+- [x] Keep bounded functional and timed regressions visible in normal CI; expose
   explicit aliases for longer sweeps and four-state suites. Document actual alias
   names and commands once implemented, and ensure CI invokes every required tier.
   Do not let an optional alias silently remove required evidence from regression.
-- [ ] Record which requirements each property exercises; retain named holes.
+- [x] Record which requirements each property exercises; retain named holes.
   Capture dependency/tool identity and the actual local diff needed for replay,
   beyond the current revision/dirty-status fields.
 
 Exit: the evidence map names implemented suites, commands, assumptions, and remaining
 physical/CDC/reset/formal obligations without treating one layer as proof of another.
+
+#### Integrated path and regression-policy result — 2026-09-20
+
+The implemented P2.6 path now has a two-state Evsim suite under
+[`test/primitives/observed_transfer/`](../test/primitives/observed_transfer). It uses the
+P2.2 time unit, clock, exact-edge ordering and finite delta-settle convention. A
+simulator-free predictor composes `Protemu_f_model.Input_pins` with
+`Protemu_f_model.Shift_engine` across their real register boundary, while the DUT-side
+monitor reconstructs timestamped transactions only from the driven pin value and output
+enable. All ten integer phases agree. An external start at times 16--25 drives the
+preloaded pin at time 45, a 20--29 tick deterministic range, and an asynchronous abort
+releases it on the following rising edge.
+
+That closes the event-to-engine-to-pin obligation that exists in RTL. The separate
+event-to-core-decision-to-pin measurement remains named: P3.2/P3.3 have not implemented
+decode or core/engine integration, so there is no such product path to test. Likewise,
+the core suite adds pause/resume without a memory access, reset/reload recovery, and a
+load held across disable, but does not claim readback, loaded-image bounds,
+load-complete, engine-idle arbitration or instruction decoding. Those are still absent
+P3 contracts. Memory-backend conformance remains owned and linked in `hardcaml_asic`;
+the local `Program_store_stub` tests only emulator consumption of the published port.
+
+Root aliases now define the policy: `@verification-required` is every bounded inline
+suite, `@verification` adds `@rtl`, `@verification-long` runs five recorded seeds through
+the longer functional/timed budgets, and `@verification-four-state` runs five seeds
+through the named four-state property. The bounded four-state property remains inside
+ordinary `@runtest`. [The verification workflow](../.github/workflows/verification.yml)
+checks out the recorded ASIC-library revision and invokes `@verification` on pushes and
+pull requests.
+
+Replay source identity now records relevant opam packages and host-tool versions and
+captures a binary-capable patch against the recorded revision, including untracked
+files. Terminal reports carry fingerprints; the full dependency manifest and patch are
+appended to the failure artifact so normal diagnostics remain bounded. The enduring
+suite/command/assumption map and every still-open physical, CDC, resolved-bus,
+core-integration and formal obligation are recorded in verification.md.
+
+Verification used commit `aae22fc` plus the current local diff, while preserving the
+unrelated in-progress `uart_slice` files already named in Stage 6.
+`./scripts/with-switch.sh dune build @all`, focused lint aliases for `test/common`,
+`test/core/protocol_core`, `test/primitives/input_events`,
+`test/primitives/observed_transfer`, and `test`, and
+`./scripts/with-switch.sh dune runtest --force` exited 0. Both explicit sweep aliases
+exited 0 with `--force`. `./scripts/with-switch.sh dune build @verification --force`
+also exited 0, including the P0 wrapper, P2 UART and P2.7 UART-slice Icarus checks,
+Verilator lint, and generic Yosys smoke test. `git diff --check` reported no whitespace
+errors. Repository-wide `@fmt` retains the pre-existing differences recorded in Stage 2;
+every OCaml file added or changed by Stage 7 was formatted with the pinned formatter.
+
+#### Concurrent UART-slice reconciliation — 2026-09-20
+
+The P2.7 suite remains in [`test/integration/uart_slice/`](../test/integration/uart_slice)
+with all directed assertions and the committed trace diff active. It now also has a
+bounded generated property using the shared replay settings, source/dependency/tool
+identity, and artifact conventions. Seed `20260920` runs 96 fresh-state trials at maximum
+size 16 over bytes, all selected pins, half-periods 2--12, complete frames, and reset,
+disable, or abort positions. No new shrinker or checker adapter was introduced. The
+existing loops were not forced through `Env`.
+
+Producer comparisons remain frame-relative: the independent receiver finds each start
+edge and exports normalized slots. The property does not compare absolute startup
+schedules. Cycle-exact next-edge checks are confined to reset/disable/abort release at
+the slice boundary. Normal completion still releases the engine claim while retaining a
+driven idle-high pin. The `firmware_samples` idle tail now follows the scenario's actual
+half period. Half-periods 2--12 describe generated coverage, not a newly restricted
+hardware contract. Zero encounters primitive refusal; half periods at or above 32768
+overflow the slice's doubled 16-bit leading-idle countdown. Slice-level handling of those
+requests is not established by this suite. The wider non-overflowing range and half-period
+1 remain coverage holes, not verified operating limits.
+
+The new property and the existing trace comparison remain ordinary `@runtest` evidence,
+so `@verification-required` and `@verification` include them transitively. No UART-only
+long sweep was added. The migration guide remains active until the final checklist below
+is completed; this reconciliation alone is not a reason to retire it.
+
+Verification used commit `aae22fc` plus the preserved concurrent local diff. The focused
+UART-slice suite, the exact printed reproduction command
+`PROTEMU_SEED=20260920 PROTEMU_TRIALS=96 PROTEMU_SIZE=16 dune runtest
+test/integration/uart_slice --force` (invoked through `scripts/with-switch.sh`), the
+`uart_tx`, `timing`, `pin_bank`, and `test/common` suites all exited 0. The focused UART
+`@fmt` and `@lint` aliases and repository-wide `@lint` exited 0.
+`./scripts/with-switch.sh dune build @all`, `dune runtest --force`, and
+`dune build @verification --force` exited 0; the last included both UART Icarus tests,
+the trace diff, wrapper Verilator lint, and the generic Yosys smoke test. The only HDL
+messages were the existing missing-timescale warnings on generated UART modules.
+`git diff --check` exited 0.
+
+Replay qualification: the successful recorded-seed rerun establishes command/settings
+plumbing, not controlled-failure replay. The UART property reports returned check errors
+with scenario/source identity and an artifact, but exceptions from decoder/producer
+helpers bypass that path. No UART-specific controlled generated failure exercises artifact
+creation or same-first-mismatch reproduction. The existing directed receiver negatives
+test waveform rejection separately. These follow-ups are tracked in verification.md;
+there is no UART shrinker and no claim that a one-frame scenario is parameter-minimal.
+
+Repository-wide `dune build @fmt` still exits 1 on the pre-existing formatting backlog
+recorded in Stage 2, including files outside this reconciliation. No expect block or
+committed trace changed. The explicit long and four-state sweep aliases were unchanged by
+this task and were not rerun; their latest historical Stage 7 result remains above, while
+their bounded required properties did run under ordinary `runtest`. The unrelated
+formatting backlog is not a migration-retirement gate: the relevant changed-file checks
+passed. The guide remains pending documentation consolidation and link cleanup below,
+including a durable home for historical results still referenced from verification.md.
 
 ## Final checks and retirement
 
@@ -577,14 +686,20 @@ physical/CDC/reset/formal obligations without treating one layer as proof of ano
 and paths, and retire the guide. Use high for unresolved semantic failures or a
 review of whether the combined suites leave gaps at their boundaries.
 
-- [ ] Run build, lint/format checks appropriate to source changes, all affected
+- [x] Run build, lint/format checks appropriate to source changes, all affected
   inline suites, the required event/four-state tiers, and `@rtl` with host tools.
-- [ ] Exercise printed reproduction commands after all path and library changes.
-- [ ] Verify independent reference dependencies, required observations, no silent
+- [x] Exercise printed reproduction commands after all path and library changes.
+  For the UART property this records a successful rerun only, not demonstrated
+  controlled-failure reporting/replay; that distinction and follow-up live in verification.md.
+- [x] Verify independent reference dependencies, required observations, no silent
   X coercion, finite budgets, and no removed assertions without replacements.
-- [ ] Refresh verification.md's current-state inventory, paths, backend version
+- [x] Refresh verification.md's current-state inventory, paths, backend version
   notes, commands, and evidence map from the implemented tree. Keep target items
   separate where work remains; never promote plans to recorded evidence.
 - [ ] Remove obsolete migration-only text and this guide once all applicable work
   is complete, updating the documentation index and inbound links. Any deferred
   obligation must remain explicitly tracked in verification.md/phase_plan.md.
+  Preserve historical benchmark/source/dependency records still referenced by the
+  enduring document before removing their only home. Do not wait for unrelated
+  repository-wide formatting cleanup, or imply that removing this guide closes the
+  separately tracked UART diagnostic, P3/P4, physical, CDC, or formal obligations.

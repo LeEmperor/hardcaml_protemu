@@ -544,10 +544,26 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   data paths. Evidence: phase sweeps measure event-to-engine and event-to-core-
   decision-to-pin latency; externally interrupted transfers release ownership.
   Record limits needed for UART RX and SPI target experiments.
-  *Progress:* [`observed_transfer.ml`](../lib/observed_transfer.ml) aligns
-  start, pacing, and data; the [P2 implementation record](p2-implementation.md)
-  measures the event-to-engine path. The control-decision path and external
-  timing envelope remain.
+  - [x] **P2.6a -- Primitive and digital envelope.**
+    [`observed_transfer.ml`](../lib/observed_transfer.ml) aligns and latches start, pacing,
+    optional cancellation/select, and data configuration; falling-edge select withdrawal
+    aborts armed or active work and releases ownership. The
+    [P2 implementation record](p2-implementation.md) records the accepted/live input
+    contract, priority, recovery, measured limits, and UART RX/SPI target implications.
+    The timed suite under
+    [`test/primitives/observed_transfer/`](../test/primitives/observed_transfer) composes
+    independent input and shift-engine models, checks reconstructed pin transactions and
+    RX/fault state for multi-bit directed and generated schedules, and measures 10--19
+    ticks external-to-synchronized-event, 10 ticks event-to-engine, and 20--29 ticks
+    start-to-pin or cancellation-to-release. The verified digital envelope is 10-tick
+    external high/low, 10-tick start-to-engine-pace lead, and 30-tick
+    select-to-first-peer-sampling edge for TX.
+  - [ ] **P2.6b -- Real core path.** Blocked: [`protocol_core.ml`](../lib/protocol_core.ml)
+    still has placeholder decode/execute and no event/engine/pin-bank integration. After
+    P3.2/P3.3, run a loaded program through the documented fetch/execute contract and
+    timestamp event, core decision, bank commit, and boundary pin. Parent P2.6 remains
+    unchecked until that actual path is measured; a testbench sequencer or direct
+    event-to-pin path is not evidence.
 - [x] **P2.7 — Close the first UART TX demonstration.** Connect P1.3's sequence
   to the pin/timer hardware and the emitted-RTL harness. Evidence: an independent
   monitor checks idle, start, data, stop, bit periods, and reset/disable during
@@ -581,7 +597,17 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   *program* reaching the same pins is P3.2's evidence, not this item's. The receiver
   measures the bit period as the greatest common divisor of the frame's transition
   intervals, which equals the bit period only for a byte that puts a bit between two
-  unlike neighbours; `0xa6` is such a byte and the vectors keep it.
+  unlike neighbours; `0xa6` is such a byte and the vectors keep it. The bounded generated
+  regression adds 96 fresh-state trials at seed `20260920` across bytes, all eight pins,
+  half-periods 2--12, and normal or interrupted frames. It uses the shared replay/source
+  identity conventions while keeping the established frame monitor and Cyclesim loops.
+  Its producer comparisons are frame-relative after each start edge is detected, not a
+  claim of equal request-to-start latency. The generated period range records coverage,
+  not a change to the supported-input contract: zero encounters primitive refusal and
+  values at or above 32768 overflow the doubled 16-bit leading-idle countdown. Slice-level
+  handling of those requests, half-period 1, and the wider positive non-overflowing range
+  remain unverified. Generated-failure diagnostic and controlled-replay gaps are tracked
+  separately in verification.md.
 - [ ] **P2.8 — Record primitive costs and invariants.** Measure mapped sequential
   and combinational area per block/configuration using P0's flow. Exercise pin
   ownership, open-drain, FIFO, handshake, reset, and wait invariants; apply formal

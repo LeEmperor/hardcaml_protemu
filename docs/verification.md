@@ -1,9 +1,10 @@
 # System verification
 
-Status: current implementation updated on 2026-09-19 after the functional-model
+Status: current implementation updated on 2026-09-20 after the functional-model
 rename, per-block suite reorganization, cycle/event adapter conformance experiment,
-timed `Input_events` pilot, and one four-state `Input_events` property. Resolved-bus
-four-state behavior and the physical obligations below remain unimplemented.
+timed `Input_events` pilot, one four-state `Input_events` property, the timed P2.6
+event-to-engine path, and the integrated P2.7 UART-slice suite. The core-decision path,
+resolved-bus four-state behavior, and the physical obligations below remain unimplemented.
 
 This is the enduring source of truth for verification architecture, suite ownership,
 current evidence, and the intended next state. It incorporates the former test
@@ -17,18 +18,19 @@ verification policy rather than maintaining another test architecture.
 ## Current state
 
 Paths in this section describe files that exist now. The rename to `f_model`, per-block
-suite layout, backend sampling characterization, timed P2.2 pilot, and one named
-four-state P2.2 property are implemented. A resolved-bus four-state suite is not.
+suite layout, backend sampling characterization, timed P2.2 and P2.6 paths, and one named
+four-state P2.2 property are implemented. A core-to-pin timed path and a resolved-bus
+four-state suite are not.
 
 ### Backend and test inventory
 
 | Question | Answer |
 | --- | --- |
-| OCaml RTL simulation backend | Synchronous product suites use `Hardcaml.Cyclesim`; timed P2.2 uses two-state Evsim, as does the isolated conformance fixture. Emitted-Verilog checks use separate tools. |
+| OCaml RTL simulation backend | Synchronous product suites use `Hardcaml.Cyclesim`; timed P2.2 and P2.6 use two-state Evsim, as does the isolated conformance fixture. Emitted-Verilog checks use separate tools. |
 | `hardcaml_step_testbench` | Used by the isolated cycle/event adapter conformance suite; production block suites have not migrated to it. |
-| `hardcaml_event_driven_sim` | Two-state Evsim is exercised by adapter conformance and the timed P2.2 product pilot. Four-state Evsim is exercised by the P2.2 unknown-pad property and nothing else. |
+| `hardcaml_event_driven_sim` | Two-state Evsim is exercised by adapter conformance and the timed P2.2/P2.6 product suites. Four-state Evsim is exercised by the P2.2 unknown-pad property and nothing else. |
 | `hardcaml_waveterm`, `alcotest` | Declared `:with-test` but unused. No waveforms are produced and no Alcotest suite exists. |
-| Test styles | 108 `let%expect_test`, 35 `let%test_unit`, and three Quickcheck drivers built on `base_quickcheck`. |
+| Test styles | Directed expect/unit tests, three model/RTL Quickcheck environments, and one bounded UART-slice property built on `base_quickcheck`; explicit aliases rerun selected generators with larger budgets. |
 | Blocks on the shared harness | One: P2.1 `Pin_bank`. Everything else still runs its own loop. |
 
 The conformance fixture is evidence about adapter scheduling only; a declared dependency
@@ -42,7 +44,7 @@ deliberately kept apart so that a disagreement between two of them is evidence r
 | Layer | Library | Depends on Hardcaml | Contents |
 | --- | --- | --- | --- |
 | Reference model | `test_protemu_f_model` ([`test/f_model/`](../test/f_model/dune)) | No | 95 expect tests over [`f_model/`](../f_model/dune). |
-| Model/RTL comparison and backend conformance | uniquely named libraries under [`test/common/`](../test/common/dune), [`test/primitives/`](../test/primitives), [`test/core/`](../test/core), and [`test/integration/`](../test/integration) | Yes, except generic support | 29 cycle product `%test_unit` tests, 5 cycle harness expect tests, one adapter `%test_unit`, one adapter expect test, two timed product `%test_unit` tests, three timed product expect tests, three four-state product `%test_unit` tests, four four-state product expect tests, and the cycle, timed and four-state harnesses. |
+| Model/RTL comparison and backend conformance | uniquely named libraries under [`test/common/`](../test/common/dune), [`test/primitives/`](../test/primitives), [`test/core/`](../test/core), and [`test/integration/`](../test/integration) | Yes, except generic support | Directed cycle product tests, cycle harness expect tests, adapter conformance, timed P2.2/P2.6 product tests, and the targeted P2.2 four-state property. |
 | Emitted RTL | none — Dune rules | n/a | iverilog, verilator and yosys checks behind `dune build @rtl`. |
 
 #### Model tests — `test/f_model/`
@@ -70,14 +72,16 @@ the printer. These are the conventions `Env` later formalised.
 
 Two styles coexist here, and the split is the current migration boundary.
 
-**The directed `%test_unit` layer** is still the majority of the RTL evidence. Its
-29 cases retain their original assertions in block-owned files:
+**The directed `%test_unit` layer** is still the majority of the RTL evidence. The
+original 29 cases retain their assertions in block-owned files; later core and timed
+integration cases extend them:
 
 | File | Tests | Covers |
 | --- | --- | --- |
 | [`test/primitives/`](../test/primitives) | 23 | P2.1 to P2.7: pin bank, input events, timing, FIFOs, shift lane, observed transfer, and UART. |
 | [`primitive_demo_unit_tests.ml`](../test/integration/primitive_demo/primitive_demo_unit_tests.ml) | 1 | Concurrent timer/transfer integration. |
-| [`protocol_core_unit_tests.ml`](../test/core/protocol_core/protocol_core_unit_tests.ml) | 3 | P3 core fetch/execute against a local program-store stub. |
+| [`uart_slice_unit_tests.ml`](../test/integration/uart_slice/uart_slice_unit_tests.ml) | 13 | P2.7 frame, ownership/timer/bank status, pin isolation, completion/release, receiver negatives, model agreement including an overridden period, and the saved-trace expect block. |
+| [`protocol_core_unit_tests.ml`](../test/core/protocol_core/protocol_core_unit_tests.ml) | 6 | P3 core fetch/execute, port arbitration, pause/resume, reset/reload recovery, and loader gating against a local program-store stub. |
 | [`wrapper_unit_tests.ml`](../test/integration/wrapper/wrapper_unit_tests.ml) | 2 | The P0 observable wrapper. |
 
 Each builds a `Cyclesim.With_interface` simulator, assigns inputs by hand, calls
@@ -105,13 +109,16 @@ test checks artifact creation and cleanup from a Dune runner directory.
 
 #### Emitted RTL — `tinytapeout/test/`
 
-Not OCaml. Four Dune rules under the `@rtl` alias, kept out of `runtest` so the
+Not OCaml. Five Dune rules under the `@rtl` alias, kept out of `runtest` so the
 Hardcaml tests do not require host tools:
 
 - `iverilog -g2012 -Wall` plus `vvp` on [`tb.v`](../tinytapeout/test/tb.v) against
   the committed P0 wrapper;
 - the same on [`p2_uart_tb.v`](../tinytapeout/test/p2_uart_tb.v) against the
   generated UART transmitter;
+- the independent Verilog receiver in
+  [`p2_uart_slice_tb.v`](../tinytapeout/test/p2_uart_slice_tb.v) against the generated
+  slice, with its frame trace diffed against the committed model/Hardcaml trace;
 - `verilator --lint-only` on the wrapper;
 - a `yosys` `hierarchy`/`synth`/`stat` smoke test, which is **not** CMOS5L-mapped
   synthesis and is labelled as such in the rule.
@@ -159,6 +166,31 @@ scenario are the diagnostics, as section 4 allows.
 Source identity is read from the source tree rather than the working directory,
 because dune runs an inline test inside a sandbox whose parent holds a stub `.git`.
 A run that cannot reach git records `unavailable` rather than inventing a revision.
+
+On a generated failure the concise report records the revision, working-tree status,
+OCaml and host-tool versions, plus fingerprints of the dependency manifest and local
+patch. The failure artifact additionally contains the exact relevant opam package
+versions and a binary-capable patch against the recorded revision, including untracked
+files. This keeps routine terminal output bounded while retaining the inputs needed to
+reconstruct a dirty-tree run.
+
+### Regression aliases and CI policy
+
+The root aliases make the required/optional boundary executable:
+
+| Alias | Command | Policy |
+| --- | --- | --- |
+| `@verification-required` | `./scripts/with-switch.sh dune build @verification-required` | All ordinary bounded model, cycle, timed, and four-state inline regressions; suitable when host HDL tools are unavailable. |
+| `@verification` | `./scripts/with-switch.sh dune build @verification` | Required inline regressions plus every emitted-RTL rule under `@rtl`; this is the CI gate. |
+| `@verification-long` | `./scripts/with-switch.sh dune build @verification-long` | Five recorded seeds through 1,000 pin-bank trials, 500 timed P2.2 trials, and the timed P2.6 phase/interruption sweep. |
+| `@verification-four-state` | `./scripts/with-switch.sh dune build @verification-four-state` | Five recorded seeds through 500 trials of the named P2.2 four-state property. |
+
+The bounded four-state property remains in ordinary `@runtest`; the explicit alias adds
+depth and does not remove it from required evidence. The workflow in
+[`.github/workflows/verification.yml`](../.github/workflows/verification.yml) installs
+the host simulators, checks out the `hardcaml_asic` revision recorded by
+`tinytapeout/asic-dependencies.lock`, builds the pinned OxCaml environment, and invokes
+`@verification` on pushes and pull requests. Long aliases are intentionally opt-in.
 
 ### What P2.1 through the harness established
 
@@ -249,6 +281,99 @@ The controlled one-tick pad-delay defect is reproducible and shrinks to reset pl
 exact-edge two-tick pulse. Failure reports carry timestamp/unit, edge, seed/trial,
 source/configuration, first mismatch, nearby samples, and between-edge activity. Run it
 with `./scripts/with-switch.sh dune runtest test/primitives/input_events --force`.
+
+### Timed P2.6 event-to-engine path
+
+[`observed_transfer_timing_testbench.ml`](../test/primitives/observed_transfer/observed_transfer_timing_testbench.ml)
+and
+[`observed_transfer_timing_tests.ml`](../test/primitives/observed_transfer/observed_transfer_timing_tests.ml)
+reuse the P2.2 clock, timestamp, exact-coincidence, delta-settle, and finite-budget
+conventions for the implemented `Input_events` → `Shift_lane` composition. The predictor
+is simulator-free: it maps the external schedule to input-sampling edges, advances
+`Protemu_f_model.Input_pins`, feeds the previous coherent snapshot into
+`Protemu_f_model.Shift_engine`, and reconstructs driven pin transactions from that state.
+The DUT side reconstructs the same transactions only from `pin_value_o`/`pin_oe_o`; a
+released pin's stored value is deliberately ignored.
+
+All ten integer phases agree on samples, full RX/fault state, and pin transactions.
+Directed and generated cases cover lengths 1 and 32, both bit orders, TX-only, RX-only,
+duplex, every start/pacing edge-kind combination at every integer phase, both
+launch/sample arrangements, asymmetric and bounded-variable duty cycles,
+reset/disable/abort, armed and active cancellation, and coincident cancellation/pacing
+priority. The generated run is 48 fresh-state trials at seed `20260920`; a failure records
+its first mismatch, typed configuration, source/dependency identity, and rerun command.
+
+The measured path is 10--19 ticks from external transition to synchronized event, exactly
+10 more ticks to engine action, and 20--29 ticks from external start to driven preload or
+external cancellation to release. Ten-tick external high and low intervals pass every
+phase while nine ticks miss at least one. Ten ticks of start-to-first-pace lead keeps
+engine events distinct while nine can merge them. A peer sampling TX needs a stricter
+30-tick select-to-first-clock lead so the 20--29 tick preload is already driven; 29 ticks
+can coincide with the output update. Data must be present by the pacing transition and
+held through its next system sampling edge, conservatively 10 ticks over all phases.
+Direct reset, disable, and abort release on the next rising edge. No pin-bank stage is in
+this fixture. These are deterministic two-state digital limits, not analog CDC,
+metastability, or physical setup/hold evidence.
+
+This is the event-to-engine-to-pin path, not the event-to-core-decision-to-pin path.
+[`protocol_core.ml`](../lib/protocol_core.ml) still has placeholder Decode/Execute states,
+an 8-bit pre-ISA scaffold, constant-zero pins, and no event or transfer connection. P3.2
+must first implement real fetch/decode execution and P3.3 must connect that core to the
+event, transfer, and pin-bank paths. The eventual fixture must run an actual loaded
+instruction sequence and timestamp the observed event, decoded decision, bank commit,
+and boundary pin; no hard-coded sequencer is accepted as substitute. Run the current
+suite with `./scripts/with-switch.sh dune runtest test/primitives/observed_transfer --force`.
+
+### P2.7 UART-slice evidence
+
+[`test/integration/uart_slice/`](../test/integration/uart_slice) retains its
+purpose-built Cyclesim loops rather than forcing them through `Env`. The independent
+receiver checks a fully driven leading idle, low start, eight LSB-first data slots, high
+stop, constant level throughout every slot, a period consistent with the requested bit
+period, and driven idle after the frame. Its negative cases reject a shortened slot, a
+released pin inside a slot, and insufficient leading idle. The `0xa6` calibration case
+still requires the transition-interval GCD to equal one bit period; generated bytes only
+require the mathematically valid multiple relation because longer runs cannot reveal the
+fundamental period from transitions alone.
+
+The directed cases also preserve timer activity, engine claim/release, one completion
+pulse, clean bank status, selected-pin isolation, the existing byte/pin/period vectors,
+normal completion with the pin still driven idle-high, and next-edge pin/claim release
+on reset, disable, and abort. `uart_frame.trace` is generated only after the bit-banged
+firmware model, typed descriptor model, and Hardcaml slice decode to the same normalized
+slot table; `@rtl` independently reconstructs and diffs that table from emitted Verilog.
+These are **frame-relative** comparisons: every monitor finds its own start edge. They do
+not claim cycle-exact request-to-start or completion latency across producers, whose
+startup schedules intentionally differ. No independent absolute-latency oracle exists.
+
+[`uart_slice_property_tests.ml`](../test/integration/uart_slice/uart_slice_property_tests.ml)
+runs seed `20260920`, 96 trials, maximum generator size 16, and at most 328 captured
+Cyclesim edges in a slice run. Each trial creates fresh model and simulator state and varies
+the byte, all eight selected pins, half-periods 2--12, and complete versus reset/disable/
+abort behavior at positions from acceptance into the active frame. Completed cases compare
+the three normalized OCaml traces and all slice-level status/isolation obligations;
+interrupted cases check release on the following edge and absence of completion. Returned
+check failures use the shared `Replay.Settings`, source/dependency/tool identity, artifact
+writer, and environment overrides, and print the full single-scenario value plus an
+executable rerun command. Exceptions raised by the frame decoder or producer helpers
+currently bypass this custom report/artifact path and fail the inline test directly.
+There is deliberately no new shrinker or checker adapter. The recorded successful rerun
+checks command/settings plumbing; no UART-specific controlled failure has demonstrated
+artifact generation or reproduction of the same first mismatch. Existing receiver
+negative tests establish waveform rejection, not that generated-failure reporting path.
+
+The bounded property and committed trace diff are ordinary `@runtest` evidence and hence
+remain in `@verification-required` and `@verification`. No separate UART long sweep is
+defined. Half-periods 2--12 are the generated comparison range, not a change to the
+hardware's supported-input contract or a published operating envelope. Firmware
+comparison requires `half_period >= 2`. In the RTL, the 16-bit leading-idle countdown is
+formed by doubling `half_period_i`; zero encounters primitive refusal and values at or
+above 32768 overflow that countdown. The suite does not establish slice-level completion,
+refusal, or recovery behavior for those requests. Positive values through 32767 avoid
+the doubling overflow, but that arithmetic fact does not verify the full range.
+Half-period 1 and the wider range remain coverage holes. Defining slice-level handling
+or changing the supported period contract is separate product work, not a consequence
+of this test-domain choice.
 
 ### Four-state unknown-pad property — P2.2
 
@@ -356,20 +481,26 @@ is a failure. Each trial starts with fresh state. The controlled
 `Defect.Ignore_open_drain` fixture verifies detection, shrinking, reporting, and
 reproduction without altering production RTL or the functional model.
 
-Current replay records revision, dirty status, OCaml version, settings, trial,
-configuration, and scenarios. It does not archive the local diff or a complete
-dependency/tool manifest. The stronger reproduction requirements below remain
-work to complete. Trace context is bounded (six edges by default); no waveform,
+Current replay records revision, dirty status, the exact local patch, relevant opam
+dependency versions, OCaml/host-tool versions, settings, trial, configuration, and
+scenarios. Patch and dependency details live in the failure artifact, with fingerprints
+in terminal output. Trace context is bounded (six edges by default); no waveform,
 stimulus journal, or general replay-file format is implemented.
+
+The UART property uses the same replay record and fresh-state rule for returned check
+failures, but its scenario is one frame or interruption and it does not use the shared
+`Env` shrinker. No minimality claim is made for its parameters or interruption position.
+Its exception-reporting gap and unexercised controlled-failure replay path are recorded
+in the P2.7 section above; common harness replay evidence does not close those local gaps.
 
 Exactly one four-state property is implemented, on `Input_events` alone. Resolved buses
 with explicit drivers and pull-ups, open-drain wire resolution and any other X/Z
-obligation have no four-state evidence. No coverage-collection suite is implemented. The
-timed and four-state runners currently cover only `Input_events`; P2.6 and integrated
-paths have not adopted either. The existing RTL smoke checks do not establish gate-level
-functional behavior, physical timing closure, or metastability reliability. See the
-evidence map below for the distinction between implemented checks and outstanding
-obligations.
+obligation have no four-state evidence. No coverage-collection suite is implemented.
+Two-state timed runners cover P2.2 and the implemented P2.6 event-to-engine path; there
+is no core-decision path to time until P3.2/P3.3 exist. The existing RTL smoke checks do
+not establish gate-level functional behavior, physical timing closure, or metastability
+reliability. See the evidence map below for the distinction between implemented checks
+and outstanding obligations.
 
 ## Next state
 
@@ -732,14 +863,16 @@ Historical run reports are not fresh results for later source revisions.
 | Cycle/event adapter scheduling | `test/common/backend_conformance*.ml`; matching five-edge known-value trace, completion, and timeout on Cyclesim/two-state Evsim; exact-coincidence ordering is enforced by the P2.2 runner | Recheck the characterized adapter and delta-settle convention when dependencies change |
 | Pin bank cycle agreement and harness diagnostics | `test/primitives/pin_bank/` plus generic fixtures in `test/common/`; recorded 200 trials and seed sweeps above | Extend properties as the block contract grows |
 | Other primitive cycle behavior | 23 block-owned directed tests under `test/primitives/` and one integration case under `test/integration/primitive_demo/` | Add bounded generated properties where they provide distinct evidence |
-| Core memory/fetch/execute behavior | Three directed tests in `test/core/protocol_core/` | Broader instruction/stall/reset cases as contracts land |
+| Core memory/fetch/execute behavior | Six directed tests in `test/core/protocol_core/`: latency-one fetch, last-write validity, live-load refusal, pause/resume without a memory access, reset/reload recovery, and disabled-loader gating | Readback, loaded-image validity/bounds, load-complete, engine-idle gating, decode, and core/engine interruption remain absent product contracts, not passing tests |
 | P0 wrapper | Two tests in `test/integration/wrapper/` plus `@rtl` wrapper checks | Later host/load/recovery evidence |
 | P2.2 external phase and pulse capture | `test/primitives/input_events/input_events_timing_{testbench,tests}.ml`; directed cases plus 160 generated trials, 10--19 tick deterministic latency, captured/missed pulse cases, reset/event interactions, temporal shrink/replay | Physical CDC/setup/hold/metastability evidence remains separate |
-| P2.6 event-to-engine/core-to-pin latency | Cycle behavior only; integration incomplete | Timed integrated path and independent timestamped monitor |
+| P2.6 event-to-engine/core-to-pin latency | `test/primitives/observed_transfer/observed_transfer_timing_{testbench,tests}.ml`; independent input/shift models and reconstructed pins cover all phases, 1/32-bit bounds, directions/orders/phases/edges, width and data boundaries, generated schedules, interruption and recovery. External-to-event is 10--19 ticks, event-to-action 10, start-to-drive and cancellation-to-release 20--29; the digital envelope is 10-tick high/low, 10-tick engine lead, 30-tick TX peer-sample lead. | P3.2/P3.3 actual execution and bank integration, then real event-to-core-decision-to-committed-pin timing; analog CDC/setup/hold and physical timing remain separate |
+| P2.7 UART TX slice | `test/integration/uart_slice/`: 12 directed unit cases, a saved-trace expect/diff, and 96 generated Cyclesim trials at seed `20260920`; model/descriptor/Hardcaml frames agree relative to their detected start edges, while slice ownership, timer, bank, pin isolation, completion and interruption contracts are checked at the hardware boundary; `p2_uart_slice_tb.v` repeats the frame/release checks on emitted RTL | Independent request-to-pin/completion latency, the unverified wider period range, P3 fetch/decode/core-to-engine behavior, the P4 UART baseline, physical timing, and formal invariants remain separate obligations |
 | Unknown pad propagation and recovery | `test/primitives/input_events/input_events_four_state_{testbench,tests}.ml`; declared injection site/window/resolution, isolation and per-pin containment, a three-edge recovery bound, 120 generated trials at seed `20260919`, and two controlled negatives covering a design leak and a coercing observer | Extend to further blocks only where a contract names an X/Z obligation |
 | Resolved external buses, open-drain wire resolution | No four-state suite | An explicit multi-driver/pull-up model and targeted tests, or a recorded decision to leave it to the emitted-RTL tier |
-| Memory backend conformance | Owned by `hardcaml_asic` | Link library evidence; emulator owns consumption/arbitration/image bounds/recovery |
-| Protocol correctness and timing | Reference firmware/peer tests and UART RTL smoke | Independent monitors/peers at integrated RTL boundaries; loopback alone insufficient |
+| Memory backend conformance | Owned by `hardcaml_asic`: [`test_single_port_ram.ml`](../../hardcaml_asic/test/test_single_port_ram.ml) runs its independent scoreboard against both implementations; the suite is linked rather than copied here | P3.1b must rerun emulator consumer checks against an adopted backend; emulator still owns consumption/arbitration/image bounds/recovery |
+| UART generated-failure diagnostics | Shared replay settings/report/artifact integration for returned check failures; successful recorded-seed rerun; directed receiver rejection tests | Route producer/decoder exceptions through scenario-aware reporting and demonstrate a controlled generated failure with artifact and first-mismatch replay; no UART shrinking evidence is claimed |
+| Protocol correctness and timing | Reference firmware/peer tests, primitive UART RTL smoke, and the integrated P2.7 independent frame/release monitors described above | Broader P4 independent-peer and timing evidence; loopback alone insufficient |
 | Formal, CDC/reset, mapped/gate-level and physical timing | Not established by this functional suite or generic Yosys smoke test | Record applicable analyses, assumptions, tool/source identity and outstanding gaps in phase/flow evidence |
 
 Applicable formal checks include exclusive pin ownership, open-drain never driving
@@ -755,3 +888,19 @@ and every claimed four-state property has an explicit contract and test. Missing
 physical or integration evidence stays visible; an architecture document is not
 acceptance evidence. The migration guide can then be removed after its enduring
 facts and resulting paths have been folded into this document.
+
+### Migration retirement and formatting backlog
+
+The recorded UART integration checks on 2026-09-20 passed the focused UART formatting
+and lint aliases, repository-wide lint/build, forced ordinary regression, and
+`@verification` including emitted RTL. These are historical results for the source/diff
+recorded in the migration guide, not fresh checks of subsequent edits.
+
+Repository-wide `@fmt` still reports the pre-existing formatting backlog outside that
+integration. Keep that backlog separate from verification acceptance: formatting checks
+appropriate to changed files must pass, but unrelated formatting cleanup is not by itself
+a blocker to retiring the migration guide. Retirement still requires preserving enduring
+results, assumptions, commands and deferred obligations here, and updating the index and
+inbound links. Benchmark provenance and other historical evidence must retain a durable
+home before their only record is removed. A UART controlled-failure replay check is a
+named follow-up, not existing evidence or a requirement to redesign the migrated suite.

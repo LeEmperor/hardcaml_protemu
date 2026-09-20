@@ -57,4 +57,11 @@
 (rule
  (target protocol_core.generated.v)
  (action
-  (run %{exe:../../bin/generate_core.exe} %{target})))
+  (run %{exe:../../bin/generate_core.exe} access %{target})))
+
+; P3.2 executable composition. Program RAM remains an external latency-one port.
+
+(rule
+ (target executable_core.generated.v)
+ (action
+  (run %{exe:../../bin/generate_core.exe} executable %{target})))

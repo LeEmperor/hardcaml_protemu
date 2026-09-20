@@ -151,11 +151,12 @@ let decisions t (input : Input.t) =
     && Option.is_none t.host_read_pending
   in
   let fetch_accepted =
+    let completion = input.enable && t.fetch_pending && not input.reset in
     input.enable
     && t.running
     && (not input.reset)
     && (not input.execution_halt)
-    && (not t.fetch_pending)
+    && ((not t.fetch_pending) || completion)
     && Option.exists input.fetch ~f:(fun address ->
       address >= 0 && address < depth && address < t.image_length)
   in
@@ -199,10 +200,10 @@ let step t input ~read_data =
   else (
     let d = decisions t input in
     let invalid_fetch =
+      let completion = input.enable && t.fetch_pending && not input.reset in
       input.enable
       && t.running
-      && (not input.execution_halt)
-      && (not t.fetch_pending)
+      && ((not t.fetch_pending) || completion)
       && Option.exists input.fetch ~f:(fun address ->
         address < 0 || address >= depth || address >= t.image_length)
     in
@@ -276,7 +277,13 @@ let step t input ~read_data =
     in
     let t =
       if invalid_fetch
-      then { t with running = false; fetch_pending = false; fetch_fault = true }
+      then
+        { t with
+          running = false
+        ; fetch_pending = false
+        ; fetch_fault = true
+        ; response = { t.response with fetch = None }
+        }
       else t
     in
     if d.fetch_accepted then { t with fetch_pending = true } else t)

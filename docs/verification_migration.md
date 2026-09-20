@@ -589,9 +589,10 @@ enable. All ten integer phases agree. An external start at times 16--25 drives t
 preloaded pin at time 45, a 20--29 tick deterministic range, and an asynchronous abort
 releases it on the following rising edge.
 
-That closes the event-to-engine-to-pin obligation that exists in RTL. The separate
-event-to-core-decision-to-pin measurement remains named: P3.2/P3.3 have not implemented
-decode or core/engine integration, so there is no such product path to test. Likewise,
+That closes the event-to-engine-to-pin obligation that existed in RTL at this migration
+run. The separate event-to-core-decision-to-pin measurement remained named because P3.2/
+P3.3 had not implemented decode or core/engine integration. P3.2 has since implemented
+decode and local execution; P3.3 integration remains the blocker. Likewise,
 the core suite adds pause/resume without a memory access, reset/reload recovery, and a
 load held across disable, but does not claim readback, loaded-image bounds,
 load-complete, engine-idle arbitration or instruction decoding. Those are still absent

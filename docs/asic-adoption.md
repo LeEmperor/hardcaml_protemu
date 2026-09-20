@@ -85,8 +85,13 @@ resuming rules, failure behavior, archiving, and verification status are in
 **[flow.md](flow.md)**, which is the source of truth for all of it.
 
 The first adopted physical run is archived at
-[`flow_results/20260918-230920-05f65042`](../flow_results/20260918-230920-05f65042/README.md);
-it is the P0.5b record.
+[`flow_results/20260918-230920-05f65042`](../flow_results/20260918-230920-05f65042/README.md).
+The qualifying clean-staging reproduction is
+[`flow_results/20260920-081325-ccecd9ed`](../flow_results/20260920-081325-ccecd9ed/README.md):
+committed source, isolated locked library prefix, complete preserved input
+bundle, full hardening, TT precheck, and observable gate-level simulation all
+pass. Its experiment record is
+[`2026-09-20-p0.5c-clean-staging-physical.md`](../tinytapeout/reports/2026-09-20-p0.5c-clean-staging-physical.md).
 
 Note that `adopted-flow.sh` does not invoke `check-adopted-bundle.py`. A physical
 run is physical evidence only; the adoption invariants above are checked

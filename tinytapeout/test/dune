@@ -121,3 +121,36 @@
     -q
     -p
     "read_verilog ../src/protocol_core.generated.v; hierarchy -check -top protocol_core; synth -top protocol_core; stat"))))
+
+; P3.2 executable core: lint, generic synthesis, and a behavioral loaded-program run with
+; a latency-one external memory model.
+
+(rule
+ (alias rtl)
+ (deps p3_control_tb.v ../src/executable_core.generated.v)
+ (action
+  (progn
+   (run
+    verilator
+    --lint-only
+    --top-module
+    executable_core
+    -Wno-DECLFILENAME
+    -Wno-COMBDLY
+    ../src/executable_core.generated.v)
+   (run
+    yosys
+    -q
+    -p
+    "read_verilog ../src/executable_core.generated.v; hierarchy -check -top executable_core; synth -top executable_core; stat")
+   (run
+    iverilog
+    -g2012
+    -Wall
+    -s
+    p3_control_tb
+    -o
+    p3_control
+    ../src/executable_core.generated.v
+    p3_control_tb.v)
+   (run vvp p3_control))))

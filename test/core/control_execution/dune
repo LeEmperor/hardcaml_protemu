@@ -1,0 +1,29 @@
+(library
+ (name protemu_control_execution_tests)
+ (wrapped false)
+ (modules
+  instruction_decoder_tests
+  control_execution_testbench
+  control_execution_unit_tests
+  control_execution_model_tests
+  control_execution_mechanism_tests
+  control_execution_fault_tests
+  control_execution_property_tests)
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries
+  core
+  hardcaml
+  hardcaml_protemu
+  protemu_isa
+  protemu_f_model
+  protemu_test_common
+  base_quickcheck
+  splittable_random)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

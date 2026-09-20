@@ -57,7 +57,7 @@ The timestamped suite under
 | Ordinary lane preload/data output to `Pin_bank` commit | 10 ticks, or one system-clock period, in `Observed_transfer_bank` |
 | External start/launch to committed bank output | 30--39 ticks, or 3.0--3.9 system-clock periods |
 | External cancellation to committed output-enable clear | 20--29 ticks; ownership release follows one clock later, at 30--39 ticks |
-| Event to core decision to committed pin | Not measurable: P3.2 decode and P3.3 core/engine integration do not exist |
+| Event to core decision to committed pin | Not measurable: P3.2 decode/execution exists, but P3.3 core/engine/pin-bank integration does not |
 
 The independent external peer reconstructs its sampling schedule from pad transitions
 only and samples `pin_value_o`/`pin_oe_o` strictly before each scheduled edge. The stated
@@ -156,8 +156,8 @@ The first mismatch must report external time, edge index, slot/PC, decoded instr
 expected/actual acceptance, event state, bank request, ownership, value/enable, nearby
 samples, source/configuration identity, and an executable fixed-seed replay command.
 
-P3.2 must expose a defined decoded-instruction acceptance/decision observation rather than
-a private-state guess. P3.3 must supply the shared synchronized event, software bank request
+P3.2 now exposes `instruction_boundary_o`, `retired_o`, phase, PC, and retained mechanism
+request state rather than requiring a private-state guess. P3.3 must supply the shared synchronized event, software bank request
 and acceptance, central bank commit, ownership, and system-boundary value/enable. Activate
 the test by loading and reading back the exact image while halted and engines idle, asserting
 load-complete, applying RUN, waiting until the edge wait is armed, scheduling the phase-swept
@@ -294,7 +294,8 @@ recorded. P2.2's time-resolved two-state pilot records a 10--19 tick determinist
 capture latency and phase-dependent sub-period pulse capture; it is not analog
 metastability or physical CDC evidence. P2.6's primitive digital envelope is recorded
 above; the parent remains open only for the real event-to-core-decision-to-committed-pin
-measurement after P3.2/P3.3. The lane's claim mask and pin outputs now run through bank
+measurement after P3.3 connects the completed P3.2 core. The lane's claim mask and pin
+outputs now run through bank
 arbitration in both the protocol-specific [`uart_slice.ml`](../lib/uart_slice.ml) and the
 generic [`observed_transfer_bank.ml`](../lib/observed_transfer_bank.ml), each for one engine.
 Neither is the loaded control-core/project-top arbiter, and neither reaches the Tiny Tapeout

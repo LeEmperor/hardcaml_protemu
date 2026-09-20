@@ -1,8 +1,9 @@
 # Protocol emulator construction plan
 
 Status: architecture and integration plan, updated 2026-09-20 for P3.1a's bounded
-program load/access/fetch contract, and 2026-09-17 for the implemented `hardcaml_asic`
-slice (its P0–P3, P4.1–P4.4) and the decision to develop emulator RTL decoupled from
+program load/access/fetch contract and P3.2's minimal control execution, and 2026-09-17
+for the implemented `hardcaml_asic` slice (its P0–P3, P4.1–P4.4) and the decision to
+develop emulator RTL decoupled from
 ASIC adoption (section 1). Sizes, rates, and instruction names remain study parameters,
 not implemented capabilities or a frozen ISA.
 
@@ -137,7 +138,8 @@ that rework.
   image. It owns sequential load coverage, full-word ordered readback verification,
   executable-image bounds, halted-and-engine-idle host gating, request rejection,
   latency-one fetch ownership, and validity independent of memory data. It has no PC,
-  decoder, instruction execution, or engine/pin integration; those remain P3.2/P3.3.
+  decoder, instruction execution, or engine/pin integration; the first three now live in
+  P3.2's `control_execution.ml`/`executable_core.ml`, while real engines and pins remain P3.3.
   `test/core/protocol_core/` compares it with an independent control model and a 1RW
   contract store under varied unspecified outputs.
 - `isa/`: the instruction specification (Dune library `hardcaml_protemu.isa`, no
@@ -164,8 +166,14 @@ that rework.
   instruction/memory-word combinations, and a reference core that executes them
   ([the report](p1.4-encoding-study.md)). It is kept out of `lib/` so a diagnostic
   model cannot reach a synthesis source set. Transfers are validated and latched but
-  not executed (P2.5), and the RTL core still has no decoder of its own (P3.2).
+  not executed (P2.5). P3.2's RTL decoder and local execution are independently compared
+  with this model; delegated mechanisms remain P3.3.
   Tests are in `test/f_model/`.
+- `lib/instruction_decoder.ml`, `lib/control_execution.ml`, and `lib/executable_core.ml`:
+  P3.2's shared-spec decoder, architectural execution state, and composition with the
+  P3.1a access controller. Local state/control instructions execute in RTL; all mechanism
+  instructions use one retained P3.3-facing handshake. The implementation and evidence are
+  recorded in [the P3.2 record](p3.2-implementation.md).
 - `lib/protemu_types.ml`: candidate pin/configure/transfer instruction variants.
 - `lib/p0_observable.ml` and `bin/generate.ml`: an observable pin/timer circuit
   and working parameterized Verilog emitter, separate from the control scaffold.
@@ -188,6 +196,7 @@ that rework.
   [P0 record](../tinytapeout/reports/2026-09-14-p0-tool-path.md), the
   [P0.5a legacy record](../tinytapeout/reports/2026-09-19-p0.5a-legacy-physical.md),
   the [P0.5b adopted record](../tinytapeout/reports/2026-09-19-p0.5b-adopted-physical.md),
+  the [P0.5c clean-staging reproduction](../tinytapeout/reports/2026-09-20-p0.5c-clean-staging-physical.md),
   and [flow.md](flow.md) for the flow itself. Registered program memory (P0.7)
   has not been through it.
 - `hardcaml_asic` (its [phase plan](../../hardcaml_asic/docs/phase_plan.md), reviewed
@@ -199,9 +208,10 @@ that rework.
   TT metadata, manifest); and run records with structured result collection. Mapped
   CMOS5L synthesis evidence exists for a 4x8 flop-memory example (179 cells, about
   3,480 µm²). Its small physical path (ASIC P4.5) and consumer packaging (ASIC
-  P5.1) have since closed as well. Still open: supporting this repository's P0.6
-  and P0.7 adoption (ASIC P5.2–P5.4), usage documentation (ASIC P5.5), and the
-  SRAM investigation (ASIC S). This repository now depends on the library:
+  P5.1) have since closed as well. This repository's P0.6/P0.7 adoption and
+  clean-staging physical reproduction close ASIC P5.2–P5.4. Still open are usage
+  documentation (ASIC P5.5) and the SRAM investigation (ASIC S). This repository
+  now depends on the library:
   `bin/asic_bundle.ml` declares the adopted design against it and takes its
   wrapper ports, reset idiom, and LibreLane defaults from `Tt_cmos5l`, pinned by
   revision in [`asic-dependencies.lock`](../tinytapeout/asic-dependencies.lock).
@@ -461,8 +471,61 @@ operations are considered only while halted, and fetch only while running, so th
 groups do not contend in a legal state. Higher-priority accepted work rejects simultaneous
 lower-priority offers. Reset, disable, execution halt, accepted load-start, and invalid
 fetch discard outstanding response ownership; held, stale, post-write, and unwritten RAM
-outputs consequently cannot assert either response-valid signal. A response that is due
-on an ordinary halted or running edge is delivered before a new request may be accepted.
+outputs consequently cannot assert either registered response-valid signal. A host response
+that is due is delivered before another host read may be accepted. The execution completion
+turnover used for extension fetches is specified below.
+
+### Minimal control-execution contract
+
+P3.2 keeps the default `m16` layout: one sixteen-bit instruction slot is one
+program-memory word. An accepted RUN starts a fresh execution. It clears the PC to zero,
+all eight registers, the zero/carry/negative flags, the transfer descriptor, retained
+instruction state, execution counters, normal-halt indication, and the preceding execution
+fault. Program-image validity remains P3.1a state and is not changed by RUN. Reset clears
+both access and execution state. Disable cancels outstanding execution work and halts while
+P3.1a preserves a completed image. Normal Halt and an execution fault preserve already
+committed registers, flags, descriptor fields, and counters for inspection; a later RUN
+starts fresh again.
+
+The latency-one RAM value is consumed at the edge after its read was accepted. P3.1a
+therefore exposes an execution completion directly from pending response ownership and the
+current RAM output, in addition to its retained registered response observation. A due
+completion may release the outstanding slot and accept the next read on the same edge. P3.2
+uses that turnover only to acquire an extension word: ordinary instruction fetch and
+execution do not overlap. Under `m16`, an ordinary successful instruction costs one accepted
+fetch edge and one execute edge; an extended instruction costs two accepted fetch edges and
+one execute edge. Halt includes its execute edge. A base or extension word rejected before
+execution has no execute edge. The RUN edge and host loading/readback edges are not program
+cycles.
+
+P3.2 executes Halt, Ldi, Mov, Alu, Alu_imm, Cmp, Cmp_imm, Shift, Jump, Branch,
+Dbnz, Call, Jump_reg, and Config locally. Every other defined P1.5 opcode is decoded and
+offered through one P3.3-facing mechanism port; none is a successful no-op. The request has
+a typed kind and retained operands and remains stable until accepted or refused. Acceptance
+may coincide with completion. After acceptance the request is not reissued, and delayed
+completion stalls the core with fetch disabled. A result is committed only on successful
+completion. Refusal, completion fault, and a completion with no outstanding operation are
+execution faults. Reset or disable wins over acceptance/completion and cancels retained
+mechanism state. STOP, ABORT, single-step, and connection to actual pin, timer, event,
+transfer, and FIFO mechanisms remain P3.3.
+
+Control-flow arithmetic is performed wide enough to retain a negative or large target
+before any request-address narrowing. P3.1a remains the sole owner of physical-depth,
+loaded-image, and executable-image bounds. A target that cannot be represented on its
+nine-bit fetch request is an execution target fault; a representable request outside the
+physical or loaded image is P3.1a's fetch-bounds fault. A taken control instruction commits
+its specified register effect and retires before a later target fetch faults, matching the
+reference core. A required extension commits no architectural state until it is fetched and
+validated.
+
+Normal Halt is not an error. Execution fault reporting distinguishes a malformed base word,
+a malformed extension, a truncated extension/fetch-bounds failure, an unrepresentable
+target, mechanism refusal, mechanism completion fault, and unsolicited completion. It
+retains both the instruction slot and relevant fetched/requested slot. An instruction
+boundary pulse accompanies successful retirement, normal Halt, or a terminating execution
+fault. Retirement is separate: refused, malformed, truncated, and faulting mechanism
+operations reach a boundary but do not retire. P3.3 consumes this boundary for STOP rather
+than redefining it.
 
 Start with an explicitly selected flop implementation. Investigate CMOS5L macro
 availability early, but begin a macro backend only after exact shape/behavior,

@@ -82,6 +82,10 @@ module O = struct
       readback_response_valid_o : 'a
     ; readback_response_data_o : 'a [@bits Config.program_width]
     ; readback_response_match_o : 'a
+    ; (* Execution-only latency-one completion. Unlike the registered observation below,
+         this is consumed at the edge on which pending ownership completes. *)
+      fetch_completion_valid_o : 'a
+    ; fetch_completion_data_o : 'a [@bits Config.program_width]
     ; fetch_response_valid_o : 'a
     ; fetch_response_data_o : 'a [@bits Config.program_width]
     ; (* Control and bounded-image status. *)
@@ -92,6 +96,7 @@ module O = struct
     ; words_written_o : 'a [@bits Config.request_address_bits]
     ; words_verified_o : 'a [@bits Config.request_address_bits]
     ; verification_failed_o : 'a
+    ; fetch_fault_event_o : 'a
     ; fetch_fault_o : 'a
     }
   [@@deriving hardcaml]
@@ -191,15 +196,17 @@ let create (_scope : Scope.t) (i : _ I.t) : _ O.t =
     (i.fetch_address_i <:. Config.program_depth)
     &: (i.fetch_address_i <: r.image_length.value)
   in
-  let fetch_can_offer =
-    i.en_i
-    &: r.running.value
-    &: ~:(i.reset_i)
-    &: ~:(i.execution_halt_i)
-    &: ~:(r.fetch_pending.value)
+  let fetch_completion =
+    i.en_i &: r.fetch_pending.value &: ~:(i.reset_i)
   in
-  let fetch_accept = fetch_can_offer &: i.fetch_valid_i &: fetch_in_bounds in
-  let invalid_fetch = fetch_can_offer &: i.fetch_valid_i &: ~:(fetch_in_bounds) in
+  let fetch_slot_available = ~:(r.fetch_pending.value) |: fetch_completion in
+  let fetch_active_offer =
+    i.en_i &: r.running.value &: ~:(i.reset_i) &: fetch_slot_available
+  in
+  let fetch_accept =
+    fetch_active_offer &: ~:(i.execution_halt_i) &: i.fetch_valid_i &: fetch_in_bounds
+  in
+  let invalid_fetch = fetch_active_offer &: i.fetch_valid_i &: ~:(fetch_in_bounds) in
 
   let host_read_response =
     i.en_i
@@ -207,12 +214,7 @@ let create (_scope : Scope.t) (i : _ I.t) : _ O.t =
     &: ~:(start_accept)
     &: ~:(i.reset_i)
   in
-  let fetch_response =
-    i.en_i
-    &: r.fetch_pending.value
-    &: ~:(i.execution_halt_i)
-    &: ~:(i.reset_i)
-  in
+  let fetch_response = fetch_completion &: ~:(i.execution_halt_i) in
   let verification_match = i.prog_mem_read_data_i ==: r.host_read_expected.value in
 
   (* The external port has one owner per edge. Running fetch is independent of every live
@@ -335,6 +337,8 @@ let create (_scope : Scope.t) (i : _ I.t) : _ O.t =
   ; readback_response_valid_o    = r.readback_response_valid.value
   ; readback_response_data_o     = r.readback_response_data.value
   ; readback_response_match_o    = r.readback_response_match.value
+  ; fetch_completion_valid_o     = fetch_completion
+  ; fetch_completion_data_o      = i.prog_mem_read_data_i
   ; fetch_response_valid_o       = r.fetch_response_valid.value
   ; fetch_response_data_o        = r.fetch_response_data.value
   ; halted_o                     = halted
@@ -344,6 +348,7 @@ let create (_scope : Scope.t) (i : _ I.t) : _ O.t =
   ; words_written_o              = r.words_written.value
   ; words_verified_o             = r.words_verified.value
   ; verification_failed_o        = r.verification_failed.value
+  ; fetch_fault_event_o          = invalid_fetch
   ; fetch_fault_o                = r.fetch_fault.value
   }
 ;;

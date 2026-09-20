@@ -1,7 +1,8 @@
 # System verification
 
-Status: current implementation updated on 2026-09-20 after the P3.1a program-store
-consumer, independent load/access model, generated core regression, functional-model
+Status: current implementation updated on 2026-09-20 after the P3.2 executable control
+core, P3.1 program-store integration, independent load/access and execution models,
+generated core regression, functional-model
 rename, per-block suite reorganization, cycle/event adapter conformance experiment,
 timed `Input_events` pilot, one four-state `Input_events` property, the timed P2.6
 event-to-engine path, the observed-transfer/pin-bank composition, and the integrated P2.7
@@ -20,8 +21,9 @@ verification policy rather than maintaining another test architecture.
 ## Current state
 
 Paths in this section describe files that exist now. The rename to `f_model`, per-block
-suite layout, backend sampling characterization, timed P2.2 and P2.6 paths, and one named
-four-state P2.2 property are implemented. A core-to-pin timed path and a resolved-bus
+suite layout, backend sampling characterization, timed P2.2 and P2.6 paths, P3.2 control
+execution, and one named four-state P2.2 property are implemented. A core-to-pin timed
+path and a resolved-bus
 four-state suite are not.
 
 ### Backend and test inventory
@@ -85,6 +87,7 @@ integration cases extend them:
 | [`test/integration/observed_transfer_bank/`](../test/integration/observed_transfer_bank) | 13 | Real pin-bank reservation/commit/cleanup, software arbitration, phase-swept standalone-versus-bank timing, boundary peer checks, interruption/rearm, and a 24-trial fixed-seed property. |
 | [`uart_slice_unit_tests.ml`](../test/integration/uart_slice/uart_slice_unit_tests.ml) | 13 | P2.7 frame, ownership/timer/bank status, pin isolation, completion/release, receiver negatives, model agreement including an overridden period, and the saved-trace expect block. |
 | [`test/core/protocol_core/`](../test/core/protocol_core) | 12 | P3.1a has ten directed load/access/fetch cases and two generated/replay expect tests. RTL is compared cycle by cycle with independent [`Program_access`](../f_model/program_access.ml) control and a local 1RW contract store under three unspecified-output policies. |
+| [`test/core/control_execution/`](../test/core/control_execution) | 21 | P3.2 exhaustive decoder equivalence, directed local-execution/model agreement, all condition/loop/control paths, mechanism handshakes, faults, lifecycle/bounds, and 96 generated assembled-program comparisons at seed `20260920`. |
 | [`test/integration/program_memory_backend/`](../test/integration/program_memory_backend) | 2 | P0.7 reruns the consumer against `Single_port_ram` Simulation and explicit-Flops Implementation elaborations, checking the exact resource record and contract-defined responses. |
 | [`wrapper_unit_tests.ml`](../test/integration/wrapper/wrapper_unit_tests.ml) | 2 | The P0 observable wrapper. |
 
@@ -115,7 +118,7 @@ test checks artifact creation and cleanup from a Dune runner directory.
 
 #### Emitted RTL — `tinytapeout/test/`
 
-Not OCaml. Five Dune rules under the `@rtl` alias, kept out of `runtest` so the
+Not OCaml. Dune rules under the `@rtl` alias, kept out of `runtest` so the
 Hardcaml tests do not require host tools:
 
 - `iverilog -g2012 -Wall` plus `vvp` on [`tb.v`](../tinytapeout/test/tb.v) against
@@ -125,6 +128,9 @@ Hardcaml tests do not require host tools:
 - the independent Verilog receiver in
   [`p2_uart_slice_tb.v`](../tinytapeout/test/p2_uart_slice_tb.v) against the generated
   slice, with its frame trace diffed against the committed model/Hardcaml trace;
+- the P3.2 executable core under [`p3_control_tb.v`](../tinytapeout/test/p3_control_tb.v),
+  which loads/verifies/runs an `m16` image against an independent latency-one RAM model and
+  checks nine fetch plus seven execute cycles;
 - `verilator --lint-only` on the wrapper;
 - a `yosys` `hierarchy`/`synth`/`stat` smoke test, which is **not** CMOS5L-mapped
   synthesis and is labelled as such in the rule.
@@ -379,10 +385,10 @@ there is no chip wrapper, pad model, routed delay, analog setup/hold, or metasta
 evidence in these measurements.
 
 These are event-to-engine paths, not the event-to-core-decision-to-pin path.
-[`protocol_core.ml`](../lib/protocol_core.ml) now has P3.1a's 16-bit bounded image and
-latency-one fetch boundary, but it deliberately has no PC, decoder, instruction execution,
-or event/transfer/pin-bank connection. P3.2 must first implement real fetch/decode
-execution and P3.3 must connect that core to the event, transfer, and pin-bank paths. The
+P3.2 now composes [`protocol_core.ml`](../lib/protocol_core.ml)'s bounded latency-one fetch
+boundary with a PC, decoder, local execution, instruction-boundary observations, and a
+retained mechanism handshake. P3.3 must connect that handshake to the event, transfer,
+and pin-bank paths. The
 eventual fixture must run an actual loaded
 instruction sequence and timestamp the observed event, decoded decision, bank commit,
 and boundary pin; no hard-coded sequencer is accepted as substitute. Run the current
@@ -394,8 +400,9 @@ The future loaded-path contract is concrete rather than tied to placeholder core
 The `wait_start_then_drive` image in `test/f_model/test_isa.ml` preclaims pin 0 for the
 software owner in fixture initial state, writes it low, executes `Wait_edge` on pin 3 rising,
 writes pin 0 high, and halts. It assembles to default-memory words `7804 0000 a300 7804 0001
-0000` and executes in 13 reference edges. P3.2 must expose the edge where the decoded wait
-consumes the synchronized event and resumes fetch. P3.3 must expose the independently
+0000` and executes in 13 reference edges. P3.2 exposes the active mechanism request and
+instruction boundary needed to identify the decision; P3.3 must connect the event so the
+decoded wait can consume it and resume fetch, then expose the independently
 predicted software bank request/acceptance, registered bank commit and system boundary.
 Sweep the external event after the wait is armed, retain the P1.5 fetch schedule, cap each
 run at 256 edges, and report the first mismatch with timestamp, edge, PC/slot, decoded
@@ -576,7 +583,8 @@ Exactly one four-state property is implemented, on `Input_events` alone. Resolve
 with explicit drivers and pull-ups, open-drain wire resolution and any other X/Z
 obligation have no four-state evidence. No coverage-collection suite is implemented.
 Two-state timed runners cover P2.2 and the implemented P2.6 event-to-engine path; there
-is no core-decision path to time until P3.2/P3.3 exist. The existing RTL smoke checks do
+is no integrated core-decision path to time until P3.3 connects P3.2 to those mechanisms.
+The existing RTL smoke checks do
 not establish gate-level functional behavior, physical timing closure, or metastability
 reliability. See the evidence map below for the distinction between implemented checks
 and outstanding obligations.
@@ -942,14 +950,15 @@ Historical run reports are not fresh results for later source revisions.
 | Cycle/event adapter scheduling | `test/common/backend_conformance*.ml`; matching five-edge known-value trace, completion, and timeout on Cyclesim/two-state Evsim; exact-coincidence ordering is enforced by the P2.2 runner | Recheck the characterized adapter and delta-settle convention when dependencies change |
 | Pin bank cycle agreement and harness diagnostics | `test/primitives/pin_bank/` plus generic fixtures in `test/common/`; recorded 200 trials and seed sweeps above | Extend properties as the block contract grows |
 | Other primitive cycle behavior | 23 block-owned directed tests under `test/primitives/` and one integration case under `test/integration/primitive_demo/` | Add bounded generated properties where they provide distinct evidence |
-| Core program load/access/fetch behavior | [`test/core/protocol_core/`](../test/core/protocol_core): ten directed cases plus 240 generated fresh-state scenarios at seed `20260920` compare RTL with independent [`f_model/program_access.ml`](../f_model/program_access.ml) and a 1RW contract store. Evidence covers complete/partial/interrupted/replacement loads, duplicates and missing words, zero/depth/oversized lengths, full-word verification and mismatch, halted/engine-idle gating, simultaneous priority, live-access noninterference, exact latency-one association, reset/disable/halt/reload cancellation, final/out-of-image/out-of-range fetches, and zero/all-ones/address-derived unspecified outputs. [`generate_core.ml`](../bin/generate_core.ml) is linted and generically synthesized under `@rtl`. | P3.1b/P0.7 must rerun the consumer against the selected context-registered backend. P3.2 still owes decode/execution, slot extraction if `m32` is selected, branches/extensions/stalls, and instruction cycle counts; P3.3 still owes engines and boundary stop/abort integration. |
+| Core program load/access/fetch behavior | [`test/core/protocol_core/`](../test/core/protocol_core): ten directed cases plus 240 generated fresh-state scenarios at seed `20260920` compare RTL with independent [`f_model/program_access.ml`](../f_model/program_access.ml) and a 1RW contract store. P0.7 additionally reruns the consumer against selected context-registered Simulation/Flops backends. Evidence covers complete/partial/interrupted/replacement loads, duplicates and missing words, zero/depth/oversized lengths, full-word verification and mismatch, halted/engine-idle gating, simultaneous priority, live-access noninterference, exact latency-one association and completion turnover, reset/disable/halt/reload cancellation, final/out-of-image/out-of-range fetches, and zero/all-ones/address-derived unspecified outputs. | P3.3 still owes real engine-idle production and boundary STOP/ABORT/single-step integration; host transport and full-system physical evidence remain later obligations. |
+| Core decode and minimal execution | [`test/core/control_execution/`](../test/core/control_execution): every base word is compared with `Encoding.decode`; directed retirement traces cover all local instructions, ALU operations, conditions, loop/control paths, descriptor state and faults; all delegated kinds cover immediate/delayed handshakes and failure paths; 96 assembled programs use seed `20260920`. `p3_control_tb.v` loads and runs the representative image from emitted RTL in 16 program cycles. See the [P3.2 record](p3.2-implementation.md). | P3.3 must connect real mechanisms and execution control. P5 still owns decoder/core mapped area and timing; formal invariants are not established. |
 | P0 wrapper | Two tests in `test/integration/wrapper/` plus `@rtl` wrapper checks | Later host/load/recovery evidence |
 | P2.2 external phase and pulse capture | `test/primitives/input_events/input_events_timing_{testbench,tests}.ml`; directed cases plus 160 generated trials, 10--19 tick deterministic latency, captured/missed pulse cases, reset/event interactions, temporal shrink/replay | Physical CDC/setup/hold/metastability evidence remains separate |
-| P2.6 event-to-engine/core-to-pin latency | The primitive timed suite covers idle-low/high physical mappings at the lane boundary: external-to-event is 10--19 ticks, event-to-lane is 10, and external-to-lane is 20--29. `test/integration/observed_transfer_bank/` measures a further 10-tick commit, giving 30--39 ticks external-to-bank; cancellation clears bank OE in 20--29 and releases ownership in 30--39. Independent peers cover all phases, lengths 1/8/32, directions/orders, first/later bits, positive and failing deadlines. | P3.2/P3.3 loaded RTL execution and integration, then real event-to-core-decision-to-committed-pin timing; wrapper/pad, analog CDC/setup/hold and physical timing remain separate |
+| P2.6 event-to-engine/core-to-pin latency | The primitive timed suite covers idle-low/high physical mappings at the lane boundary: external-to-event is 10--19 ticks, event-to-lane is 10, and external-to-lane is 20--29. `test/integration/observed_transfer_bank/` measures a further 10-tick commit, giving 30--39 ticks external-to-bank; cancellation clears bank OE in 20--29 and releases ownership in 30--39. Independent peers cover all phases, lengths 1/8/32, directions/orders, first/later bits, positive and failing deadlines. P3.2 supplies loaded RTL execution and decision observations. | P3.3 integration, then real event-to-core-decision-to-committed-pin timing; wrapper/pad, analog CDC/setup/hold and physical timing remain separate |
 | P2.7 UART TX slice | `test/integration/uart_slice/`: 12 directed unit cases, a saved-trace expect/diff, and 96 generated Cyclesim trials at seed `20260920`; model/descriptor/Hardcaml frames agree relative to their detected start edges, while slice ownership, timer, bank, pin isolation, completion and interruption contracts are checked at the hardware boundary; `p2_uart_slice_tb.v` repeats the frame/release checks on emitted RTL | Independent request-to-pin/completion latency, the unverified wider period range, P3 fetch/decode/core-to-engine behavior, the P4 UART baseline, physical timing, and formal invariants remain separate obligations |
 | Unknown pad propagation and recovery | `test/primitives/input_events/input_events_four_state_{testbench,tests}.ml`; declared injection site/window/resolution, isolation and per-pin containment, a three-edge recovery bound, 120 generated trials at seed `20260919`, and two controlled negatives covering a design leak and a coercing observer | Extend to further blocks only where a contract names an X/Z obligation |
 | Resolved external buses, open-drain wire resolution | No four-state suite | An explicit multi-driver/pull-up model and targeted tests, or a recorded decision to leave it to the emitted-RTL tier |
-| Memory backend conformance | Owned by `hardcaml_asic`: [`test_single_port_ram.ml`](../../hardcaml_asic/test/test_single_port_ram.ml) runs its independent scoreboard against both implementations; the suite is linked rather than copied here | P3.1b must rerun emulator consumer checks against an adopted backend; emulator still owns consumption/arbitration/image bounds/recovery |
+| Memory backend conformance | Owned by `hardcaml_asic`: [`test_single_port_ram.ml`](../../hardcaml_asic/test/test_single_port_ram.ml) runs its independent scoreboard against both implementations; P0.7 reruns the emulator consumer against adopted Simulation and explicit-Flops implementations | SRAM/macro selection and full-system physical memory timing remain open; emulator still owns consumption/arbitration/image bounds/recovery |
 | UART generated-failure diagnostics | Shared replay settings/report/artifact integration for returned check failures; successful recorded-seed rerun; directed receiver rejection tests | Route producer/decoder exceptions through scenario-aware reporting and demonstrate a controlled generated failure with artifact and first-mismatch replay; no UART shrinking evidence is claimed |
 | Protocol correctness and timing | Reference firmware/peer tests, primitive UART RTL smoke, and the integrated P2.7 independent frame/release monitors described above | Broader P4 independent-peer and timing evidence; loopback alone insufficient |
 | Formal, CDC/reset, mapped/gate-level and physical timing | Not established by this functional suite or generic Yosys smoke test | Record applicable analyses, assumptions, tool/source identity and outstanding gaps in phase/flow evidence |

@@ -148,6 +148,18 @@ let%test_unit "read and fetch validity are exact latency one and disabled output
     t.model.response.fetch
 ;;
 
+let%test_unit "a due fetch completion can turn over into the next fetch" =
+  let t = create () in
+  complete_load t [ 0x1111; 0x2222 ];
+  step t (input ~run:true ());
+  step t (input ~fetch:0 ());
+  step t (input ~fetch:1 ());
+  check t.edge "first response delivered" (Some 0x1111) t.model.response.fetch;
+  check t.edge "second fetch retained ownership" true t.model.fetch_pending;
+  step t (input ());
+  check t.edge "second response delivered" (Some 0x2222) t.model.response.fetch
+;;
+
 let%test_unit "final legal address works and out-of-image or physical-range addresses \
                fault"
   =

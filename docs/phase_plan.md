@@ -1,11 +1,11 @@
 # Protocol emulator phase plan
 
-Status: working execution plan, updated 2026-09-20 for P3.1a completion,
+Status: working execution plan, updated 2026-09-20 for P3.2 completion,
 2026-09-19 for the P1.5 encoding decision, and 2026-09-18 for decoupled RTL
 development and P0.6 ASIC library adoption. The
-instruction encoding is now provisionally chosen and lives in `isa/`; P0.7 remains
-deferred; P0.5 is split into legacy/adopted runs, and pre-adoption P2.8 evidence is
-defined.
+instruction encoding is now provisionally chosen and lives in `isa/`; P0.7 and P3.1
+are complete; P0.5 is split into legacy/adopted runs, and pre-adoption P2.8 evidence
+is defined.
 P0.1–P0.3 retain their recorded completion; P0.6 has adopted the observable top.
 A scaffold, accepted architecture, or emitted build is not completion evidence.
 
@@ -97,12 +97,12 @@ declaration, bundle emission), and every other module is plain Hardcaml. Store
 consumers expose the 1RW port and are tested against a contract model. As a result,
 phase numbers describe gates and dependencies, not the order work happens in:
 
-- **P0.6 is adopted; P0.7 remains deferred.** P0.6 adopted the then-current
-  observable top after ASIC P5.1 became available. P0.7 follows with registered
-  program memory. Both physical runs are done: P0.5a recorded the legacy
+- **P0.6 and P0.7 are adopted.** P0.6 adopted the then-current observable top after
+  ASIC P5.1 became available. P0.7 subsequently added registered program memory.
+  Both physical runs are done: P0.5a recorded the legacy
   scripts' own result and P0.5b reran the same design from the adopted bundle,
   so the `tinytapeout/` scripts are now a retired baseline rather than the
-  physical path. P0 stays open on P0.7's memory evidence alone.
+  physical path. P0.7's memory integration and mapped-synthesis evidence are recorded below.
 - **P3 splits at the adoption boundary.** P3.1a (program-store consumer logic against
   the contract port) and P3.2–P3.5 proceed without adoption; only P3.1b
   (context-registered `Single_port_ram` at the top) waits for P0.6/P0.7.
@@ -117,11 +117,9 @@ phase numbers describe gates and dependencies, not the order work happens in:
   items. Late
   adoption can surface top-level interface, clock, or metadata mismatches. Keep the
   wrapper thin to bound that rework.
-- **Deferral has a deadline.** P0.7 must have evidence before P3 exits, since
-  P3.1b is part of that gate, and before any P5 item is checked, so that P5 sweeps
-  run through project declarations and P6 reproduces from pinned dependencies. If
-  P3.2–P3.5 are nearly done and adoption has not started, adoption becomes the next
-  slice.
+- **The deferral deadline was met.** P0.7/P3.1b landed before P3 exit or P5
+  selection work. P5 sweeps can therefore run through project declarations and P6 can
+  reproduce from pinned dependencies.
 
 The remaining emulator work postpones ASIC P5.3–P5.4 and the library's M3
 milestone, in the
@@ -235,7 +233,12 @@ with the first pin/timer work in P1/P2.
     directly comparable. The run predates the `Tt_cmos5l` template adoption,
     but re-emitting from the current declaration at `7e29ecd` produces
     byte-identical `config.json`, `top.sdc`, `info.yaml` and RTL, so it still
-    describes what this repository emits today.
+    describes what this repository emits today. The later
+    [P0.5c clean-staging reproduction](../tinytapeout/reports/2026-09-20-p0.5c-clean-staging-physical.md)
+    closes the provenance limitation: committed `8d3ada1`, bundle `85729c18…`,
+    and run `ccecd9ed…` pass the same physical/check acceptance, with the
+    [complete bundle and run archive](../flow_results/20260920-081325-ccecd9ed/README.md)
+    restored and revalidated independently.
 - [x] **P0.6 — Adopt the ASIC project declaration.** Integrate the planned
   `Project`/`Elaboration_context`/`Build` path with the observable circuit and
   emulator-owned wrapper. Declare TT harness plus CMOS5L technology, clocks,
@@ -252,7 +255,7 @@ with the first pin/timer work in P1/P2.
   passes repeatable emission, metadata and configuration conflicts, and the
   existing wrapper regression, Verilator lint, and generic synthesis against
   emitted RTL in the pinned LibreLane image. P0.5b has since recorded the
-  physical rerun.
+  physical rerun; P0.5c has since reproduced it from committed clean staging.
 - [x] **P0.7 — Exercise registered program memory.** After P0.6 and library
   backend conformance, elaborate a small load/readback design using context-
   registered `Single_port_ram` and an explicitly selected flop implementation.
@@ -277,7 +280,8 @@ with the first pin/timer work in P1/P2.
   diagnostic qualifies only ABC's post-map delay print for this `AREA 0` run;
   source-backed investigation found that mapping and area were unaffected.
 
-**Exit gate:** P0.1–P0.7 have evidence, including P0.5b. Because P0.6/P0.7 are
+**Exit gate:** P0.1–P0.7 have evidence, including P0.5b and its P0.5c
+clean-staging reproduction. Because P0.6/P0.7 are
 deferred, this gate is expected to close after later phases have started. A small
 observable design from the adopted
 ASIC bundle passes generated-RTL simulation, CMOS5L hardening, required physical
@@ -581,17 +585,18 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
     preload-first/launch-first mappings, and 1/8/32-bit boundaries. Wire claims use an
     alternating `Either` clock initialized to the declared idle level; rise-only/fall-only
     event streams remain functional tests rather than all-mode wire evidence.
-  - [ ] **P2.6b -- Real core path.** Blocked: [`protocol_core.ml`](../lib/protocol_core.ml)
-    now has P3.1a's safe load/fetch boundary but still has no decode/execute or
-    event/engine/pin-bank integration. After
-    P3.2/P3.3, run a loaded program through the documented fetch/execute contract and
+  - [ ] **P2.6b -- Real core path.** Blocked on P3.3 only: P3.2 now composes
+    P3.1a's safe load/fetch boundary with real decode/execution and exposes instruction
+    boundaries plus the retained mechanism handshake, but event/engine/pin-bank integration
+    does not exist. After P3.3, run a loaded program through the documented
+    fetch/execute contract and
     timestamp event, core decision, bank commit, and boundary pin. Parent P2.6 remains
      unchecked until that actual path is measured; a testbench sequencer or direct
      event-to-pin path is not evidence.
-     *Return trigger:* P3.2 and P3.3 are prerequisites for P2.6b and therefore for
-     parent P2.6 closure, not prerequisites for the completed P2.6a primitive work.
-     When either prerequisite completes, reassess this blocker; as soon as both
-     provide the executable event-to-core-to-pin path, make P2.6b the next
+     *Return trigger:* P3.2 is complete; P3.3 is the remaining prerequisite for P2.6b
+     and therefore for parent P2.6 closure, not for the completed P2.6a primitive work.
+     As soon as P3.3 provides the executable event-to-core-to-pin path, make P2.6b
+     the next
      implementation/verification slice. Return here to record the phase-swept real
      core-path latency and the timing envelope at the committed boundary pins before
      closing P2.6b and P2.6. Do not leave this return until P4 protocol work.
@@ -712,7 +717,7 @@ before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decouple
     legal choices for unspecified RAM output. Standalone emitted RTL passes Verilator
     lint and generic Yosys synthesis under `@rtl`. Contracts, commands, results, and
     limitations are in the [P3.1a implementation record](p3.1a-implementation.md).
-    Parent P3.1 remains open for P3.1b.
+    P3.1a's original record predates P3.1b; parent P3.1 is now complete.
   - [x] **P3.1b — Context-registered store at the project top.** After P0.6/P0.7,
     instantiate `hardcaml_asic.Single_port_ram` in the project design constructor
     and connect P3.1a's port. Evidence: P3.1a's checks rerun against the library's
@@ -720,14 +725,25 @@ before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decouple
     recorded in the build.
     *Done:* P0.7 provides the exact connection and evidence linked above; the
     manifest records explicit flops, not fallback or macro selection.
-- [ ] **P3.2 — Minimal control execution.** Implement fetch/decode, registers,
+- [x] **P3.2 — Minimal control execution.** Implement fetch/decode, registers,
   flags, state operations, branches/loops, and halt for the provisional ISA.
   Evidence: independent-model comparisons cover each implemented instruction,
   taken/untaken paths, latency-one fetches, stalled fetch/output hold, pipeline
    validity, extension-word fetches, invalid instructions, and cycle counts.
-   *Required follow-up:* on completion, reassess P2.6b's real-core-path blocker.
-   If P3.3 is also ready, return to P2.6b as the next slice and resolve the remaining
-   parent P2.6 evidence; otherwise carry that return explicitly into P3.3.
+   *Done:* [`instruction_decoder.ml`](../lib/instruction_decoder.ml) derives legality and
+    fields from the shared encoding specification;
+    [`control_execution.ml`](../lib/control_execution.ml)
+   implements fresh RUN state, every local state/control instruction, exact `m16`
+   fetch/execute/extension timing, wide target checks, observable retirement/fault state,
+   and a retained handshake for every delegated mechanism instruction.
+   [`executable_core.ml`](../lib/executable_core.ml) composes it with P3.1a while keeping
+   the RAM external. The block suite exhaustively compares all 65,536 base words with the
+   procedural decoder, compares directed and 96 fixed-seed generated programs with the
+   independent control model, and covers mechanism and fault paths. Emitted RTL loads and
+   runs a representative image in nine fetch plus seven execute cycles under `@rtl`.
+   Contracts, commands, results, and limitations are in the
+   [P3.2 implementation record](p3.2-implementation.md). P2.6b was reassessed and is now
+   blocked only on P3.3's real mechanism/event/pin-bank integration.
 - [ ] **P3.3 — Core-to-engine integration.** Connect pin, time, transfer, event,
   and FIFO instructions. Add boundary STOP, prompt ABORT, and single-step with
   engines idle. Evidence: engines continue through ordinary core waits; completion,

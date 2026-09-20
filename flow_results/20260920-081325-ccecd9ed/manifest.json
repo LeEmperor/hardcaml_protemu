@@ -1,0 +1,379 @@
+{
+  "identity": "85729c18ca404a4b45dd8b1e97ea5833ad3677614b2064b222b38e9c17f575fe",
+  "schema_version": 1,
+  "project": "protemu_observable",
+  "top_module": "tt_um_leemperor_hardcaml_protemu",
+  "source_revision": "8d3ada1571e07ff21e4c8707dcc3ce917d6037b3",
+  "source_inputs": [
+    {
+      "path": "bin/asic_bundle.ml",
+      "copy": "inputs/bin/asic_bundle.ml",
+      "sha256": "26f0e5d8ac410ceba6fce6ebf16f719b243681e80fca7780aa0314ba66b2739c",
+      "git_status": ""
+    },
+    {
+      "path": "bin/dune",
+      "copy": "inputs/bin/dune",
+      "sha256": "3f37f2ab29931cc0cee0411821e1ee0e2cd1f101849929f980ee58193ccdb3b1",
+      "git_status": ""
+    },
+    {
+      "path": "dune-project",
+      "copy": "inputs/dune-project",
+      "sha256": "d48671649be9d3a198d826f862a8e4c0fbf8fbff867167fe8710d7e30561be7f",
+      "git_status": ""
+    },
+    {
+      "path": "hardcaml_protemu.opam",
+      "copy": "inputs/hardcaml_protemu.opam",
+      "sha256": "3a0eeec7bb877a44ebee003f2cb4de3b74c05823a821bb5e6c5df9b59b66b938",
+      "git_status": ""
+    },
+    {
+      "path": "lib/dune",
+      "copy": "inputs/lib/dune",
+      "sha256": "c8b1a648c17eb23db42339ca5b3820e1512e7036088d0ea8fdb8e3e1df034075",
+      "git_status": ""
+    },
+    {
+      "path": "lib/p0_observable.ml",
+      "copy": "inputs/lib/p0_observable.ml",
+      "sha256": "96423492cc3ec25f8f6e49f052611adc20666505ea437bb9c9d5092691ce42dd",
+      "git_status": ""
+    },
+    {
+      "path": "tinytapeout/asic-dependencies.lock",
+      "copy": "inputs/tinytapeout/asic-dependencies.lock",
+      "sha256": "8aafcc1457b1dc4ca90a3c7ef4d9c1b1bdb7843fb617952f7132642ec5c5594f",
+      "git_status": ""
+    },
+    {
+      "path": "tinytapeout/toolchain.lock",
+      "copy": "inputs/tinytapeout/toolchain.lock",
+      "sha256": "2df08bb3f96e7015234f3aff11dc5abb4438e935e410f5e4cdb05d60bbcf4dde",
+      "git_status": ""
+    }
+  ],
+  "files": [
+    {
+      "path": "constraints/top.sdc",
+      "sha256": "1852977c067a66e5b75f153c1bb6e13a9ccb1926082aad08ee489082fde3b5f1"
+    },
+    {
+      "path": "info.yaml",
+      "sha256": "3a4beef1d4bf5934fc1b0fbac4a596e91cb9b3c9b907a7b7419995c91d63c12a"
+    },
+    {
+      "path": "inputs/bin/asic_bundle.ml",
+      "sha256": "26f0e5d8ac410ceba6fce6ebf16f719b243681e80fca7780aa0314ba66b2739c"
+    },
+    {
+      "path": "inputs/bin/dune",
+      "sha256": "3f37f2ab29931cc0cee0411821e1ee0e2cd1f101849929f980ee58193ccdb3b1"
+    },
+    {
+      "path": "inputs/dune-project",
+      "sha256": "d48671649be9d3a198d826f862a8e4c0fbf8fbff867167fe8710d7e30561be7f"
+    },
+    {
+      "path": "inputs/hardcaml_protemu.opam",
+      "sha256": "3a0eeec7bb877a44ebee003f2cb4de3b74c05823a821bb5e6c5df9b59b66b938"
+    },
+    {
+      "path": "inputs/lib/dune",
+      "sha256": "c8b1a648c17eb23db42339ca5b3820e1512e7036088d0ea8fdb8e3e1df034075"
+    },
+    {
+      "path": "inputs/lib/p0_observable.ml",
+      "sha256": "96423492cc3ec25f8f6e49f052611adc20666505ea437bb9c9d5092691ce42dd"
+    },
+    {
+      "path": "inputs/tinytapeout/asic-dependencies.lock",
+      "sha256": "8aafcc1457b1dc4ca90a3c7ef4d9c1b1bdb7843fb617952f7132642ec5c5594f"
+    },
+    {
+      "path": "inputs/tinytapeout/toolchain.lock",
+      "sha256": "2df08bb3f96e7015234f3aff11dc5abb4438e935e410f5e4cdb05d60bbcf4dde"
+    },
+    {
+      "path": "simulation/tt_um_leemperor_hardcaml_protemu.v",
+      "sha256": "c275808a7279c617c460c3706cdfd69c0d580b7c3356ec224b66d8730b7b0cb1"
+    },
+    {
+      "path": "src/config.json",
+      "sha256": "eb0e3a955e8a1c77960a0ba920d2071ca47cdfd776fed08b552b433fac4d84a8"
+    },
+    {
+      "path": "src/tt_um_leemperor_hardcaml_protemu.v",
+      "sha256": "c275808a7279c617c460c3706cdfd69c0d580b7c3356ec224b66d8730b7b0cb1"
+    }
+  ],
+  "synthesis_sources": [ "src/tt_um_leemperor_hardcaml_protemu.v" ],
+  "simulation_sources": [ "simulation/tt_um_leemperor_hardcaml_protemu.v" ],
+  "resources": [],
+  "simulation_resources": [],
+  "target": {
+    "harness": "(Tiny_tapeout (tiles T6x4))",
+    "technology": "ihp-sg13cmos5l",
+    "tiles": "6x4",
+    "corner": "nom_typ_1p20V_25C",
+    "external_references": [
+      {
+        "source": "Support_tools",
+        "revision": "da63c9927411e3aca350977d653d24bbf5bca972",
+        "role": "Floorplan_def",
+        "path": "tech/ihp-sg13cmos5l/def/tt_block_6x4_pgvdd.def",
+        "sha256": "b46d9a0ee8352160e48dbc8312f092f985629061df736c7f46d58686535a76f4",
+        "corner": null
+      },
+      {
+        "source": "Pdk",
+        "revision": "2bbec755dc67ca3db0261c3d6163e15735d66710",
+        "role": "(Technology_view Pdk_configuration)",
+        "path": "libs.tech/librelane/config.tcl",
+        "sha256": null,
+        "corner": null
+      },
+      {
+        "source": "Pdk",
+        "revision": "2bbec755dc67ca3db0261c3d6163e15735d66710",
+        "role": "(Technology_view Technology_lef)",
+        "path": "libs.ref/sg13cmos5l_stdcell/lef/sg13cmos5l_tech.lef",
+        "sha256": null,
+        "corner": null
+      },
+      {
+        "source": "Pdk",
+        "revision": "2bbec755dc67ca3db0261c3d6163e15735d66710",
+        "role": "(Technology_view Standard_cell_lef)",
+        "path": "libs.ref/sg13cmos5l_stdcell/lef/sg13cmos5l_stdcell.lef",
+        "sha256": null,
+        "corner": null
+      },
+      {
+        "source": "Pdk",
+        "revision": "2bbec755dc67ca3db0261c3d6163e15735d66710",
+        "role": "(Technology_view Standard_cell_gds)",
+        "path": "libs.ref/sg13cmos5l_stdcell/gds/sg13cmos5l_stdcell.gds",
+        "sha256": null,
+        "corner": null
+      },
+      {
+        "source": "Pdk",
+        "revision": "2bbec755dc67ca3db0261c3d6163e15735d66710",
+        "role": "(Technology_view Standard_cell_verilog)",
+        "path": "libs.ref/sg13cmos5l_stdcell/verilog/sg13cmos5l_stdcell.v",
+        "sha256": null,
+        "corner": null
+      },
+      {
+        "source": "Pdk",
+        "revision": "2bbec755dc67ca3db0261c3d6163e15735d66710",
+        "role": "(Technology_view Standard_cell_liberty)",
+        "path": "libs.ref/sg13cmos5l_stdcell/lib/sg13cmos5l_stdcell_typ_1p20V_25C.lib",
+        "sha256": null,
+        "corner": "nom_typ_1p20V_25C"
+      }
+    ]
+  },
+  "adapter": "LibreLane",
+  "operation": "Hardening",
+  "resolved_settings": [
+    {
+      "key": "BOTTOM_MARGIN_MULT",
+      "value": 1,
+      "owner": "(Override\n \"core area is inset from the bottom die edge by one standard cell row height; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    { "key": "CLOCK_PERIOD", "value": 20.833333333333336, "owner": "Clock" },
+    { "key": "CLOCK_PORT", "value": "clk", "owner": "Clock" },
+    {
+      "key": "CLOCK_TRANSITION_CONSTRAINT",
+      "value": 0.15,
+      "owner": "Target"
+    },
+    {
+      "key": "CLOCK_UNCERTAINTY_CONSTRAINT",
+      "value": 0.25,
+      "owner": "Target"
+    },
+    {
+      "key": "DESIGN_NAME",
+      "value": "tt_um_leemperor_hardcaml_protemu",
+      "owner": "Design"
+    },
+    {
+      "key": "DESIGN_REPAIR_BUFFER_OUTPUT_PORTS",
+      "value": 0,
+      "owner": "(Override\n \"design repair does not put a buffer on every top level output; on a fixed TT tile those buffers spend core area on a load OUTPUT_CAP_LOAD already states to timing analysis; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    { "key": "DIE_AREA", "value": "0 0 1289.28 710.64", "owner": "Target" },
+    {
+      "key": "FP_DEF_TEMPLATE",
+      "value": "tech/ihp-sg13cmos5l/def/tt_block_6x4_pgvdd.def",
+      "owner": "Target"
+    },
+    {
+      "key": "FP_IO_HLENGTH",
+      "value": 2,
+      "owner": "(Override\n \"horizontal I/O pin shapes reach 2 um into the core, far enough for the router to land on a pin placed by the tile's DEF template; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "FP_IO_VLENGTH",
+      "value": 2,
+      "owner": "(Override\n \"vertical I/O pin shapes reach 2 um into the core; the TT block DEF places this tile's signal pins on its top edge, so this is the one that carries them; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "FP_PDN_MULTILAYER",
+      "value": 0,
+      "owner": "(Override\n \"single layer power distribution; a multilayer PDN puts straps on TopMetal1, which TT precheck forbids inside a tile; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "FP_PDN_VPITCH",
+      "value": 50.0,
+      "owner": "(Override\n \"vertical power straps every 50 um; with FP_PDN_VWIDTH this is how much routing resource the power grid takes out of the tile; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "FP_PDN_VWIDTH",
+      "value": 2.1,
+      "owner": "(Override\n \"vertical power straps are 2.1 um wide, the width the TT tile's power grid is cut for at the 50 um pitch above; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    { "key": "FP_SIZING", "value": "absolute", "owner": "Default" },
+    { "key": "GND_PIN", "value": "VGND", "owner": "Target" },
+    {
+      "key": "GRT_ALLOW_CONGESTION",
+      "value": 1,
+      "owner": "(Override\n \"global routing reports congestion instead of failing the run; the die is fixed by the TT tile, so there is no floorplan to grow in response, and detailed routing is what decides whether the congestion was real; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "GRT_RESIZER_HOLD_SLACK_MARGIN",
+      "value": 0.05,
+      "owner": "(Override\n \"post global route hold repair targets 0.05 ns; lower than the placement margin because routing estimates are in hand by then and the buffers cost area; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "LEFT_MARGIN_MULT",
+      "value": 6,
+      "owner": "(Override\n \"core area is inset from the left die edge by six site widths; wider than the vertical insets, keeping the cell rows clear of the tile boundary it abuts; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "LINTER_INCLUDE_PDK_MODELS",
+      "value": 1,
+      "owner": "(Override\n \"lint with the PDK cell models in scope, so a standard cell the netlist instantiates is not reported as an undefined module; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "MAGIC_DEF_LABELS",
+      "value": 0,
+      "owner": "(Override\n \"Magic streams the GDS without copying the DEF's labels into it; the tile's pins travel in the LEF that MAGIC_WRITE_LEF_PINONLY produces, not as GDS text; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "MAGIC_WRITE_LEF_PINONLY",
+      "value": 1,
+      "owner": "(Override\n \"Magic writes a pin only LEF for the tile, with no internal obstructions; that is the abstract the TT top level abuts, and it describes the tile as its pins; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    { "key": "MAX_FANOUT_CONSTRAINT", "value": 10, "owner": "Target" },
+    { "key": "OUTPUT_CAP_LOAD", "value": 6.0, "owner": "Target" },
+    { "key": "PDK", "value": "ihp-sg13cmos5l", "owner": "Target" },
+    {
+      "key": "PL_RESIZER_HOLD_SLACK_MARGIN",
+      "value": 0.1,
+      "owner": "(Override\n \"post placement hold repair targets 0.1 ns of slack instead of zero, so hold is still met once CTS and routing replace the placement estimates; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "PL_TARGET_DENSITY_PCT",
+      "value": 60,
+      "owner": "(Override\n \"global placement fills 60% of the core area, leaving room for the hold repair buffers and the clock tree that the resizers and CTS add after it; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "RIGHT_MARGIN_MULT",
+      "value": 6,
+      "owner": "(Override\n \"core area is inset from the right die edge by six site widths, matching the left inset so the core stays centred in the tile; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    { "key": "RT_MAX_LAYER", "value": "Metal4", "owner": "Target" },
+    {
+      "key": "RUN_CTS",
+      "value": 1,
+      "owner": "(Override\n \"run clock tree synthesis; this is LibreLane's own default, stated explicitly so a change to that default cannot silently leave the design on the ideal clock net synthesis assumed; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "RUN_KLAYOUT_DRC",
+      "value": 0,
+      "owner": "(Override\n \"off: TT precheck runs the same KLayout decks over the submitted GDS after the flow (478.64s, zero items on 2026-09-18), so in flow DRC buys about eight minutes of duplicate coverage; the cost is that LibreLane records no klayout__drc_error__count, so collect reports no KLayout metric; set it to 1 when signoff has to be self contained; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    {
+      "key": "RUN_KLAYOUT_XOR",
+      "value": 0,
+      "owner": "(Override\n \"off: the XOR compares the Magic and KLayout GDS streams for tool disagreement, which is not a rule check and is not what TT precheck repeats; set it to 1 to have the flow catch a streamer disagreement itself; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    { "key": "RUN_LINTER", "value": 1, "owner": "Default" },
+    {
+      "key": "STD_CELL_LIBRARY",
+      "value": "sg13cmos5l_stdcell",
+      "owner": "Target"
+    },
+    {
+      "key": "SYNTH_DRIVING_CELL",
+      "value": "sg13cmos5l_buf_4/X",
+      "owner": "Target"
+    },
+    { "key": "TIME_DERATING_CONSTRAINT", "value": 5.0, "owner": "Target" },
+    {
+      "key": "TOP_MARGIN_MULT",
+      "value": 1,
+      "owner": "(Override\n \"core area is inset from the top die edge by one standard cell row height; ttihp-verilog-template b86a2a781484bcab7ba522dc5de540086695a430\")"
+    },
+    { "key": "VDD_PIN", "value": "VPWR", "owner": "Target" }
+  ],
+  "flow_configuration": {
+    "BOTTOM_MARGIN_MULT": 1,
+    "CLOCK_PERIOD": 20.833333333333336,
+    "CLOCK_PORT": "clk",
+    "CLOCK_TRANSITION_CONSTRAINT": 0.15,
+    "CLOCK_UNCERTAINTY_CONSTRAINT": 0.25,
+    "DESIGN_NAME": "tt_um_leemperor_hardcaml_protemu",
+    "DESIGN_REPAIR_BUFFER_OUTPUT_PORTS": 0,
+    "DIE_AREA": "0 0 1289.28 710.64",
+    "FP_DEF_TEMPLATE": "dir::../tt/tech/ihp-sg13cmos5l/def/tt_block_6x4_pgvdd.def",
+    "FP_IO_HLENGTH": 2,
+    "FP_IO_VLENGTH": 2,
+    "FP_PDN_MULTILAYER": 0,
+    "FP_PDN_VPITCH": 50.0,
+    "FP_PDN_VWIDTH": 2.1,
+    "FP_SIZING": "absolute",
+    "GND_PIN": "VGND",
+    "GRT_ALLOW_CONGESTION": 1,
+    "GRT_RESIZER_HOLD_SLACK_MARGIN": 0.05,
+    "LEFT_MARGIN_MULT": 6,
+    "LINTER_INCLUDE_PDK_MODELS": 1,
+    "MAGIC_DEF_LABELS": 0,
+    "MAGIC_WRITE_LEF_PINONLY": 1,
+    "MAX_FANOUT_CONSTRAINT": 10,
+    "OUTPUT_CAP_LOAD": 6.0,
+    "PDK": "ihp-sg13cmos5l",
+    "PL_RESIZER_HOLD_SLACK_MARGIN": 0.1,
+    "PL_TARGET_DENSITY_PCT": 60,
+    "PNR_SDC_FILE": "dir::../constraints/top.sdc",
+    "RIGHT_MARGIN_MULT": 6,
+    "RT_MAX_LAYER": "Metal4",
+    "RUN_CTS": 1,
+    "RUN_KLAYOUT_DRC": 0,
+    "RUN_KLAYOUT_XOR": 0,
+    "RUN_LINTER": 1,
+    "SIGNOFF_SDC_FILE": "dir::../constraints/top.sdc",
+    "STD_CELL_LIBRARY": "sg13cmos5l_stdcell",
+    "SYNTH_DRIVING_CELL": "sg13cmos5l_buf_4/X",
+    "TIME_DERATING_CONSTRAINT": 5.0,
+    "TOP_MARGIN_MULT": 1,
+    "VDD_PIN": "VPWR",
+    "VERILOG_FILES": [ "dir::tt_um_leemperor_hardcaml_protemu.v" ]
+  },
+  "generated_settings": {
+    "VERILOG_FILES": [ "dir::tt_um_leemperor_hardcaml_protemu.v" ],
+    "PNR_SDC_FILE": "dir::../constraints/top.sdc",
+    "SIGNOFF_SDC_FILE": "dir::../constraints/top.sdc"
+  },
+  "requested_tools": {
+    "support_tools_revision": "da63c9927411e3aca350977d653d24bbf5bca972",
+    "pdk_revision": "2bbec755dc67ca3db0261c3d6163e15735d66710",
+    "librelane": "3.1.0.dev3",
+    "python": "3.11"
+  }
+}

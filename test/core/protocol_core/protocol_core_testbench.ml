@@ -161,6 +161,19 @@ let check_decisions t input =
     "fetch rejected"
     (Option.is_some input.fetch && not d.fetch_accepted)
     (bool o.fetch_rejected_o);
+  let completion = input.enable && t.model.fetch_pending && not input.reset in
+  check t.edge "fetch completion valid" completion (bool o.fetch_completion_valid_o);
+  if completion
+  then
+    check t.edge "fetch completion data" t.store.read_data (int o.fetch_completion_data_o);
+  let invalid_fetch =
+    input.enable
+    && t.model.running
+    && ((not t.model.fetch_pending) || completion)
+    && Option.exists input.fetch ~f:(fun address ->
+      address < 0 || address >= depth || address >= t.model.image_length)
+  in
+  check t.edge "fetch fault event" invalid_fetch (bool o.fetch_fault_event_o);
   d
 ;;
 

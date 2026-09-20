@@ -871,7 +871,10 @@ let decode instruction_word =
         enum Pin_mode.all ~what:"mode" Write_pins_imm.mode ~f:(fun mode ->
           Decoded.Needs_extension
             (fun value ->
-              complete (Write_pins_imm { mode; mask = get Write_pins_imm.mask; value })))
+              if value > Pins.all_pins
+              then out_of_range "value"
+              else
+                complete (Write_pins_imm { mode; mask = get Write_pins_imm.mask; value })))
       else if opcode = Write_pins_reg.opcode
       then
         enum Pin_mode.all ~what:"mode" Write_pins_reg.mode ~f:(fun mode ->

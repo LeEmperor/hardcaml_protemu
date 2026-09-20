@@ -128,6 +128,18 @@ module Outcome = struct
   [@@deriving sexp_of, compare, equal]
 end
 
+module Retirement = struct
+  type t =
+    { slot : int
+    ; instr : int Instruction.t
+    ; regs : int list
+    ; flags : Flags.t
+    ; descriptor : Descriptor.t
+    ; counts : Counts.t
+    }
+  [@@deriving sexp_of, compare, equal]
+end
+
 (* The core's own registered state, beside the machine's. *)
 module Running = struct
   type 'state t =
@@ -143,6 +155,7 @@ module Running = struct
     ; pc : int
     ; counts : Counts.t
     ; edges : Firmware.Edge_log.t list (* reversed *)
+    ; retirements : Retirement.t list (* reversed *)
     }
 end
 
@@ -155,9 +168,11 @@ module Trace = struct
     ; outcome : Outcome.t
     ; regs : int list
     ; flags : Flags.t
+    ; descriptor : Descriptor.t
     ; final : Machine.t
     ; peer : 'state
     ; edges : Firmware.Edge_log.t list
+    ; retirements : Retirement.t list
     }
 
   let reg t ~index = List.nth_exn t.regs index
@@ -497,6 +512,7 @@ let run
       ; pc = 0
       ; counts = Counts.zero
       ; edges = []
+      ; retirements = []
       }
     in
     let finish (r : 'state Running.t) outcome =
@@ -507,9 +523,11 @@ let run
       ; outcome
       ; regs = Array.to_list r.regs
       ; flags = r.flags
+      ; descriptor = r.descriptor
       ; final = r.machine
       ; peer = r.peer
       ; edges = List.rev r.edges
+      ; retirements = List.rev r.retirements
       }
     in
     (* One instruction: fetch its slot, decode, fetch an extension word if the encoding
@@ -549,12 +567,25 @@ let run
                         { slot; reason = Encoding.Word_error.Missing_extension })))))
     and run_instruction (r : 'state Running.t) ~slot ~instr ~slots =
       let counted (r : 'state Running.t) =
+        let r =
+          { r with
+            Running.counts =
+              { r.counts with
+                execute_cycles = r.counts.execute_cycles + 1
+              ; instructions = r.counts.instructions + 1
+              }
+          }
+        in
         { r with
-          Running.counts =
-            { r.counts with
-              execute_cycles = r.counts.execute_cycles + 1
-            ; instructions = r.counts.instructions + 1
+          Running.retirements =
+            { Retirement.slot
+            ; instr
+            ; regs = Array.to_list r.regs
+            ; flags = r.flags
+            ; descriptor = r.descriptor
+            ; counts = r.counts
             }
+            :: r.retirements
         }
       in
       match execute board r ~slot ~instr with

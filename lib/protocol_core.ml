@@ -135,7 +135,9 @@ let create (_scope : Scope.t) (i : _ I.t) : _ O.t =
   let r = I_Regs.Of_always.reg spec in
 
   let halted       = ~:(r.running.value) in
-  let host_allowed = i.en_i &: halted &: i.engines_idle_i &: ~:(i.reset_i) in
+  let host_allowed =
+    i.en_i &: halted &: i.engines_idle_i &: ~:(i.reset_i) &: ~:(i.execution_halt_i)
+  in
   let no_start     = ~:(i.load_start_valid_i) in
   let no_write     = no_start &: ~:(i.load_write_valid_i) in
   let no_read      = no_write &: ~:(i.readback_valid_i) in
@@ -187,6 +189,7 @@ let create (_scope : Scope.t) (i : _ I.t) : _ O.t =
   let run_accept =
     host_allowed
     &: no_complete
+    &: ~:(i.execution_halt_i)
     &: i.run_valid_i
     &: r.image_valid.value
     &: ~:(r.host_read_pending.value)
@@ -213,6 +216,7 @@ let create (_scope : Scope.t) (i : _ I.t) : _ O.t =
     &: r.host_read_pending.value
     &: ~:(start_accept)
     &: ~:(i.reset_i)
+    &: ~:(i.execution_halt_i)
   in
   let fetch_response = fetch_completion &: ~:(i.execution_halt_i) in
   let verification_match = i.prog_mem_read_data_i ==: r.host_read_expected.value in
@@ -276,7 +280,9 @@ let create (_scope : Scope.t) (i : _ I.t) : _ O.t =
 
         ; when_ i.execution_halt_i
             [ r.running              <--. 0
+            ; r.host_read_pending    <--. 0
             ; r.fetch_pending        <--. 0
+            ; r.readback_response_valid <--. 0
             ; r.fetch_response_valid <--. 0
             ]
 

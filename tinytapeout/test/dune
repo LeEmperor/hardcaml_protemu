@@ -154,3 +154,73 @@
     ../src/executable_core.generated.v
     p3_control_tb.v)
    (run vvp p3_control))))
+
+; P3.3 integrated core: real mechanisms, registered pin bank, external latency-one RAM,
+; and a behavioral loaded-program run including delayed completion and ABORT release.
+
+(rule
+ (alias rtl)
+ (deps p3_integration_tb.v ../src/integrated_core.generated.v)
+ (action
+  (progn
+   (run
+    verilator
+    --lint-only
+    --top-module
+    integrated_core
+    -Wno-DECLFILENAME
+    -Wno-COMBDLY
+    ../src/integrated_core.generated.v)
+   (run
+    yosys
+    -q
+    -p
+    "read_verilog ../src/integrated_core.generated.v; hierarchy -check -top integrated_core; synth -top integrated_core; stat")
+   (run
+    iverilog
+    -g2012
+    -Wall
+    -s
+    p3_integration_tb
+    -o
+    p3_integration
+    ../src/integrated_core.generated.v
+    p3_integration_tb.v)
+    (run vvp p3_integration))))
+
+; P3.1b's full-interface verification top uses the same context-registered RAM
+; composition as the backend Cyclesim suite. Compile each emitted source role alone.
+
+(rule
+ (alias rtl)
+ (deps
+  p3_memory_backend_tb.v
+  ../src/program_memory_backend.simulation.generated.v
+  ../src/program_memory_backend.implementation.generated.v)
+ (action
+  (progn
+   (run
+    iverilog
+    -g2012
+    -Wall
+    -Wno-timescale
+    -s
+    p3_memory_backend_tb
+    -DBACKEND_SIMULATION
+    -o
+    p3_memory_backend_simulation
+    ../src/program_memory_backend.simulation.generated.v
+    p3_memory_backend_tb.v)
+   (run vvp p3_memory_backend_simulation)
+   (run
+    iverilog
+    -g2012
+    -Wall
+    -Wno-timescale
+    -s
+    p3_memory_backend_tb
+    -o
+    p3_memory_backend_implementation
+    ../src/program_memory_backend.implementation.generated.v
+    p3_memory_backend_tb.v)
+   (run vvp p3_memory_backend_implementation))))

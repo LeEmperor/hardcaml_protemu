@@ -114,15 +114,15 @@ end
 
 let settings = Replay.Settings.create ~seed:20260920 ~trials:240 ~size:32
 
-let run_scenario ~trial scenario =
+let run_scenario ?circuit ~trial scenario =
   let poison = List.nth_exn Poison.all (trial % List.length Poison.all) in
-  let t = create ~poison () in
+  let t = create ?circuit ~poison () in
   Or_error.try_with (fun () ->
     List.iter scenario ~f:(fun action -> step t (Action.input action)))
   |> Result.map_error ~f:Error.to_string_hum
 ;;
 
-let quickcheck ~(here : [%call_pos]) () =
+let quickcheck ?circuit ~(here : [%call_pos]) () =
   let settings = Replay.Settings.override settings in
   let random = Splittable_random.of_int settings.seed in
   let rec search trial =
@@ -133,7 +133,7 @@ let quickcheck ~(here : [%call_pos]) () =
       let scenario =
         Base_quickcheck.Generator.generate Generator.scenario ~size ~random
       in
-      match run_scenario ~trial scenario with
+      match run_scenario ?circuit ~trial scenario with
       | Ok () -> search (trial + 1)
       | Error reason ->
         let replay =

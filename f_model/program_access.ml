@@ -102,7 +102,13 @@ let halted t = not t.running
 (* Combinational decisions and port drive from pre-edge state. Request classes use the
    documented host priority even when a higher-priority offer is malformed. *)
 let decisions t (input : Input.t) =
-  let host_allowed = input.enable && halted t && input.engines_idle && not input.reset in
+  let host_allowed =
+    input.enable
+    && halted t
+    && input.engines_idle
+    && (not input.reset)
+    && not input.execution_halt
+  in
   let no_start = Option.is_none input.load_start in
   let no_write = no_start && Option.is_none input.load_write in
   let no_read = no_write && Option.is_none input.readback in
@@ -146,6 +152,7 @@ let decisions t (input : Input.t) =
   let run_accepted =
     host_allowed
     && no_complete
+    && (not input.execution_halt)
     && input.run
     && t.image_valid
     && Option.is_none t.host_read_pending
@@ -207,7 +214,7 @@ let step t input ~read_data =
       && Option.exists input.fetch ~f:(fun address ->
         address < 0 || address >= depth || address >= t.image_length)
     in
-    let cancel_host_response = d.load_start_accepted in
+    let cancel_host_response = d.load_start_accepted || input.execution_halt in
     let response, words_verified, verification_failed =
       match t.host_read_pending with
       | Some (verify, expected) when not cancel_host_response ->
@@ -236,8 +243,9 @@ let step t input ~read_data =
       then
         { t with
           running = false
+        ; host_read_pending = None
         ; fetch_pending = false
-        ; response = { t.response with fetch = None }
+        ; response = Response.none
         }
       else t
     in

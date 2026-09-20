@@ -566,14 +566,15 @@ let run
                      (Outcome.Faulted
                         { slot; reason = Encoding.Word_error.Missing_extension })))))
     and run_instruction (r : 'state Running.t) ~slot ~instr ~slots =
-      let counted (r : 'state Running.t) =
+      let executed (r : 'state Running.t) =
+        { r with
+          Running.counts = { r.counts with execute_cycles = r.counts.execute_cycles + 1 }
+        }
+      in
+      let retired (r : 'state Running.t) =
         let r =
           { r with
-            Running.counts =
-              { r.counts with
-                execute_cycles = r.counts.execute_cycles + 1
-              ; instructions = r.counts.instructions + 1
-              }
+            Running.counts = { r.counts with instructions = r.counts.instructions + 1 }
           }
         in
         { r with
@@ -590,17 +591,17 @@ let run
       in
       match execute board r ~slot ~instr with
       | Step_result.Refused (r, reason) ->
-        finish (counted r) (Outcome.Refused { slot; instr; reason })
-      | Stop r -> finish (counted r) Outcome.Halted
-      | Next r -> after (counted r) ~slot ~pc:(slot + slots)
+        finish (executed r) (Outcome.Refused { slot; instr; reason })
+      | Stop r -> finish (retired (executed r)) Outcome.Halted
+      | Next r -> after (executed r) ~slot ~pc:(slot + slots) ~retired
       | Jump_to (r, target) ->
         (* A taken branch leaves the buffered word behind: the next instruction is
            somewhere else, and nothing promises it shares a memory word with this one. *)
-        after { (counted r) with Running.buffer = None } ~slot ~pc:target
-    and after (r : 'state Running.t) ~slot ~pc =
+        after { (executed r) with Running.buffer = None } ~slot ~pc:target ~retired
+    and after (r : 'state Running.t) ~slot ~pc ~retired =
       match settle board r ~limit:max_cycles with
       | Error r -> finish r (Outcome.Out_of_cycles { slot; limit = max_cycles })
-      | Ok r -> go { r with Running.pc }
+      | Ok r -> go { (retired r) with Running.pc }
     in
     go start)
 ;;

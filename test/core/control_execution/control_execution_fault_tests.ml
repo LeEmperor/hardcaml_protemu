@@ -134,6 +134,28 @@ let%test_unit "accepted RUN is fresh and a disabled pending fetch is cancelled" 
   [%test_result: int] (reg cancelled 0) ~expect:0x1234
 ;;
 
+let%test_unit "execution halt wins over a simultaneous RUN acceptance" =
+  let t = create () in
+  load_image t (Array.of_list (encode Instruction.Halt));
+  step ~mechanism:{ quiet_mechanism with completion = true; completion_reason = 7 } t Run;
+  let o = outputs t in
+  [%test_result: bool] (bool o.halted_o) ~expect:true;
+  [%test_result: bool] (bool o.execution_fault_o) ~expect:true;
+  [%test_result: int]
+    (int o.fault_kind_o)
+    ~expect:Control_execution.Fault.unsolicited_completion;
+  ignore (run_until_halted t () : int);
+  [%test_result: bool] (bool (outputs t).normal_halt_o) ~expect:true
+;;
+
+let%test_unit "reset establishes the architectural cleared descriptor" =
+  let t = create () in
+  let descriptor = words_of_bits !((outputs t).descriptor_o) Descriptor.Field.count in
+  [%test_result: int list]
+    descriptor
+    ~expect:[ 0; 0; 0; Descriptor.no_pin; Descriptor.no_pin; Descriptor.no_pin; 0; 0; 0 ]
+;;
+
 let%test_unit "live host writes cannot steal autonomous fetches" =
   let t = create () in
   let words =

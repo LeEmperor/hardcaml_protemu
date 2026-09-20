@@ -47,7 +47,7 @@ deliberately kept apart so that a disagreement between two of them is evidence r
 
 | Layer | Library | Depends on Hardcaml | Contents |
 | --- | --- | --- | --- |
-| Reference model | `test_protemu_f_model` ([`test/f_model/`](../test/f_model/dune)) | No | 95 expect tests over [`f_model/`](../f_model/dune). |
+| Reference model | `test_protemu_f_model` ([`test/f_model/`](../test/f_model/dune)) | No | 96 expect tests over [`f_model/`](../f_model/dune). |
 | Model/RTL comparison and backend conformance | uniquely named libraries under [`test/common/`](../test/common/dune), [`test/primitives/`](../test/primitives), [`test/core/`](../test/core), and [`test/integration/`](../test/integration) | Yes, except generic support | Directed cycle product tests, cycle harness expect tests, adapter conformance, timed P2.2/P2.6 product tests, and the targeted P2.2 four-state property. |
 | Emitted RTL | none — Dune rules | n/a | iverilog, verilator and yosys checks behind `dune build @rtl`. |
 
@@ -82,13 +82,14 @@ integration cases extend them:
 
 | File | Tests | Covers |
 | --- | --- | --- |
-| [`test/primitives/`](../test/primitives) | 23 | P2.1 to P2.7: pin bank, input events, timing, FIFOs, shift lane, observed transfer, and UART. |
+| [`test/primitives/`](../test/primitives) | 55 | P2.1 to P2.7 inline directed, expect, generated, timed, and four-state cases: pin bank, input events, timing, FIFOs, shift lane, observed transfer, and UART. |
 | [`primitive_demo_unit_tests.ml`](../test/integration/primitive_demo/primitive_demo_unit_tests.ml) | 1 | Concurrent timer/transfer integration. |
 | [`test/integration/observed_transfer_bank/`](../test/integration/observed_transfer_bank) | 13 | Real pin-bank reservation/commit/cleanup, software arbitration, phase-swept standalone-versus-bank timing, boundary peer checks, interruption/rearm, and a 24-trial fixed-seed property. |
 | [`uart_slice_unit_tests.ml`](../test/integration/uart_slice/uart_slice_unit_tests.ml) | 13 | P2.7 frame, ownership/timer/bank status, pin isolation, completion/release, receiver negatives, model agreement including an overridden period, and the saved-trace expect block. |
-| [`test/core/protocol_core/`](../test/core/protocol_core) | 12 | P3.1a has ten directed load/access/fetch cases and two generated/replay expect tests. RTL is compared cycle by cycle with independent [`Program_access`](../f_model/program_access.ml) control and a local 1RW contract store under three unspecified-output policies. |
-| [`test/core/control_execution/`](../test/core/control_execution) | 21 | P3.2 exhaustive decoder equivalence, directed local-execution/model agreement, all condition/loop/control paths, mechanism handshakes, faults, lifecycle/bounds, and 96 generated assembled-program comparisons at seed `20260920`. |
-| [`test/integration/program_memory_backend/`](../test/integration/program_memory_backend) | 2 | P0.7 reruns the consumer against `Single_port_ram` Simulation and explicit-Flops Implementation elaborations, checking the exact resource record and contract-defined responses. |
+| [`test/core/protocol_core/`](../test/core/protocol_core) | 14 | P3.1a has twelve directed load/access/fetch cases and two generated/replay expect tests. RTL is compared cycle by cycle with independent [`Program_access`](../f_model/program_access.ml) control and a local 1RW contract store under three unspecified-output policies. |
+| [`test/core/control_execution/`](../test/core/control_execution) | 25 | P3.2 exhaustive base-word legality/extension classification, directed local-execution/model agreement, all condition/loop/control paths, mechanism handshakes and collisions, faults, lifecycle/bounds, and 96 generated assembled-program comparisons at seed `20260920`. |
+| [`test/integration/core_engine/`](../test/integration/core_engine) | 17 | P3.3 loaded-program, fixed-seed generated and timed integration: all delegated kinds, independent FIFO/ownership projections, internal/observed transfer, control and event collisions, interruption, background progress, cleanup, engine-idle gating, and the real P2.6b path. |
+| [`test/integration/program_memory_backend/`](../test/integration/program_memory_backend) | 4 | P0.7/P3.1b checks exact resource records and contract-defined responses, then reruns P3.1a's twelve directed and 240 fixed-seed generated scenarios against both `Single_port_ram` Simulation and explicit-Flops Implementation elaborations. |
 | [`wrapper_unit_tests.ml`](../test/integration/wrapper/wrapper_unit_tests.ml) | 2 | The P0 observable wrapper. |
 
 Each builds a `Cyclesim.With_interface` simulator and advances it through an owned cycle
@@ -131,6 +132,12 @@ Hardcaml tests do not require host tools:
 - the P3.2 executable core under [`p3_control_tb.v`](../tinytapeout/test/p3_control_tb.v),
   which loads/verifies/runs an `m16` image against an independent latency-one RAM model and
   checks nine fetch plus seven execute cycles;
+- P3.1b's verification-only full-interface memory-bearing consumer under
+  [`p3_memory_backend_tb.v`](../tinytapeout/test/p3_memory_backend_tb.v), compiled
+  separately against emitted behavioral and explicit-flop RTL. It covers RUN/load gating,
+  sequential/replacement loads, engine-busy and live-host rejection, priority, bounds,
+  latency/hold validity, and stale-response cancellation. The complete generated corpus
+  remains on both backend circuits rather than being copied into Verilog;
 - `verilator --lint-only` on the wrapper;
 - a `yosys` `hierarchy`/`synth`/`stat` smoke test, which is **not** CMOS5L-mapped
   synthesis and is labelled as such in the rule.
@@ -384,29 +391,27 @@ and another 40 to sample. The observed bank outputs are the boundary of this fix
 there is no chip wrapper, pad model, routed delay, analog setup/hold, or metastability
 evidence in these measurements.
 
-These are event-to-engine paths, not the event-to-core-decision-to-pin path.
-P3.2 now composes [`protocol_core.ml`](../lib/protocol_core.ml)'s bounded latency-one fetch
-boundary with a PC, decoder, local execution, instruction-boundary observations, and a
-retained mechanism handshake. P3.3 must connect that handshake to the event, transfer,
-and pin-bank paths. The
-eventual fixture must run an actual loaded
-instruction sequence and timestamp the observed event, decoded decision, bank commit,
-and boundary pin; no hard-coded sequencer is accepted as substitute. Run the current
-suite with `./scripts/with-switch.sh dune runtest test/primitives/observed_transfer --force`.
+Those are the direct event-to-engine paths. P3.3 now supplies the separate loaded
+event-to-core-decision-to-pin path in [`integrated_core.ml`](../lib/integrated_core.ml).
+The time-resolved fixture runs the actual P3.1a load/verify/RUN sequence, timestamps the
+shared synchronized event, decoded decision, bank request, registered commit and boundary
+pin, and sweeps all ten integer phases. Run it with
+`./scripts/with-switch.sh dune runtest test/integration/core_engine --force`.
+Run the primitive suite with
+`./scripts/with-switch.sh dune runtest test/primitives/observed_transfer --force`.
 Run the bank composition with
 `./scripts/with-switch.sh dune runtest test/integration/observed_transfer_bank --force`.
 
-The future loaded-path contract is concrete rather than tied to placeholder core internals.
+The loaded-path contract is concrete rather than tied to private core internals.
 The `wait_start_then_drive` image in `test/f_model/test_isa.ml` preclaims pin 0 for the
 software owner in fixture initial state, writes it low, executes `Wait_edge` on pin 3 rising,
 writes pin 0 high, and halts. It assembles to default-memory words `7804 0000 a300 7804 0001
-0000` and executes in 13 reference edges. P3.2 exposes the active mechanism request and
-instruction boundary needed to identify the decision; P3.3 must connect the event so the
-decoded wait can consume it and resume fetch, then expose the independently
-predicted software bank request/acceptance, registered bank commit and system boundary.
-Sweep the external event after the wait is armed, retain the P1.5 fetch schedule, cap each
-run at 256 edges, and report the first mismatch with timestamp, edge, PC/slot, decoded
-instruction, event, request/ownership/value/enable, nearby samples and replay identity.
+0000` and executes in 13 reference edges. The integrated sweep retains the P1.5 fetch
+schedule and records 10--19 ticks external-to-synchronized, 20 ticks synchronized-to-core
+decision, 30 ticks decision-to-bank-request, and 60--69 ticks external-to-bank commit. The
+request and registered commit share the clock edge, on opposite sides of it. The direct
+engine/bank path is 30--39 ticks, so the loaded core path adds 30 ticks. Runs are finite and
+phase failures report all named timestamps.
 The ISA has no claim/release instruction, so the software claim is explicit fixture initial
 state; changing that requires an ISA/architecture decision, not a test-only opcode.
 
@@ -582,8 +587,8 @@ in the P2.7 section above; common harness replay evidence does not close those l
 Exactly one four-state property is implemented, on `Input_events` alone. Resolved buses
 with explicit drivers and pull-ups, open-drain wire resolution and any other X/Z
 obligation have no four-state evidence. No coverage-collection suite is implemented.
-Two-state timed runners cover P2.2 and the implemented P2.6 event-to-engine path; there
-is no integrated core-decision path to time until P3.3 connects P3.2 to those mechanisms.
+Two-state timed runners cover P2.2 and both P2.6 event-to-engine and loaded
+event-to-core-decision paths. P3.3's core-engine suite owns the latter.
 The existing RTL smoke checks do
 not establish gate-level functional behavior, physical timing closure, or metastability
 reliability. See the evidence map below for the distinction between implemented checks
@@ -946,15 +951,15 @@ Historical run reports are not fresh results for later source revisions.
 
 | Obligation | Current evidence/owner | Next evidence still owed |
 | --- | --- | --- |
-| ISA, encoding, reference cycle schedule, firmware examples | `test/f_model/`, 95 expect tests | Preserve independently; extend with new contracts |
+| ISA, encoding, reference cycle schedule, firmware examples | `test/f_model/`, 96 expect tests | Preserve independently; extend with new contracts |
 | Cycle/event adapter scheduling | `test/common/backend_conformance*.ml`; matching five-edge known-value trace, completion, and timeout on Cyclesim/two-state Evsim; exact-coincidence ordering is enforced by the P2.2 runner | Recheck the characterized adapter and delta-settle convention when dependencies change |
 | Pin bank cycle agreement and harness diagnostics | `test/primitives/pin_bank/` plus generic fixtures in `test/common/`; recorded 200 trials and seed sweeps above | Extend properties as the block contract grows |
-| Other primitive cycle behavior | 23 block-owned directed tests under `test/primitives/` and one integration case under `test/integration/primitive_demo/` | Add bounded generated properties where they provide distinct evidence |
-| Core program load/access/fetch behavior | [`test/core/protocol_core/`](../test/core/protocol_core): ten directed cases plus 240 generated fresh-state scenarios at seed `20260920` compare RTL with independent [`f_model/program_access.ml`](../f_model/program_access.ml) and a 1RW contract store. P0.7 additionally reruns the consumer against selected context-registered Simulation/Flops backends. Evidence covers complete/partial/interrupted/replacement loads, duplicates and missing words, zero/depth/oversized lengths, full-word verification and mismatch, halted/engine-idle gating, simultaneous priority, live-access noninterference, exact latency-one association and completion turnover, reset/disable/halt/reload cancellation, final/out-of-image/out-of-range fetches, and zero/all-ones/address-derived unspecified outputs. | P3.3 still owes real engine-idle production and boundary STOP/ABORT/single-step integration; host transport and full-system physical evidence remain later obligations. |
-| Core decode and minimal execution | [`test/core/control_execution/`](../test/core/control_execution): every base word is compared with `Encoding.decode`; directed retirement traces cover all local instructions, ALU operations, conditions, loop/control paths, descriptor state and faults; all delegated kinds cover immediate/delayed handshakes and failure paths; 96 assembled programs use seed `20260920`. `p3_control_tb.v` loads and runs the representative image from emitted RTL in 16 program cycles. See the [P3.2 record](p3.2-implementation.md). | P3.3 must connect real mechanisms and execution control. P5 still owns decoder/core mapped area and timing; formal invariants are not established. |
+| Other primitive cycle behavior | 55 block-owned inline directed, expect, generated, timed, and four-state cases under `test/primitives/`, plus one integration case under `test/integration/primitive_demo/` | Add bounded generated properties where they provide distinct evidence |
+| Core program load/access/fetch behavior | [`test/core/protocol_core/`](../test/core/protocol_core): twelve directed cases plus 240 generated fresh-state scenarios at seed `20260920` compare RTL with independent [`f_model/program_access.ml`](../f_model/program_access.ml) and a 1RW contract store. P0.7 additionally reruns the consumer against selected context-registered Simulation/Flops backends. P3.3 supplies real engine-idle production and boundary STOP/ABORT/single-step integration under [`test/integration/core_engine/`](../test/integration/core_engine). | Host transport and full-system physical evidence remain later obligations. |
+| Core decode and mechanism integration | [`test/core/control_execution/`](../test/core/control_execution) preserves P3.2 decoder/retirement evidence. [`test/integration/core_engine/`](../test/integration/core_engine) adds seventeen loaded-program, generated and timed cases for all delegated kinds, real mechanisms, background transfer, ownership/pressure, observed pacing, control/event collisions, interruption, cleanup and engine-idle gating. `p3_control_tb.v` retains the 16-cycle P3.2 image; `p3_integration_tb.v` runs the loaded wait/event/pin path and ABORT release from emitted RTL. See the [P3.3 record](p3.3-implementation.md). | P5 still owns mapped area/timing; formal invariants, host transport and protocol acceptance are not established. |
 | P0 wrapper | Two tests in `test/integration/wrapper/` plus `@rtl` wrapper checks | Later host/load/recovery evidence |
 | P2.2 external phase and pulse capture | `test/primitives/input_events/input_events_timing_{testbench,tests}.ml`; directed cases plus 160 generated trials, 10--19 tick deterministic latency, captured/missed pulse cases, reset/event interactions, temporal shrink/replay | Physical CDC/setup/hold/metastability evidence remains separate |
-| P2.6 event-to-engine/core-to-pin latency | The primitive timed suite covers idle-low/high physical mappings at the lane boundary: external-to-event is 10--19 ticks, event-to-lane is 10, and external-to-lane is 20--29. `test/integration/observed_transfer_bank/` measures a further 10-tick commit, giving 30--39 ticks external-to-bank; cancellation clears bank OE in 20--29 and releases ownership in 30--39. Independent peers cover all phases, lengths 1/8/32, directions/orders, first/later bits, positive and failing deadlines. P3.2 supplies loaded RTL execution and decision observations. | P3.3 integration, then real event-to-core-decision-to-committed-pin timing; wrapper/pad, analog CDC/setup/hold and physical timing remain separate |
+| P2.6 event-to-engine/core-to-pin latency | The primitive timed suite covers idle-low/high physical mappings at the lane boundary: external-to-event is 10--19 ticks, event-to-lane is 10, and external-to-lane is 20--29. `test/integration/observed_transfer_bank/` gives 30--39 ticks external-to-bank. The P3.3 loaded-program sweep measures 60--69 ticks external-to-bank: 10--19 to synchronization, 20 to the core decision and 30 to the decoded bank request/commit edge. | Wrapper/pad, analog CDC/setup/hold and physical timing remain separate |
 | P2.7 UART TX slice | `test/integration/uart_slice/`: 12 directed unit cases, a saved-trace expect/diff, and 96 generated Cyclesim trials at seed `20260920`; model/descriptor/Hardcaml frames agree relative to their detected start edges, while slice ownership, timer, bank, pin isolation, completion and interruption contracts are checked at the hardware boundary; `p2_uart_slice_tb.v` repeats the frame/release checks on emitted RTL | Independent request-to-pin/completion latency, the unverified wider period range, P3 fetch/decode/core-to-engine behavior, the P4 UART baseline, physical timing, and formal invariants remain separate obligations |
 | Unknown pad propagation and recovery | `test/primitives/input_events/input_events_four_state_{testbench,tests}.ml`; declared injection site/window/resolution, isolation and per-pin containment, a three-edge recovery bound, 120 generated trials at seed `20260919`, and two controlled negatives covering a design leak and a coercing observer | Extend to further blocks only where a contract names an X/Z obligation |
 | Resolved external buses, open-drain wire resolution | No four-state suite | An explicit multi-driver/pull-up model and targeted tests, or a recorded decision to leave it to the emitted-RTL tier |

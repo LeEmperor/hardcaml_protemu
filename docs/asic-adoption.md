@@ -76,6 +76,11 @@ the exact RAM identity, 256x16 shape, explicit flop selection,
 behavioral/implementation source roles, and absence of initialization in
 implementation RTL. Its mapped-synthesis evidence is the
 [P0.7 record](../tinytapeout/reports/2026-09-20-p0.7-memory-synthesis.md).
+The production wrapper trace is intentionally narrower than the complete consumer
+acceptance contract. The [P3.1b verification record](p3.1b-verification.md) supplements it
+with the shared P3.1a directed/generated suite on both elaborated backend circuits and a
+verification-only full-interface HDL top for both emitted source roles; it does not alter
+the production bundle or its physical-flow inputs.
 
 ## Running the flow
 

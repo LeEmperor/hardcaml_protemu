@@ -72,6 +72,9 @@ module I = struct
     ; reset_i : 'a
     ; en_i : 'a
     ; run_accepted_i : 'a
+    ; resume_i : 'a
+    ; pause_i : 'a
+    ; abort_i : 'a
     ; fetch_accepted_i : 'a
     ; fetch_rejected_i : 'a
     ; fetch_fault_i : 'a
@@ -182,7 +185,7 @@ let enum_index all ~equal value = Protemu_isa.Enum.index all ~equal value
 let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   let open Always in
   let open Encoding.Layout in
-  let spec = Reg_spec.create ~clock:i.clock_i ~clear:i.reset_i () in
+  let spec = Reg_spec.create ~clock:i.clock_i () in
   let r = I_Regs.Of_always.reg spec in
   I_Regs.Of_always.apply_names ~prefix:"reg_" ~naming_op:(Scope.naming scope) r;
   let in_phase value = r.phase.value ==:. value in
@@ -245,9 +248,12 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
     |: opcode_is Jump_reg.opcode
     |: opcode_is Config.opcode
   in
-  let local_execute = instruction_ready &: local_opcode in
+  let local_execute = instruction_ready &: local_opcode &: ~:(i.mechanism_completion_valid_i) in
   let mechanism_initial = instruction_ready &: ~:local_opcode in
-  let mechanism_request = mechanism_initial |: in_mechanism_offer in
+  let execution_enabled =
+    i.en_i &: ~:(i.reset_i) &: ~:(i.abort_i) &: ~:(i.pause_i)
+  in
+  let mechanism_request = (mechanism_initial |: in_mechanism_offer) &: execution_enabled in
 
   let rd = field decode_word Ldi.rd in
   let mov_rs = field decode_word Mov.rs in
@@ -392,7 +398,9 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
     mechanism_request &: i.mechanism_refused_i &: ~:(i.mechanism_accepted_i)
   in
   let immediate_completion = mechanism_accepted &: i.mechanism_completion_valid_i in
-  let delayed_completion = in_mechanism_wait &: i.mechanism_completion_valid_i in
+  let delayed_completion =
+    execution_enabled &: in_mechanism_wait &: i.mechanism_completion_valid_i
+  in
   let completion_success =
     (immediate_completion |: delayed_completion) &: ~:(i.mechanism_completion_fault_i)
   in
@@ -400,7 +408,8 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
     (immediate_completion |: delayed_completion) &: i.mechanism_completion_fault_i
   in
   let unsolicited_completion =
-    i.mechanism_completion_valid_i
+    execution_enabled
+    &: i.mechanism_completion_valid_i
     &: ~:immediate_completion
     &: ~:delayed_completion
   in
@@ -653,9 +662,26 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
     ; r.extension_fetches <-- r.extension_fetches.value
     ; r.total_cycles <-- r.total_cycles.value
 
-    ; if_ ~:(i.en_i)
-        [ r.phase <--. Phase.halted; r.has_extension <--. 0 ]
-        [ when_ i.run_accepted_i (clear_architecture @ [ r.phase <--. Phase.fetch ])
+    ; if_ i.reset_i
+        (clear_architecture @ [ r.phase <--. Phase.halted ])
+        [ if_ ~:(i.en_i)
+            [ r.phase <--. Phase.halted; r.has_extension <--. 0 ]
+            [ if_
+                i.abort_i
+                [ r.phase <--. Phase.halted; r.has_extension <--. 0 ]
+                [ if_
+                    i.pause_i
+                    [ r.phase <--. Phase.halted; r.has_extension <--. 0 ]
+                    [ when_
+                        i.resume_i
+                        [ r.phase <--. Phase.fetch
+                        ; r.normal_halt <--. 0
+                        ; r.execution_fault <--. 0
+                        ; r.fault_kind <--. Fault.none
+                        ]
+                    ; when_
+                        i.run_accepted_i
+                        (clear_architecture @ [ r.phase <--. Phase.fetch ])
         ; when_ (fetch_valid &: i.fetch_accepted_i)
             [ r.fetch_cycles <-- r.fetch_cycles.value +:. 1
             ; r.total_cycles <-- r.total_cycles.value +:. 1
@@ -754,11 +780,14 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
             (set_fault
                (const ~width:Fault.width Fault.unsolicited_completion)
                r.pc.value r.pc.value i.mechanism_completion_reason_i)
-        ; when_ mechanism_decision_conflict
-            (set_fault
-               (const ~width:Fault.width Fault.mechanism_protocol)
-               r.pc.value r.pc.value i.mechanism_refusal_reason_i)
+            ; when_ mechanism_decision_conflict
+                (set_fault
+                   (const ~width:Fault.width Fault.mechanism_protocol)
+                   r.pc.value r.pc.value i.mechanism_refusal_reason_i)
+                    ]
+            ]
         ]
+    ]
     ];
 
   { O.fetch_valid_o = fetch_valid

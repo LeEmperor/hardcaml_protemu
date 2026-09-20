@@ -4,8 +4,8 @@ Status: architecture and integration plan, updated 2026-09-20 for P3.1a's bounde
 program load/access/fetch contract and P3.2's minimal control execution, and 2026-09-17
 for the implemented `hardcaml_asic` slice (its P0–P3, P4.1–P4.4) and the decision to
 develop emulator RTL decoupled from
-ASIC adoption (section 1). Sizes, rates, and instruction names remain study parameters,
-not implemented capabilities or a frozen ISA.
+ASIC adoption (section 1). Sizes and rates remain study parameters; the provisional
+instruction names and `m16` encoding are now implemented but are not a frozen ISA.
 
 ## 1. Direction and scope
 
@@ -69,7 +69,7 @@ the optional library runner is not required. Tool/PDK preparation remains an
 explicit operation outside ordinary elaboration. Migration preserves the current
 P0 path until the replacement passes equivalent checks.
 
-The [Workbench architecture](../../workbench/docs/hardcaml_workbench_architecture.md)
+The [Workbench architecture](../../hardcaml_workbench/docs/hardcaml_workbench_architecture.md)
 keeps this project independently buildable. Workbench integration is optional and
 does not gate emulator hardware, ASIC integration, or tapeout. Sibling links use
 this workspace's `scaf`, `hardcaml_asic`, and `workbench` checkout names; they are
@@ -197,8 +197,8 @@ that rework.
   [P0.5a legacy record](../tinytapeout/reports/2026-09-19-p0.5a-legacy-physical.md),
   the [P0.5b adopted record](../tinytapeout/reports/2026-09-19-p0.5b-adopted-physical.md),
   the [P0.5c clean-staging reproduction](../tinytapeout/reports/2026-09-20-p0.5c-clean-staging-physical.md),
-  and [flow.md](flow.md) for the flow itself. Registered program memory (P0.7)
-  has not been through it.
+  and [flow.md](flow.md) for the flow itself. P0.7 has since taken registered program
+  memory through backend integration and mapped synthesis; its record is linked below.
 - `hardcaml_asic` (its [phase plan](../../hardcaml_asic/docs/phase_plan.md), reviewed
   2026-09-17): P0–P3 and P4.1–P4.4 have evidence. Implemented are the
   `Project`/`Elaboration_context`/`Build` lifecycle with resource identity and
@@ -219,9 +219,9 @@ that rework.
   independent of the build path.
 - Dune, Hardcaml dependencies, and `scripts/with-switch.sh` are already present.
 
-Keep developing this scaffold, but do not let the current 8-bit instruction memory
-or fetch/decode sequence determine the final ISA. In particular, byte-addressed
-storage and instruction width are separate decisions.
+Keep developing this scaffold, but do not treat the provisional 16-bit `m16` memory layout
+or fetch/decode sequence as a final physical-memory decision. Transport byte addressing,
+instruction width, and physical memory-word width remain separate concerns.
 
 ## 3. Initial architecture
 
@@ -526,6 +526,54 @@ boundary pulse accompanies successful retirement, normal Halt, or a terminating 
 fault. Retirement is separate: refused, malformed, truncated, and faulting mechanism
 operations reach a boundary but do not retire. P3.3 consumes this boundary for STOP rather
 than redefining it.
+
+### Core-to-mechanism integration contract
+
+P3.3 fixes the first integrated configuration to one pin bank, one timing block, one shift
+lane, and separate eight-entry TX and RX byte FIFOs. The mechanism reason byte is stable at
+this boundary: `0` is no reason, `1` unavailable/busy, `2` invalid parameter, `3` pin
+ownership conflict, `4` FIFO full, `5` FIFO empty, `6` FIFO data out of range, `7`
+cancelled, and `8` primitive/engine failure. The execution core still classifies refusal
+and delayed failure separately; the reason byte only preserves the mechanism detail.
+
+Pin and status reads, pin branches, acknowledgements, accepted pin writes, periodic
+start/stop, and FIFO operations that can transfer immediately accept and complete on the
+same edge. Timing waits accept once and complete from the timing block's later completion
+or timeout pulse; an already-satisfied level wait completes immediately and does not set a
+wait-complete event. A blocking FIFO operation accepts once and remains owned by the
+adapter until its queue transfer occurs. A pressured nonblocking FIFO operation is
+refused. `Issue_transfer` is nonblocking with respect to the wire: a valid descriptor and
+available lane accept and complete the instruction together, after which the lane runs in
+the background. A busy lane is unavailable rather than an implicit command queue.
+
+The descriptor's sixteen-bit TX field is the only transfer source in this configuration.
+It may describe a longer RX transfer, or a longer TX/duplex transfer whose upper transmitted
+bits are zero, but it cannot encode arbitrary nonzero TX bits 16 through 31. The byte FIFOs
+remain explicit firmware/stream queues: P3.3 does not invent byte packing between them and
+the descriptor. TX stream consumption and RX stream production are exposed independently,
+and their arbitration must not starve an active lane. A later queue-fed descriptor mode
+requires an ISA and packing decision. Observed pacing uses the shared synchronized input
+front end; the pacing pin and edge latch with the accepted descriptor. The current
+descriptor has no observed-start selector, so issue starts the lane immediately and
+subsequent selected input edges pace it.
+
+STOP, ABORT, single-step, and host RUN have priority after reset/disable in this order:
+ABORT, STOP, single-step, RUN. STOP records a pending boundary request and suppresses the
+next fetch when P3.2 raises its existing instruction boundary; work already accepted by a
+background engine continues. ABORT suppresses mechanism issue/completion on that edge,
+cancels the core operation and timing/FIFO ownership, releases the lane and all bank claims
+at that edge, and records `Aborted` when work was in flight. Single-step is accepted only
+while program access reports halted, the integrated engine-idle predicate was true before
+the edge, and execution is paused rather than terminally faulted or normally halted. It
+resumes preserved architectural state, executes through extension acquisition and any
+instruction stall, and stops at exactly one P3.2 boundary without using a clock gate. An
+ordinary RUN remains a fresh run and clears architectural state.
+
+The integrated engine-idle predicate requires no timing wait, no accepted blocking FIFO
+operation, no active/armed transfer or bridge cleanup, no engine pin claim, and no pending
+engine bank effect. Periodic timing, FIFO occupancy, and software pin claims do not make an
+engine busy. Consequently a stopped core does not by itself permit program-memory access:
+P3.1a continues to require both halted and this real engine-idle predicate.
 
 Start with an explicitly selected flop implementation. Investigate CMOS5L macro
 availability early, but begin a macro backend only after exact shape/behavior,

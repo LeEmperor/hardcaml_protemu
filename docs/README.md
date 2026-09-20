@@ -7,7 +7,9 @@
 | [phase_plan.md](phase_plan.md) | Actionable breakdown of the construction plan: stable work-item IDs, phase dependencies, deliverables, completion evidence, the first working UART transmit slice, and the parallel ASIC project/memory adoption track. Use this to select and track implementation work. |
 | [p2-implementation.md](p2-implementation.md) | Phase 2 primitive interfaces, functional-model/RTL evidence, digital latency observations, and remaining verification and physical measurements. |
 | [p3.1a-implementation.md](p3.1a-implementation.md) | P3.1a program-store consumer boundary, verified loading decision, independent contract-port evidence, and later-phase handoff. |
+| [p3.1b-verification.md](p3.1b-verification.md) | P3.1a scenario reuse across ASIC memory backends, emitted-RTL acceptance coverage, and mapped-evidence identity comparison. |
 | [p3.2-implementation.md](p3.2-implementation.md) | P3.2 decoder/control implementation, local and delegated instruction boundaries, independent-model and emitted-RTL evidence, and P3.3 handoff. |
+| [p3.3-implementation.md](p3.3-implementation.md) | P3.3 mechanism composition, instruction handshakes, STOP/ABORT/single-step control, real engine-idle gating, emitted RTL, and P2.6b timing evidence. |
 | [p1.5-encoding-decision.md](p1.5-encoding-decision.md) | P1.5's recorded architecture decision: the chosen instruction encoding and what it gives up, the call pair and what it was measured to be worth, the deferred memory-word choice, the assembler's refusals, and where the one shared instruction specification lives. Read it before touching `isa/`. |
 | [p1.4-encoding-study.md](p1.4-encoding-study.md) | P1.4 instruction and storage comparison: two encodings in four memory-word combinations, measured program sizes, cycle counts, branch paths, bit-banged timing, and invalid-instruction behaviour, with what they recommend to P1.5. Area columns are unmeasured until P5. |
 | [asic-adoption.md](asic-adoption.md) | P0.6 project declaration, pinned ASIC dependency, bundle emission, and adopted-wrapper checks. |
@@ -38,7 +40,7 @@
   project/resource/target ownership, generated build bundles, and flow integration.
 - [Program-memory contract](../../hardcaml_asic/docs/program-memory-contract.md):
   authoritative `Single_port_ram` behavior and backend verification obligations.
-- [Workbench architecture](../../workbench/docs/hardcaml_workbench_architecture.md):
+- [Workbench architecture](../../hardcaml_workbench/docs/hardcaml_workbench_architecture.md):
   independent projects, optional versioned driver integration, jobs, and artifacts.
 - [Tiny Tapeout integration guide](../tinytapeout/README.md) and
   [experiment record format](../tinytapeout/reports/README.md): current scripts,

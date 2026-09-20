@@ -348,3 +348,68 @@ let%test_unit "an unsolicited completion faults without consuming a result" =
     (int o.fault_kind_o)
     ~expect:Control_execution.Fault.unsolicited_completion
 ;;
+
+let%test_unit "an unsolicited completion cannot retire a simultaneous local instruction" =
+  let t = create () in
+  ignore
+    (load_program
+       t
+       (program "unsolicited_local" [ Instruction.Ldi { rd = 0; value = 0x1234 }; Halt ])
+     : Assembler.Assembled.t);
+  let sent = ref false in
+  let respond _t (o : _ Executable_core.O.t) =
+    if (not !sent)
+       && int o.phase_o = Control_execution.Phase.base_wait
+       && bool o.fetch_completion_valid_o
+    then (
+      sent := true;
+      { quiet_mechanism with completion = true; result = 0xbeef })
+    else quiet_mechanism
+  in
+  ignore (run_until_halted ~respond t () : int);
+  let o = outputs t in
+  [%test_result: bool] !sent ~expect:true;
+  [%test_result: bool] (bool o.execution_fault_o) ~expect:true;
+  [%test_result: int]
+    (int o.fault_kind_o)
+    ~expect:Control_execution.Fault.unsolicited_completion;
+  [%test_result: int] (reg t 0) ~expect:0;
+  [%test_result: int] (int o.instruction_count_o) ~expect:0;
+  [%test_result: bool] (bool o.retired_o) ~expect:false
+;;
+
+let await_mechanism_request t =
+  step t Run;
+  let rec loop remaining =
+    if remaining = 0
+    then raise_s [%message "mechanism request was not offered"]
+    else if bool (outputs t).mechanism_request_valid_o
+    then ()
+    else (
+      step t Idle;
+      loop (remaining - 1))
+  in
+  loop 10
+;;
+
+let%test_unit "reset and disable suppress a retained mechanism request before the edge" =
+  List.iter [ Reset; Enable false ] ~f:(fun cancellation ->
+    let t = create () in
+    ignore
+      (load_program
+         t
+         (program "cancel_offer" [ Instruction.Read_status { rd = 0 }; Halt ])
+       : Assembler.Assembled.t);
+    await_mechanism_request t;
+    [%test_result: bool] (bool (outputs t).mechanism_request_valid_o) ~expect:true;
+    step
+      ~respond:(fun _t (o : _ Executable_core.O.t) ->
+        [%test_result: bool] (bool o.mechanism_request_valid_o) ~expect:false;
+        { quiet_mechanism with accepted = true; completion = true; result = 0x55 })
+      t
+      cancellation;
+    let o = outputs t in
+    [%test_result: bool] (bool o.halted_o) ~expect:true;
+    [%test_result: bool] (bool o.execution_fault_o) ~expect:false;
+    [%test_result: int] (int o.instruction_count_o) ~expect:0)
+;;

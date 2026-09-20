@@ -1,4 +1,14 @@
 (library
+ (name protemu_program_memory_backend_support)
+ (wrapped false)
+ (modules program_memory_backend_design)
+ (libraries core hardcaml hardcaml_asic hardcaml_protemu)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style)))
+
+(library
  (name protemu_program_memory_backend_tests)
  (wrapped false)
  (modules program_memory_backend_tests)
@@ -11,6 +21,7 @@
   hardcaml_asic
   hardcaml_protemu
   protemu_f_model
+  protemu_program_memory_backend_support
   protemu_protocol_core_tests)
  (preprocess
   (pps ppx_hardcaml ppx_jane))
@@ -18,3 +29,17 @@
   (pps ppx_js_style))
  (flags
   (:standard -w -27-57-33-34-35-40-63-47-26)))
+
+(executable
+ (name emit_program_memory_backend)
+ (modules emit_program_memory_backend)
+ (libraries
+  core
+  hardcaml
+  hardcaml_asic
+  jane_rope
+  protemu_program_memory_backend_support)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))

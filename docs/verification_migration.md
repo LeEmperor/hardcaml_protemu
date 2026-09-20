@@ -591,12 +591,13 @@ releases it on the following rising edge.
 
 That closes the event-to-engine-to-pin obligation that existed in RTL at this migration
 run. The separate event-to-core-decision-to-pin measurement remained named because P3.2/
-P3.3 had not implemented decode or core/engine integration. P3.2 has since implemented
-decode and local execution; P3.3 integration remains the blocker. Likewise,
-the core suite adds pause/resume without a memory access, reset/reload recovery, and a
-load held across disable, but does not claim readback, loaded-image bounds,
-load-complete, engine-idle arbitration or instruction decoding. Those are still absent
-P3 contracts. Memory-backend conformance remains owned and linked in `hardcaml_asic`;
+P3.3 had not implemented decode or core/engine integration. P3.2 and P3.3 have since
+implemented decode, local execution, mechanism integration and the phase-swept real-core
+measurement. At the time of this
+migration run, the core suite added pause/resume without a memory access, reset/reload
+recovery, and a load held across disable, but did not yet claim readback, loaded-image
+bounds, load-complete, engine-idle arbitration, or instruction decoding. P3.1/P0.7 and
+P3.2 have since supplied those contracts. Memory-backend conformance remains owned and linked in `hardcaml_asic`;
 the local `Program_store_stub` tests only emulator consumption of the published port.
 
 Root aliases now define the policy: `@verification-required` is every bounded inline

@@ -1,7 +1,7 @@
 # Phase 2 primitive implementation record
 
 Date: 2026-09-18, verification re-run 2026-09-20, P2.7 closed 2026-09-19,
-P2.6 dependency-independent preparation updated 2026-09-20.
+P2.6b real-core measurement completed 2026-09-20.
 Baseline revision: `626ece9`.
 The original P2 sources described here were uncommitted working-tree changes when the
 record was written and are committed as of `9fd703d`. The 2026-09-20 P2.6b preparation
@@ -57,7 +57,7 @@ The timestamped suite under
 | Ordinary lane preload/data output to `Pin_bank` commit | 10 ticks, or one system-clock period, in `Observed_transfer_bank` |
 | External start/launch to committed bank output | 30--39 ticks, or 3.0--3.9 system-clock periods |
 | External cancellation to committed output-enable clear | 20--29 ticks; ownership release follows one clock later, at 30--39 ticks |
-| Event to core decision to committed pin | Not measurable: P3.2 decode/execution exists, but P3.3 core/engine/pin-bank integration does not |
+| Event to core decision to committed pin | 60--69 ticks external-to-bank: 10--19 external-to-synchronized, 20 synchronized-to-core-decision, and 30 decision-to-bank-request; the registered bank commits after that request edge |
 
 The independent external peer reconstructs its sampling schedule from pad transitions
 only and samples `pin_value_o`/`pin_oe_o` strictly before each scheduled edge. The stated
@@ -112,9 +112,9 @@ bank-integrated boundary supports 9.6 MHz asymmetric or 6 MHz symmetric TX/duple
 the same digital assumptions. Neither boundary includes the Tiny Tapeout wrapper, pad,
 board delay, analog setup/hold, or metastability behavior.
 
-## Prepared real-core scenario
+## Real-core scenario and measurement
 
-The dependency-independent P2.6b preparation includes one concrete existing-ISA program,
+The P2.6b fixture uses one concrete existing-ISA program,
 `wait_start_then_drive`, in [`test_isa.ml`](../test/f_model/test_isa.ml). The fixture begins
 with pin 0 claimed by `Owner.Software`; this uses the existing bank initialization contract
 because the current ISA has no claim/release instruction. The loaded program then establishes
@@ -134,10 +134,10 @@ It is four instructions, six slots, two extension words, six memory words, and 9
 bits. The independent `Control_core` loads those words through `Program_store`, executes
 the event after the wait has armed, drives pin 0 low then high, and halts in 13 edges:
 six fetch, four execute, and three wait-stall edges. Its recorded waveform is
-`zz00000000111`. This is model evidence for the scenario and schedule, not RTL core-path
-timing.
+`zz00000000111`. This remains the independent model schedule used to prepare the RTL
+measurement.
 
-The future P2.6b fixture must use this exact image first, then sweep the external pin-3
+The P2.6b fixture uses this exact image first, then sweeps the external pin-3
 transition through every integer phase after `Wait_edge` acceptance. Record:
 
 | Timestamp | Definition |
@@ -156,16 +156,25 @@ The first mismatch must report external time, edge index, slot/PC, decoded instr
 expected/actual acceptance, event state, bank request, ownership, value/enable, nearby
 samples, source/configuration identity, and an executable fixed-seed replay command.
 
-P3.2 now exposes `instruction_boundary_o`, `retired_o`, phase, PC, and retained mechanism
-request state rather than requiring a private-state guess. P3.3 must supply the shared synchronized event, software bank request
-and acceptance, central bank commit, ownership, and system-boundary value/enable. Activate
-the test by loading and reading back the exact image while halted and engines idle, asserting
-load-complete, applying RUN, waiting until the edge wait is armed, scheduling the phase-swept
-pin-3 rise, and running to `Halt` or the finite timeout. The existing model trace is the
-cycle-exact oracle. Do not substitute `Observed_transfer_bank`, a testbench sequencer, or
-model-only execution for that loaded RTL path.
+[`test/integration/core_engine/`](../test/integration/core_engine) activates that contract:
+it loads and reads back the exact image while halted and engines idle, asserts
+load-complete, applies RUN, waits until the real edge wait is armed, schedules every integer
+phase of pin 3, and runs to `Halt` within the finite bound. The resulting external-to-bank
+range is 60--69 ticks. The synchronized event is 10--19 ticks after the pad transition, the
+core decision is 20 ticks later, and the decoded bank request is another 30 ticks later;
+the bank commits after that request edge. The direct observed-engine/bank path remains
+30--39 ticks, so the loaded core path adds 30 ticks for this program. This is the real
+P3.1a/P3.2/P3.3 path, not a sequencer or direct event-to-pin substitute.
 
 ## Verification run
+
+The P2.6b real-core measurement was run on 2026-09-20 from `61384c3` plus the preserved
+dirty P3.2 fixes and uncommitted P3.3 implementation. The deterministic phase sweep and
+loaded-program integration pass under
+`./scripts/with-switch.sh dune runtest test/integration/core_engine --force`; emitted RTL
+passes under `./scripts/with-switch.sh dune build @tinytapeout/test/rtl --force`. Full
+repository results and remaining non-P2.6 limitations are in the
+[P3.3 record](p3.3-implementation.md).
 
 The dependency-independent P2.6b preparation was verified on 2026-09-20 from
 `fbe0a982fce99fe4cb1718167445ad496d46bde2` plus the preserved dirty working tree.
@@ -292,11 +301,11 @@ P2.8 remains open because no generic or liberty-mapped Yosys estimate,
 CMOS5L flow run, mapped sequential/combinational area, or formal check has been
 recorded. P2.2's time-resolved two-state pilot records a 10--19 tick deterministic
 capture latency and phase-dependent sub-period pulse capture; it is not analog
-metastability or physical CDC evidence. P2.6's primitive digital envelope is recorded
-above; the parent remains open only for the real event-to-core-decision-to-committed-pin
-measurement after P3.3 connects the completed P3.2 core. The lane's claim mask and pin
+metastability or physical CDC evidence. P2.6's primitive and real-core digital envelopes
+are recorded above, and P2.6 is complete. The lane's claim mask and pin
 outputs now run through bank
 arbitration in both the protocol-specific [`uart_slice.ml`](../lib/uart_slice.ml) and the
 generic [`observed_transfer_bank.ml`](../lib/observed_transfer_bank.ml), each for one engine.
-Neither is the loaded control-core/project-top arbiter, and neither reaches the Tiny Tapeout
-wrapper or physical pads; those remain P3 and project integration work.
+The loaded [`Integrated_core`](../lib/integrated_core.ml) now supplies the central core/lane
+arbiter and bank boundary. It still does not reach the Tiny Tapeout wrapper or physical
+pads; those remain project integration and physical-timing work.

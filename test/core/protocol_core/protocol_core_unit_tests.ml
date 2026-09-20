@@ -8,8 +8,8 @@ open! Core
 open! Protemu_f_model
 open! Protocol_core_testbench
 
-let%test_unit "reset and incomplete images cannot run" =
-  let t = create () in
+let reset_and_incomplete_images_cannot_run create =
+  let t = create Poison.Zero in
   step t (input ~run:true ());
   check t.edge "RUN without image stays halted" true (Program_access.halted t.model);
   step t (input ~load_start:3 ());
@@ -27,10 +27,10 @@ let%test_unit "reset and incomplete images cannot run" =
   check t.edge "reset partial image cannot run" true (Program_access.halted t.model)
 ;;
 
-let%test_unit "complete sequential write and matching readback authorize RUN" =
+let complete_sequential_write_and_matching_readback_authorize_run create =
   let words = [ 0x0000; 0x1234; 0xffff ] in
   List.iter Poison.all ~f:(fun poison ->
-    let t = create ~poison () in
+    let t = create poison in
     complete_load t words;
     check t.edge "image valid" true t.model.image_valid;
     step t (input ~run:true ());
@@ -41,8 +41,8 @@ let%test_unit "complete sequential write and matching readback authorize RUN" =
       check t.edge "fetched expected word" (Some expected) t.model.response.fetch))
 ;;
 
-let%test_unit "verification mismatch and unchecked completion cannot authorize image" =
-  let t = create ~poison:Ones () in
+let verification_mismatch_and_unchecked_completion_cannot_authorize_image create =
+  let t = create Poison.Ones in
   load_words t [ 0x1111; 0x2222 ];
   step t (input ~readback:(0, true, 0x1111) ());
   step t (input ());
@@ -54,8 +54,8 @@ let%test_unit "verification mismatch and unchecked completion cannot authorize i
   check t.edge "bad image remains non-executable" true (Program_access.halted t.model)
 ;;
 
-let%test_unit "replacement invalidates immediately and a shorter image hides old tail" =
-  let t = create () in
+let replacement_invalidates_immediately_and_a_shorter_image_hides_old_tail create =
+  let t = create Poison.Zero in
   complete_load t [ 0x1111; 0x2222; 0x3333; 0x4444 ];
   step t (input ~load_start:2 ());
   check t.edge "replacement invalidated old image" false t.model.image_valid;
@@ -68,21 +68,21 @@ let%test_unit "replacement invalidates immediately and a shorter image hides old
   check t.edge "old tail did not read memory" false t.model.fetch_pending
 ;;
 
-let%test_unit "zero and oversized lengths are rejected without destroying a valid image" =
-  let t = create () in
+let zero_and_oversized_lengths_are_rejected_without_destroying_a_valid_image create =
+  let t = create Poison.Zero in
   complete_load t [ 0x5a5a ];
   step t (input ~load_start:0 ());
   check t.edge "zero preserved image" true t.model.image_valid;
   step t (input ~load_start:257 ());
   check t.edge "oversize preserved image" true t.model.image_valid;
-  let boundary = create () in
+  let boundary = create Poison.Zero in
   let words = List.init depth ~f:(fun n -> n) in
   complete_load boundary words;
   check boundary.edge "depth-sized image valid" true boundary.model.image_valid
 ;;
 
-let%test_unit "halted busy engines refuse all program access and RUN" =
-  let t = create () in
+let halted_busy_engines_refuse_all_program_access_and_run create =
+  let t = create Poison.Zero in
   let before = memory_snapshot t in
   step
     t
@@ -102,8 +102,44 @@ let%test_unit "halted busy engines refuse all program access and RUN" =
     (Array.equal (Option.equal Int.equal) before t.store.words)
 ;;
 
-let%test_unit "live host requests cannot steal or corrupt a fetch" =
-  let t = create () in
+let execution_halt_rejects_lower_priority_host_work_and_discards_a_host_response create =
+  let start = create Poison.Zero in
+  complete_load start [ 0x1111 ];
+  step start (input ~execution_halt:true ~load_start:1 ());
+  check start.edge "halt preserved valid image" true start.model.image_valid;
+  check start.edge "halt did not start replacement" false start.model.load_active;
+  let write = create Poison.Zero in
+  step write (input ~load_start:1 ());
+  let before = memory_snapshot write in
+  step write (input ~execution_halt:true ~load_write:(0, 0x2222) ());
+  check write.edge "halt did not advance write" 0 write.model.words_written;
+  check
+    write.edge
+    "halt did not write memory"
+    true
+    (Array.equal (Option.equal Int.equal) before write.store.words);
+  let complete = create Poison.Zero in
+  load_words complete [ 0x3333 ];
+  verify_words complete [ 0x3333 ];
+  step complete (input ~execution_halt:true ~load_complete:true ());
+  check complete.edge "halt did not complete image" false complete.model.image_valid;
+  check complete.edge "halt preserved active load" true complete.model.load_active;
+  let read = create Poison.Zero in
+  complete_load read [ 0x4444 ];
+  step read (input ~readback:(0, false, 0) ());
+  step read (input ~execution_halt:true ~readback:(0, false, 0) ());
+  check read.edge "halt discarded due host response" None read.model.response.readback;
+  check read.edge "halt cleared host ownership" None read.model.host_read_pending;
+  step read (input ());
+  check
+    read.edge
+    "discarded host response did not recur"
+    None
+    read.model.response.readback
+;;
+
+let live_host_requests_cannot_steal_or_corrupt_a_fetch create =
+  let t = create Poison.Zero in
   complete_load t [ 0x1357; 0x2468 ];
   step t (input ~run:true ());
   let before = memory_snapshot t in
@@ -126,10 +162,8 @@ let%test_unit "live host requests cannot steal or corrupt a fetch" =
     (Array.equal (Option.equal Int.equal) before t.store.words)
 ;;
 
-let%test_unit "read and fetch validity are exact latency one and disabled output cannot \
-               recur"
-  =
-  let t = create ~poison:Address () in
+let read_and_fetch_validity_are_exact_latency_one_and_disabled_output_cannot_recur create =
+  let t = create Poison.Address in
   complete_load t [ 0x0000 ];
   step t (input ~readback:(0, false, 0) ());
   check t.edge "request edge has no response" None t.model.response.readback;
@@ -148,8 +182,8 @@ let%test_unit "read and fetch validity are exact latency one and disabled output
     t.model.response.fetch
 ;;
 
-let%test_unit "a due fetch completion can turn over into the next fetch" =
-  let t = create () in
+let a_due_fetch_completion_can_turn_over_into_the_next_fetch create =
+  let t = create Poison.Zero in
   complete_load t [ 0x1111; 0x2222 ];
   step t (input ~run:true ());
   step t (input ~fetch:0 ());
@@ -160,10 +194,8 @@ let%test_unit "a due fetch completion can turn over into the next fetch" =
   check t.edge "second response delivered" (Some 0x2222) t.model.response.fetch
 ;;
 
-let%test_unit "final legal address works and out-of-image or physical-range addresses \
-               fault"
-  =
-  let t = create () in
+let final_legal_address_works_and_out_of_image_or_physical_range_addresses_fault create =
+  let t = create Poison.Zero in
   let words = List.init depth ~f:(fun n -> n * 17 land 0xffff) in
   complete_load t words;
   step t (input ~run:true ());
@@ -172,7 +204,7 @@ let%test_unit "final legal address works and out-of-image or physical-range addr
   check t.edge "last word fetched" (Some (List.last_exn words)) t.model.response.fetch;
   step t (input ~fetch:depth ());
   check t.edge "depth address faulted before truncation" true t.model.fetch_fault;
-  let short = create () in
+  let short = create Poison.Zero in
   complete_load short [ 7 ];
   step short (input ~readback:(1, false, 0) ());
   check short.edge "out-of-image readback was refused" None short.model.host_read_pending;
@@ -183,8 +215,8 @@ let%test_unit "final legal address works and out-of-image or physical-range addr
   check short.edge "first out-of-image address faulted" true short.model.fetch_fault
 ;;
 
-let%test_unit "reset, disable, halt, and reload discard outstanding ownership" =
-  let reset_case = create () in
+let reset_disable_halt_and_reload_discard_outstanding_ownership create =
+  let reset_case = create Poison.Zero in
   complete_load reset_case [ 0x1111 ];
   step reset_case (input ~readback:(0, false, 0) ());
   step reset_case (input ~reset:true ());
@@ -194,13 +226,13 @@ let%test_unit "reset, disable, halt, and reload discard outstanding ownership" =
     None
     reset_case.model.response.readback;
   check reset_case.edge "reset invalidated image" false reset_case.model.image_valid;
-  let halt_case = create () in
+  let halt_case = create Poison.Zero in
   complete_load halt_case [ 0x2222 ];
   step halt_case (input ~run:true ());
   step halt_case (input ~fetch:0 ());
   step halt_case (input ~execution_halt:true ());
   check halt_case.edge "halt discarded fetch response" None halt_case.model.response.fetch;
-  let reload_case = create () in
+  let reload_case = create Poison.Zero in
   complete_load reload_case [ 0x3333 ];
   step reload_case (input ~readback:(0, false, 0) ());
   step reload_case (input ~load_start:1 ());
@@ -209,7 +241,7 @@ let%test_unit "reset, disable, halt, and reload discard outstanding ownership" =
     "reload discarded read response"
     None
     reload_case.model.response.readback;
-  let disable_case = create () in
+  let disable_case = create Poison.Zero in
   complete_load disable_case [ 0x4444 ];
   step disable_case (input ~run:true ());
   step disable_case (input ~fetch:0 ());
@@ -225,3 +257,34 @@ let%test_unit "reset, disable, halt, and reload discard outstanding ownership" =
     true
     disable_case.model.image_valid
 ;;
+
+let scenarios =
+  [ "reset and incomplete images cannot run", reset_and_incomplete_images_cannot_run
+  ; ( "complete sequential write and matching readback authorize RUN"
+    , complete_sequential_write_and_matching_readback_authorize_run )
+  ; ( "verification mismatch and unchecked completion cannot authorize image"
+    , verification_mismatch_and_unchecked_completion_cannot_authorize_image )
+  ; ( "replacement invalidates immediately and a shorter image hides old tail"
+    , replacement_invalidates_immediately_and_a_shorter_image_hides_old_tail )
+  ; ( "zero and oversized lengths are rejected without destroying a valid image"
+    , zero_and_oversized_lengths_are_rejected_without_destroying_a_valid_image )
+  ; ( "halted busy engines refuse all program access and RUN"
+    , halted_busy_engines_refuse_all_program_access_and_run )
+  ; ( "execution halt rejects lower-priority host work and discards a host response"
+    , execution_halt_rejects_lower_priority_host_work_and_discards_a_host_response )
+  ; ( "live host requests cannot steal or corrupt a fetch"
+    , live_host_requests_cannot_steal_or_corrupt_a_fetch )
+  ; ( "read and fetch validity are exact latency one and disabled output cannot recur"
+    , read_and_fetch_validity_are_exact_latency_one_and_disabled_output_cannot_recur )
+  ; ( "a due fetch completion can turn over into the next fetch"
+    , a_due_fetch_completion_can_turn_over_into_the_next_fetch )
+  ; ( "final legal address works and out-of-image or physical-range addresses fault"
+    , final_legal_address_works_and_out_of_image_or_physical_range_addresses_fault )
+  ; ( "reset, disable, halt, and reload discard outstanding ownership"
+    , reset_disable_halt_and_reload_discard_outstanding_ownership )
+  ]
+;;
+
+let run_all create = List.iter scenarios ~f:(fun (_, scenario) -> scenario create)
+
+let%test_unit "directed P3.1a scenarios" = run_all (fun poison -> create ~poison ())

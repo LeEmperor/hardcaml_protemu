@@ -65,3 +65,29 @@
  (target executable_core.generated.v)
  (action
   (run %{exe:../../bin/generate_core.exe} executable %{target})))
+
+; P3.3 core and mechanisms. Program RAM remains an external latency-one port.
+
+(rule
+ (target integrated_core.generated.v)
+ (action
+  (run %{exe:../../bin/generate_core.exe} integrated %{target})))
+
+; P3.1b verification tops. These are the same context-registered consumer/RAM
+; circuits used by the Cyclesim backend suite, emitted separately by source role.
+
+(rule
+ (target program_memory_backend.simulation.generated.v)
+ (action
+  (run
+   %{exe:../../test/integration/program_memory_backend/emit_program_memory_backend.exe}
+   simulation
+   %{target})))
+
+(rule
+ (target program_memory_backend.implementation.generated.v)
+ (action
+  (run
+   %{exe:../../test/integration/program_memory_backend/emit_program_memory_backend.exe}
+   implementation
+   %{target})))

@@ -43,3 +43,11 @@
  (target uart_tx.generated.v)
  (action
   (run %{exe:../../bin/generate_p2.exe} uart_tx %{target})))
+
+; P2.7's first working slice: the same frame taken through the pin bank and the timer.
+; Same status as the block above - an emitted-RTL experiment, not the project top.
+
+(rule
+ (target uart_slice.generated.v)
+ (action
+  (run %{exe:../../bin/generate_p2.exe} uart_slice %{target})))

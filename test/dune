@@ -1,0 +1,13 @@
+(executable
+ (name verification_sweep)
+ (modules verification_sweep)
+ (libraries
+  core
+  protemu_input_events_tests
+  protemu_observed_transfer_tests
+  protemu_pin_bank_testbench
+  protemu_test_common)
+ (preprocess
+  (pps ppx_jane))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

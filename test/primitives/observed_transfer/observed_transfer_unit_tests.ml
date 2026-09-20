@@ -232,3 +232,189 @@ let%test_unit "P2.6 synchronized start and pacing use the same input snapshot" =
   check "aligned data sampled" o.rx_data_o 1;
   check "pacing completion releases" o.pin_oe_o 0
 ;;
+
+let%test_unit "P2.6 wrapper latches selectors and select withdrawal cancels active work" =
+  let sim =
+    Observed_sim.create (Observed_transfer.create (Scope.create ~flatten_design:true ()))
+  in
+  let i = Cyclesim.inputs sim in
+  let o = Cyclesim.outputs sim in
+  let cycle_pad value =
+    i.pin_async_i := bits 8 value;
+    Cyclesim.cycle sim
+  in
+  i.reset_i := Bits.vdd;
+  i.enable_i := Bits.vdd;
+  Cyclesim.cycle sim;
+  i.reset_i := Bits.gnd;
+  i.arm_valid_i := Bits.vdd;
+  i.start_pin_i := bits 3 3;
+  i.start_edge_kind_i := bits 2 0;
+  i.pacing_pin_i := bits 3 1;
+  i.pacing_edge_kind_i := bits 2 2;
+  i.cancel_enable_i := Bits.vdd;
+  i.cancel_pin_i := bits 3 4;
+  i.cancel_edge_kind_i := bits 2 1;
+  i.bit_count_i := bits 6 2;
+  i.tx_value_i := bits 32 3;
+  i.tx_valid_i := Bits.vdd;
+  i.tx_enable_i := Bits.vdd;
+  i.output_pin_i := bits 3 0;
+  i.launch_trailing_i := Bits.vdd;
+  i.pin_async_i := bits 8 16;
+  Cyclesim.cycle sim;
+  i.arm_valid_i := Bits.gnd;
+  check "armed without ownership" o.armed_o 1;
+  check "armed output released" o.pin_oe_o 0;
+  (* Live selector changes after acceptance must not alter this transaction. *)
+  i.start_pin_i := bits 3 7;
+  i.pacing_pin_i := bits 3 6;
+  i.cancel_pin_i := bits 3 5;
+  cycle_pad 24;
+  cycle_pad 24;
+  check "latched start selector reports original pin" o.start_edge_o 1;
+  Cyclesim.cycle sim;
+  check "latched start acquires ownership" o.claim_mask_o 1;
+  cycle_pad 8;
+  cycle_pad 8;
+  check "select withdrawal aligned into cancellation edge" o.cancel_edge_o 1;
+  Cyclesim.cycle sim;
+  check "cancellation clears busy" o.busy_o 0;
+  check "cancellation releases claim" o.claim_mask_o 0;
+  check "cancellation releases output" o.pin_oe_o 0;
+  check "cancellation is not completion" o.done_o 0;
+  i.start_pin_i := bits 3 3;
+  i.pacing_pin_i := bits 3 1;
+  i.cancel_enable_i := Bits.gnd;
+  i.bit_count_i := bits 6 1;
+  i.tx_value_i := bits 32 1;
+  i.arm_valid_i := Bits.vdd;
+  Cyclesim.cycle sim;
+  i.arm_valid_i := Bits.gnd;
+  cycle_pad 0;
+  cycle_pad 0;
+  cycle_pad 8;
+  cycle_pad 8;
+  Cyclesim.cycle sim;
+  check "rearm after cancellation starts" o.busy_o 1;
+  cycle_pad 10;
+  cycle_pad 10;
+  Cyclesim.cycle sim;
+  cycle_pad 8;
+  cycle_pad 8;
+  Cyclesim.cycle sim;
+  check "rearmed transaction completes" o.done_o 1;
+  check "normal completion releases after recovery" o.claim_mask_o 0
+;;
+
+let%test_unit "P2.6 validates selectors and ownership at the actual start" =
+  let sim =
+    Observed_sim.create (Observed_transfer.create (Scope.create ~flatten_design:true ()))
+  in
+  let i = Cyclesim.inputs sim in
+  let o = Cyclesim.outputs sim in
+  i.reset_i := Bits.vdd;
+  i.enable_i := Bits.vdd;
+  Cyclesim.cycle sim;
+  i.reset_i := Bits.gnd;
+  i.arm_valid_i := Bits.vdd;
+  i.start_pin_i := bits 3 3;
+  i.pacing_pin_i := bits 3 0;
+  i.pacing_edge_kind_i := bits 2 3;
+  i.bit_count_i := bits 6 1;
+  i.tx_value_i := bits 32 1;
+  i.tx_valid_i := Bits.vdd;
+  i.tx_enable_i := Bits.vdd;
+  i.output_pin_i := bits 3 0;
+  i.launch_trailing_i := Bits.vdd;
+  Cyclesim.cycle sim;
+  check "invalid edge selector rejected" o.rejected_o 1;
+  check "invalid selector leaves no arm" o.armed_o 0;
+  i.pacing_edge_kind_i := bits 2 2;
+  Cyclesim.cycle sim;
+  check "pacing and driven-output role conflict rejected" o.rejected_o 1;
+  check "role conflict leaves no arm" o.armed_o 0;
+  i.pacing_pin_i := bits 3 1;
+  Cyclesim.cycle sim;
+  i.arm_valid_i := Bits.gnd;
+  check "valid retry arms" o.armed_o 1;
+  i.occupied_i := bits 8 1;
+  i.pin_async_i := bits 8 8;
+  Cyclesim.cycle sim;
+  Cyclesim.cycle sim;
+  Cyclesim.cycle sim;
+  check "start-time ownership conflict rejects" o.rejected_o 1;
+  check "conflict clears arm" o.armed_o 0;
+  check "conflict never drives" o.pin_oe_o 0;
+  i.occupied_i := Bits.zero 8;
+  i.pin_async_i := Bits.zero 8;
+  i.arm_valid_i := Bits.vdd;
+  Cyclesim.cycle sim;
+  i.arm_valid_i := Bits.gnd;
+  i.pin_async_i := bits 8 8;
+  Cyclesim.cycle sim;
+  Cyclesim.cycle sim;
+  Cyclesim.cycle sim;
+  check "rearm after conflict starts" o.busy_o 1;
+  check "rearm owns output" o.claim_mask_o 1
+;;
+
+let%test_unit "P2.6 queue faults release cleanly and permit a valid retry" =
+  let sim =
+    Observed_sim.create (Observed_transfer.create (Scope.create ~flatten_design:true ()))
+  in
+  let i = Cyclesim.inputs sim in
+  let o = Cyclesim.outputs sim in
+  let cycle_pad value =
+    i.pin_async_i := bits 8 value;
+    Cyclesim.cycle sim
+  in
+  i.reset_i := Bits.vdd;
+  i.enable_i := Bits.vdd;
+  Cyclesim.cycle sim;
+  i.reset_i := Bits.gnd;
+  i.arm_valid_i := Bits.vdd;
+  i.start_pin_i := bits 3 3;
+  i.pacing_pin_i := bits 3 1;
+  i.pacing_edge_kind_i := bits 2 2;
+  i.bit_count_i := bits 6 1;
+  i.tx_value_i := bits 32 1;
+  i.tx_enable_i := Bits.vdd;
+  i.output_pin_i := bits 3 0;
+  i.launch_trailing_i := Bits.vdd;
+  Cyclesim.cycle sim;
+  check "missing TX word reports underrun" o.underrun_o 1;
+  check "underrun leaves no arm" o.armed_o 0;
+  check "underrun leaves no ownership" o.claim_mask_o 0;
+  i.tx_enable_i := Bits.gnd;
+  i.rx_enable_i := Bits.vdd;
+  i.tx_value_i := Bits.zero 32;
+  i.input_pin_i := bits 3 2;
+  i.tx_valid_i := Bits.vdd;
+  i.rx_ready_i := Bits.gnd;
+  Cyclesim.cycle sim;
+  i.arm_valid_i := Bits.gnd;
+  cycle_pad 8;
+  cycle_pad 8;
+  Cyclesim.cycle sim;
+  cycle_pad 14;
+  cycle_pad 14;
+  Cyclesim.cycle sim;
+  cycle_pad 12;
+  cycle_pad 12;
+  Cyclesim.cycle sim;
+  check "missing RX sink reports overrun" o.overrun_o 1;
+  check "overrun is not successful completion" o.done_o 0;
+  check "overrun releases active state" o.busy_o 0;
+  check "RX-only overrun leaves no claim" o.claim_mask_o 0;
+  i.rx_ready_i := Bits.vdd;
+  i.pin_async_i := Bits.zero 8;
+  i.arm_valid_i := Bits.vdd;
+  Cyclesim.cycle sim;
+  i.arm_valid_i := Bits.gnd;
+  cycle_pad 0;
+  cycle_pad 8;
+  cycle_pad 8;
+  Cyclesim.cycle sim;
+  check "valid retry starts after overrun" o.busy_o 1
+;;

@@ -34,6 +34,14 @@ let half_period = 4
 let tx_pin = 0
 let bit_cycles = 2 * half_period
 
+(* The generated regression deliberately stays inside the small P2.7 demonstration domain.
+   The slice's leading-idle countdown doubles a 16-bit half period into another 16-bit
+   value, so zero and values above 32767 are not ordinary requests. The reference firmware
+   also needs at least two clocks per half period. Wider positive values are not needed to
+   exercise the frame, pin-selection, and interruption dimensions here. *)
+let generated_min_half_period = 2
+let generated_max_half_period = 12
+
 (* P1.3's bit-banged sequence, on the reference machine. *)
 let firmware_samples ?(byte = byte) ?(half_period = half_period) ?(pin = tx_pin) () =
   let firmware =
@@ -62,7 +70,9 @@ let firmware_samples ?(byte = byte) ?(half_period = half_period) ?(pin = tx_pin)
       | c -> raise_s [%message "unexpected wave character" (c : char)])
   in
   Array.of_list
-    (driven @ List.init (2 * bit_cycles) ~f:(fun _ -> Uart_frame_monitor.Sample.idle_high))
+    (driven
+     @ List.init (2 * (2 * half_period)) ~f:(fun _ -> Uart_frame_monitor.Sample.idle_high)
+    )
 ;;
 
 (* The same frame as one typed descriptor, on the reference transfer engine. The engine

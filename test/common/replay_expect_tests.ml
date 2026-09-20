@@ -3,6 +3,45 @@ open! Pin_bank_testbench
 
 let fixture_settings = Replay.Settings.create ~seed:20260919 ~trials:64 ~size:12
 
+let%expect_test "a failure artifact retains dependency, tool, and exact patch data" =
+  let source : Replay.Source_identity.t =
+    { revision = "0123456789abcdef"
+    ; working_tree = "2 modified paths"
+    ; local_patch = "diff --git a/a.ml b/a.ml\n-old\n+new"
+    ; ocaml_version = "5.2.0+ox"
+    ; dependencies = [ "hardcaml 1.2.3"; "base_quickcheck 4.5.6" ]
+    ; tools = [ "dune: 3.24.2"; "iverilog: 12.0" ]
+    }
+  in
+  let replay : Replay.t =
+    { test = "artifact_fixture"
+    ; source_file = "test/common/replay_expect_tests.ml"
+    ; settings = Replay.Settings.create ~seed:1 ~trials:2 ~size:3
+    ; trial = Some 0
+    ; config = Sexp.Atom "fixture"
+    ; source
+    ; rerun = "dune runtest test/common --force"
+    }
+  in
+  print_string (Replay.artifact_appendix replay);
+  [%expect
+    {|
+
+    reproduction dependency manifest:
+      hardcaml 1.2.3
+      base_quickcheck 4.5.6
+
+    reproduction tool manifest:
+      dune: 3.24.2
+      iverilog: 12.0
+
+    reproduction local patch (apply from the recorded source revision):
+    diff --git a/a.ml b/a.ml
+    -old
+    +new
+    |}]
+;;
+
 let%expect_test "artifact paths are valid from a dune runner directory" =
   let directory = [%string "protemu-artifacts-test-%{Replay.Posix.getpid ()#Int}"] in
   let path =

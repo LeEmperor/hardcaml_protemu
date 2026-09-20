@@ -1041,7 +1041,8 @@ let quickcheck
           ~test
           ~settings
           ~trial
-          ~contents:(Failure.to_string_hum failure)
+          ~contents:
+            (Failure.to_string_hum failure ^ Replay.artifact_appendix failure.replay)
       else None
     in
     Some { failure with artifact }

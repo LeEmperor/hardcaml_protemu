@@ -79,8 +79,11 @@ end
 module Source_identity = struct
   type t =
     { revision : string
-    ; local_diff : string
+    ; working_tree : string
+    ; local_patch : string
     ; ocaml_version : string
+    ; dependencies : string list
+    ; tools : string list
     }
   [@@deriving sexp_of, compare, equal]
 
@@ -100,13 +103,83 @@ module Source_identity = struct
     | _ -> None
   ;;
 
+  let source_root () = Option.value (Sys.getenv "DUNE_SOURCEROOT") ~default:"."
+
   let git arguments =
-    let directory =
-      match Sys.getenv "DUNE_SOURCEROOT" with
-      | None -> ""
-      | Some root -> [%string "-C %{Filename.quote root} "]
+    read_command
+      [%string "git -C %{Filename.quote (source_root ())} %{arguments} 2>/dev/null"]
+  ;;
+
+  (* [git diff] returns one when it successfully found a difference. That is data here,
+     not a command failure. This separate reader preserves the ordinary [git] helper's
+     stricter zero-only behavior. *)
+  let git_diff arguments =
+    try
+      let command =
+        [%string "git -C %{Filename.quote (source_root ())} %{arguments} 2>/dev/null"]
+      in
+      let channel = Posix.open_process_in command in
+      let output = In_channel.input_lines channel in
+      match Posix.close_process_in channel with
+      | Posix.WEXITED (0 | 1) -> Some output
+      | _ -> None
+    with
+    | _ -> None
+  ;;
+
+  let local_patch () =
+    match git_diff "diff --binary --no-ext-diff HEAD -- ." with
+    | None -> unavailable
+    | Some tracked ->
+      let untracked =
+        match git "ls-files --others --exclude-standard" with
+        | None -> [ "# untracked files: unavailable" ]
+        | Some paths ->
+          List.concat_map paths ~f:(fun path ->
+            match
+              git_diff
+                [%string "diff --binary --no-index /dev/null %{Filename.quote path}"]
+            with
+            | Some patch -> patch
+            | None -> [ [%string "# could not capture untracked file: %{path}"] ])
+      in
+      String.concat ~sep:"\n" (tracked @ untracked)
+  ;;
+
+  let command_identity name command =
+    match read_command [%string "%{command} 2>/dev/null"] with
+    | Some (version :: _) -> [%string "%{name}: %{version}"]
+    | Some [] | None -> [%string "%{name}: %{unavailable}"]
+  ;;
+
+  let dependencies () =
+    let packages =
+      String.concat
+        ~sep:" "
+        [ "ocaml"
+        ; "dune"
+        ; "core"
+        ; "core_unix"
+        ; "base_quickcheck"
+        ; "splittable_random"
+        ; "hardcaml"
+        ; "hardcaml_asic"
+        ; "hardcaml_event_driven_sim"
+        ; "hardcaml_step_testbench"
+        ; "ppx_expect"
+        ; "ppx_hardcaml"
+        ; "ppx_jane"
+        ; "ppx_js_style"
+        ; "ocamlformat"
+        ]
     in
-    read_command [%string "git %{directory}%{arguments} 2>/dev/null"]
+    match
+      read_command
+        [%string
+          "opam list --installed --short --columns=name,version %{packages} 2>/dev/null"]
+    with
+    | Some versions -> if List.is_empty versions then [ unavailable ] else versions
+    | None -> [ unavailable ]
   ;;
 
   let current () =
@@ -118,7 +191,7 @@ module Source_identity = struct
          | Some (revision :: _) -> revision
          | _ -> unavailable)
     in
-    let local_diff =
+    let working_tree =
       match git "status --porcelain" with
       | None -> unavailable
       | Some [] -> "clean"
@@ -126,14 +199,51 @@ module Source_identity = struct
         let modified = List.length changes in
         [%string "%{modified#Int} modified paths"]
     in
-    { revision; local_diff; ocaml_version = Sys.ocaml_version }
+    { revision
+    ; working_tree
+    ; local_patch = local_patch ()
+    ; ocaml_version = Sys.ocaml_version
+    ; dependencies = dependencies ()
+    ; tools =
+        [ command_identity "dune" "dune --version"
+        ; command_identity "iverilog" "iverilog -V"
+        ; command_identity "verilator" "verilator --version"
+        ; command_identity "yosys" "yosys -V"
+        ]
+    }
   ;;
 
+  let digest text = Md5.digest_string text |> Md5.to_hex
+
   let to_lines t =
+    let patch_digest = digest t.local_patch in
+    let patch_lines = String.count t.local_patch ~f:(Char.equal '\n') + 1 in
+    let dependency_digest = digest (String.concat ~sep:"\n" t.dependencies) in
+    let dependency_entries = List.length t.dependencies in
     [ [%string "  source revision:  %{t.revision}"]
-    ; [%string "  working tree:     %{t.local_diff}"]
+    ; [%string "  working tree:     %{t.working_tree}"]
+    ; [%string
+        "  local patch:      %{patch_digest} (%{patch_lines#Int} lines; in artifact)"]
     ; [%string "  ocaml:            %{t.ocaml_version}"]
+    ; [%string
+        "  dependencies:     %{dependency_digest} (%{dependency_entries#Int} entries; in \
+         artifact)"]
     ]
+    @ List.map t.tools ~f:(fun tool -> [%string "  tool:             %{tool}"])
+  ;;
+
+  let artifact_appendix t =
+    String.concat
+      ~sep:"\n"
+      ([ ""; "reproduction dependency manifest:" ]
+       @ List.map t.dependencies ~f:(fun dependency -> "  " ^ dependency)
+       @ [ ""; "reproduction tool manifest:" ]
+       @ List.map t.tools ~f:(fun tool -> "  " ^ tool)
+       @ [ ""
+         ; "reproduction local patch (apply from the recorded source revision):"
+         ; t.local_patch
+         ; ""
+         ])
   ;;
 
   (* What an expect test prints instead. The fixture is asserting that the record is
@@ -202,6 +312,8 @@ let to_lines ?(redact_source = false) t =
     ; [ [%string "  rerun:            %{t.rerun}"] ]
     ]
 ;;
+
+let artifact_appendix t = Source_identity.artifact_appendix t.source
 
 (* Where a failure writes its report. Documented here and printed with every artifact, so
    a reader never has to guess; concurrent trials are kept apart by the trial index and

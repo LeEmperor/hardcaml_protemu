@@ -42,6 +42,24 @@ let%test_unit "P2.7 the model, the engine and the hardware agree on the frame" =
     slice
 ;;
 
+let%test_unit "P2.7 generalized producer comparison uses the requested period" =
+  let byte = 0x3c in
+  let half_period = 12 in
+  let tx_pin = 3 in
+  let trace samples = trace_of samples ~byte ~half_period ~tx_pin in
+  let firmware = trace (firmware_samples ~byte ~half_period ~pin:tx_pin ()) in
+  let descriptor = trace (descriptor_samples ~byte ~half_period ~pin:tx_pin ()) in
+  let slice = trace (fst (slice_samples ~byte ~half_period ~pin:tx_pin ())) in
+  [%test_result: string]
+    ~message:"overridden firmware tail against the descriptor"
+    ~expect:descriptor
+    firmware;
+  [%test_result: string]
+    ~message:"overridden firmware tail against the Hardcaml slice"
+    ~expect:slice
+    firmware
+;;
+
 let%expect_test "P2.7 the saved frame trace" =
   print_string (trace_of (fst (slice_samples ())) ~byte ~half_period ~tx_pin);
   [%expect

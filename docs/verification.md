@@ -1,10 +1,12 @@
 # System verification
 
-Status: current implementation updated on 2026-09-20 after the functional-model
+Status: current implementation updated on 2026-09-20 after the P3.1a program-store
+consumer, independent load/access model, generated core regression, functional-model
 rename, per-block suite reorganization, cycle/event adapter conformance experiment,
 timed `Input_events` pilot, one four-state `Input_events` property, the timed P2.6
-event-to-engine path, and the integrated P2.7 UART-slice suite. The core-decision path,
-resolved-bus four-state behavior, and the physical obligations below remain unimplemented.
+event-to-engine path, the observed-transfer/pin-bank composition, and the integrated P2.7
+UART-slice suite. The real loaded RTL core-decision path, resolved-bus four-state behavior,
+and the physical obligations below remain unimplemented.
 
 This is the enduring source of truth for verification architecture, suite ownership,
 current evidence, and the intended next state. It incorporates the former test
@@ -80,16 +82,20 @@ integration cases extend them:
 | --- | --- | --- |
 | [`test/primitives/`](../test/primitives) | 23 | P2.1 to P2.7: pin bank, input events, timing, FIFOs, shift lane, observed transfer, and UART. |
 | [`primitive_demo_unit_tests.ml`](../test/integration/primitive_demo/primitive_demo_unit_tests.ml) | 1 | Concurrent timer/transfer integration. |
+| [`test/integration/observed_transfer_bank/`](../test/integration/observed_transfer_bank) | 13 | Real pin-bank reservation/commit/cleanup, software arbitration, phase-swept standalone-versus-bank timing, boundary peer checks, interruption/rearm, and a 24-trial fixed-seed property. |
 | [`uart_slice_unit_tests.ml`](../test/integration/uart_slice/uart_slice_unit_tests.ml) | 13 | P2.7 frame, ownership/timer/bank status, pin isolation, completion/release, receiver negatives, model agreement including an overridden period, and the saved-trace expect block. |
-| [`protocol_core_unit_tests.ml`](../test/core/protocol_core/protocol_core_unit_tests.ml) | 6 | P3 core fetch/execute, port arbitration, pause/resume, reset/reload recovery, and loader gating against a local program-store stub. |
+| [`test/core/protocol_core/`](../test/core/protocol_core) | 12 | P3.1a has ten directed load/access/fetch cases and two generated/replay expect tests. RTL is compared cycle by cycle with independent [`Program_access`](../f_model/program_access.ml) control and a local 1RW contract store under three unspecified-output policies. |
+| [`test/integration/program_memory_backend/`](../test/integration/program_memory_backend) | 2 | P0.7 reruns the consumer against `Single_port_ram` Simulation and explicit-Flops Implementation elaborations, checking the exact resource record and contract-defined responses. |
 | [`wrapper_unit_tests.ml`](../test/integration/wrapper/wrapper_unit_tests.ml) | 2 | The P0 observable wrapper. |
 
-Each builds a `Cyclesim.With_interface` simulator, assigns inputs by hand, calls
-`Cyclesim.cycle`, and asserts with `[%test_result: int]`. The protocol-core
-testbench additionally carries its own `Program_store_stub`, a test-only stand-in for
-`hardcaml_asic`'s `Single_port_ram` following the program-memory contract —
-latency-one reads, output held while disabled, and a poison value after a write or
-for a never-written word — so those tests stay independent of the ASIC library.
+Each builds a `Cyclesim.With_interface` simulator and advances it through an owned cycle
+loop. The protocol-core testbench additionally carries its own `Program_store_stub`, a
+test-only stand-in for `hardcaml_asic`'s `Single_port_ram` following the program-memory
+contract: latency-one reads, output held while disabled, and independently selectable
+zero, all-ones, or address-derived values after a write or for a never-written word.
+Expected acceptance, port ownership, validity, and state come from the plain-OCaml
+`Program_access` model, never from DUT outputs, so these tests stay independent of the
+ASIC library and do not encode poison into synthesized logic.
 
 **The P1.6 `Env` harness** is the existing synchronous foundation. Four modules,
 none of which reaches `lib/` or `f_model/`:
@@ -303,26 +309,99 @@ reset/disable/abort, armed and active cancellation, and coincident cancellation/
 priority. The generated run is 48 fresh-state trials at seed `20260920`; a failure records
 its first mismatch, typed configuration, source/dependency identity, and rerun command.
 
-The measured path is 10--19 ticks from external transition to synchronized event, exactly
-10 more ticks to engine action, and 20--29 ticks from external start to driven preload or
-external cancellation to release. Ten-tick external high and low intervals pass every
-phase while nine ticks miss at least one. Ten ticks of start-to-first-pace lead keeps
-engine events distinct while nine can merge them. A peer sampling TX needs a stricter
-30-tick select-to-first-clock lead so the 20--29 tick preload is already driven; 29 ticks
-can coincide with the output update. Data must be present by the pacing transition and
-held through its next system sampling edge, conservatively 10 ticks over all phases.
-Direct reset, disable, and abort release on the next rising edge. No pin-bank stage is in
-this fixture. These are deterministic two-state digital limits, not analog CDC,
-metastability, or physical setup/hold evidence.
+An independent external peer now checks the wire claim separately from model/RTL state.
+It derives sampling edges only from the scheduled external clock and reads only boundary
+pin transactions strictly before each edge. With a required one-tick digital setup, the
+peer receives every bit of 1-, 8-, and 32-bit TX and duplex words for both bit orders,
+idle-low and idle-high, preload-first and launch-first arrangements, every phase, and swept
+asymmetric high/low widths. `Either`-edge pacing starts at the descriptor's `idle_clock`;
+the first transition is the physical leading edge.
 
-This is the event-to-engine-to-pin path, not the event-to-core-decision-to-pin path.
-[`protocol_core.ml`](../lib/protocol_core.ml) still has placeholder Decode/Execute states,
-an 8-bit pre-ISA scaffold, constant-zero pins, and no event or transfer connection. P3.2
-must first implement real fetch/decode execution and P3.3 must connect that core to the
-event, transfer, and pin-bank paths. The eventual fixture must run an actual loaded
+The measured path is 10--19 ticks from external transition to synchronized event, exactly
+10 more ticks to engine action, and 20--29 ticks from external start, launch, or
+cancellation to the registered lane output action. Ten-tick high and low intervals are
+an input-capture and RX-only limit, corresponding to 24 MHz at an assumed 48 MHz system
+clock. They are not a TX/duplex wire limit: a 10/10 schedule completes internally but the
+peer samples stale later bits. TX/duplex requires at least 30 ticks from each launch edge
+to its sampling edge and at least 10 ticks for the opposite half-cycle. This gives 12 MHz
+with asymmetric 10/30 halves or 8 MHz with symmetric 30/30 halves at 48 MHz. A preloaded
+first bit requires 30 ticks from select to first sample; a launch-first configuration
+requires 10 ticks select-to-launch plus 30 ticks launch-to-sample. At the boundary, first
+and subsequent bits have one tick of measured peer setup; 29 ticks fails some phases.
+No pin-bank stage is in this fixture. These are deterministic two-state digital limits,
+not analog CDC, metastability, or physical setup/hold evidence.
+
+Rise-only and fall-only pacing remain event-source functional tests, not wire-clock claims.
+The lane alternates its ordinal leading/trailing phase on each selected event and cannot
+infer a missing opposite physical edge. Wire-level TX/duplex claims therefore use an
+alternating `Either` clock initialized to the declared idle level; this does not infer all
+SPI modes from a parameter toggle.
+
+### Observed-transfer pin-bank integration
+
+[`observed_transfer_bank.ml`](../lib/observed_transfer_bank.ml) and
+[`test/integration/observed_transfer_bank/`](../test/integration/observed_transfer_bank)
+form the smallest current product composition through the real bank. The bridge reserves
+the configured TX pin at arm acceptance, before a synchronized start can activate the lane;
+passes active lane values through masked engine writes; commits zero output-enable before a
+separate release; and shares the bank with one software request port. An internal request
+has priority, and a coincident software offer raises `software_rejected_o` rather than being
+silently discarded. Synchronized cancellation clears and releases only the engine mask;
+reset, disable, and explicit abort retain `Pin_bank`'s documented global release.
+
+The timed adapter samples both the lane and bank outputs. Its simulator-free predictor
+composes the existing `Input_pins` and `Shift_engine` models with `f_model/Pin_bank` and a
+separately stated bridge schedule, and compares every resulting bank transaction before
+giving only those observable bank transactions to the external peer. Directed exhaustive
+sweeps cover every integer phase, idle-low/high, preload-first/launch-first, both bit orders,
+TX and duplex at lengths 1/8/32, and RX-only at 1/32. Unit cases preclaim and drive an unrelated software pin,
+inject a conflicting software claim, retry after release, and offer a concurrent software
+operation. Cancellation is phase-swept and followed by a fresh arm/start/completion. A
+24-trial generated run at seed `20260920` varies direction, length 1..32, order, idle level,
+mapping, phase, data and supported widths; failures use the shared source/configuration and
+replay record.
+
+| Measured path | Digital result |
+| --- | --- |
+| External start/launch to lane output | 20--29 ticks |
+| Ordinary lane preload/data output to bank commit | exactly 10 ticks |
+| External start/launch to committed bank output | 30--39 ticks |
+| External cancellation to committed output-enable clear | 20--29 ticks |
+| External cancellation to bank ownership release | 30--39 ticks |
+
+The peer needs one tick of setup. TX/duplex therefore requires 40 ticks from each physical
+launch to the peer sample and 10 ticks in the opposite half; 39 ticks fails at some phases.
+At an assumed 48 MHz system clock that is 9.6 MHz for asymmetric 10/40 halves or 6 MHz for
+symmetric 40/40 halves. RX-only still uses the 10/10 capture envelope and claims no output.
+The first preloaded sample waits 40 ticks from select; launch-first waits 10 ticks to launch
+and another 40 to sample. The observed bank outputs are the boundary of this fixture only:
+there is no chip wrapper, pad model, routed delay, analog setup/hold, or metastability
+evidence in these measurements.
+
+These are event-to-engine paths, not the event-to-core-decision-to-pin path.
+[`protocol_core.ml`](../lib/protocol_core.ml) now has P3.1a's 16-bit bounded image and
+latency-one fetch boundary, but it deliberately has no PC, decoder, instruction execution,
+or event/transfer/pin-bank connection. P3.2 must first implement real fetch/decode
+execution and P3.3 must connect that core to the event, transfer, and pin-bank paths. The
+eventual fixture must run an actual loaded
 instruction sequence and timestamp the observed event, decoded decision, bank commit,
 and boundary pin; no hard-coded sequencer is accepted as substitute. Run the current
 suite with `./scripts/with-switch.sh dune runtest test/primitives/observed_transfer --force`.
+Run the bank composition with
+`./scripts/with-switch.sh dune runtest test/integration/observed_transfer_bank --force`.
+
+The future loaded-path contract is concrete rather than tied to placeholder core internals.
+The `wait_start_then_drive` image in `test/f_model/test_isa.ml` preclaims pin 0 for the
+software owner in fixture initial state, writes it low, executes `Wait_edge` on pin 3 rising,
+writes pin 0 high, and halts. It assembles to default-memory words `7804 0000 a300 7804 0001
+0000` and executes in 13 reference edges. P3.2 must expose the edge where the decoded wait
+consumes the synchronized event and resumes fetch. P3.3 must expose the independently
+predicted software bank request/acceptance, registered bank commit and system boundary.
+Sweep the external event after the wait is armed, retain the P1.5 fetch schedule, cap each
+run at 256 edges, and report the first mismatch with timestamp, edge, PC/slot, decoded
+instruction, event, request/ownership/value/enable, nearby samples and replay identity.
+The ISA has no claim/release instruction, so the software claim is explicit fixture initial
+state; changing that requires an ISA/architecture decision, not a test-only opcode.
 
 ### P2.7 UART-slice evidence
 
@@ -863,10 +942,10 @@ Historical run reports are not fresh results for later source revisions.
 | Cycle/event adapter scheduling | `test/common/backend_conformance*.ml`; matching five-edge known-value trace, completion, and timeout on Cyclesim/two-state Evsim; exact-coincidence ordering is enforced by the P2.2 runner | Recheck the characterized adapter and delta-settle convention when dependencies change |
 | Pin bank cycle agreement and harness diagnostics | `test/primitives/pin_bank/` plus generic fixtures in `test/common/`; recorded 200 trials and seed sweeps above | Extend properties as the block contract grows |
 | Other primitive cycle behavior | 23 block-owned directed tests under `test/primitives/` and one integration case under `test/integration/primitive_demo/` | Add bounded generated properties where they provide distinct evidence |
-| Core memory/fetch/execute behavior | Six directed tests in `test/core/protocol_core/`: latency-one fetch, last-write validity, live-load refusal, pause/resume without a memory access, reset/reload recovery, and disabled-loader gating | Readback, loaded-image validity/bounds, load-complete, engine-idle gating, decode, and core/engine interruption remain absent product contracts, not passing tests |
+| Core program load/access/fetch behavior | [`test/core/protocol_core/`](../test/core/protocol_core): ten directed cases plus 240 generated fresh-state scenarios at seed `20260920` compare RTL with independent [`f_model/program_access.ml`](../f_model/program_access.ml) and a 1RW contract store. Evidence covers complete/partial/interrupted/replacement loads, duplicates and missing words, zero/depth/oversized lengths, full-word verification and mismatch, halted/engine-idle gating, simultaneous priority, live-access noninterference, exact latency-one association, reset/disable/halt/reload cancellation, final/out-of-image/out-of-range fetches, and zero/all-ones/address-derived unspecified outputs. [`generate_core.ml`](../bin/generate_core.ml) is linted and generically synthesized under `@rtl`. | P3.1b/P0.7 must rerun the consumer against the selected context-registered backend. P3.2 still owes decode/execution, slot extraction if `m32` is selected, branches/extensions/stalls, and instruction cycle counts; P3.3 still owes engines and boundary stop/abort integration. |
 | P0 wrapper | Two tests in `test/integration/wrapper/` plus `@rtl` wrapper checks | Later host/load/recovery evidence |
 | P2.2 external phase and pulse capture | `test/primitives/input_events/input_events_timing_{testbench,tests}.ml`; directed cases plus 160 generated trials, 10--19 tick deterministic latency, captured/missed pulse cases, reset/event interactions, temporal shrink/replay | Physical CDC/setup/hold/metastability evidence remains separate |
-| P2.6 event-to-engine/core-to-pin latency | `test/primitives/observed_transfer/observed_transfer_timing_{testbench,tests}.ml`; independent input/shift models and reconstructed pins cover all phases, 1/32-bit bounds, directions/orders/phases/edges, width and data boundaries, generated schedules, interruption and recovery. External-to-event is 10--19 ticks, event-to-action 10, start-to-drive and cancellation-to-release 20--29; the digital envelope is 10-tick high/low, 10-tick engine lead, 30-tick TX peer-sample lead. | P3.2/P3.3 actual execution and bank integration, then real event-to-core-decision-to-committed-pin timing; analog CDC/setup/hold and physical timing remain separate |
+| P2.6 event-to-engine/core-to-pin latency | The primitive timed suite covers idle-low/high physical mappings at the lane boundary: external-to-event is 10--19 ticks, event-to-lane is 10, and external-to-lane is 20--29. `test/integration/observed_transfer_bank/` measures a further 10-tick commit, giving 30--39 ticks external-to-bank; cancellation clears bank OE in 20--29 and releases ownership in 30--39. Independent peers cover all phases, lengths 1/8/32, directions/orders, first/later bits, positive and failing deadlines. | P3.2/P3.3 loaded RTL execution and integration, then real event-to-core-decision-to-committed-pin timing; wrapper/pad, analog CDC/setup/hold and physical timing remain separate |
 | P2.7 UART TX slice | `test/integration/uart_slice/`: 12 directed unit cases, a saved-trace expect/diff, and 96 generated Cyclesim trials at seed `20260920`; model/descriptor/Hardcaml frames agree relative to their detected start edges, while slice ownership, timer, bank, pin isolation, completion and interruption contracts are checked at the hardware boundary; `p2_uart_slice_tb.v` repeats the frame/release checks on emitted RTL | Independent request-to-pin/completion latency, the unverified wider period range, P3 fetch/decode/core-to-engine behavior, the P4 UART baseline, physical timing, and formal invariants remain separate obligations |
 | Unknown pad propagation and recovery | `test/primitives/input_events/input_events_four_state_{testbench,tests}.ml`; declared injection site/window/resolution, isolation and per-pin containment, a three-edge recovery bound, 120 generated trials at seed `20260919`, and two controlled negatives covering a design leak and a coercing observer | Extend to further blocks only where a contract names an X/Z obligation |
 | Resolved external buses, open-drain wire resolution | No four-state suite | An explicit multi-driver/pull-up model and targeted tests, or a recorded decision to leave it to the emitted-RTL tier |

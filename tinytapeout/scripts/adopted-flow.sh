@@ -76,6 +76,7 @@ Environment:
   PROTEMU_FLOW_RESULTS  kept archives, one per run        (./flow_results)
   PROTEMU_ARCHIVE   exact archive directory for this run
   PROTEMU_STAGE     full | synthesis, how far "run" goes             (full)
+  PROTEMU_DESIGN    observable | memory, bundle design          (observable)
   PROTEMU_TT        tt-support-tools checkout
   PROTEMU_PDK_ROOT  PDK root (IHP sg13cmos5l)
   PROTEMU_FLOW_PY   python of the LibreLane venv
@@ -296,7 +297,11 @@ step_emit() {
     fi
     mkdir -p "$out"
     dune_ build bin/asic_bundle.exe || return $?
-    "$repo_root/_build/default/bin/asic_bundle.exe" "$bundle" "$repo_root"
+    local design=${PROTEMU_DESIGN:-observable}
+    [[ $design == observable || $design == memory ]] || {
+        echo "flow: PROTEMU_DESIGN must be observable or memory" >&2; return 2;
+    }
+    "$repo_root/_build/default/bin/asic_bundle.exe" "$design" "$bundle" "$repo_root"
 }
 
 step_preflight() {

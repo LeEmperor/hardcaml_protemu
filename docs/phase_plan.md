@@ -1,7 +1,8 @@
 # Protocol emulator phase plan
 
-Status: working execution plan, updated 2026-09-19 for the P1.5 encoding decision,
-and 2026-09-18 for decoupled RTL development and P0.6 ASIC library adoption. The
+Status: working execution plan, updated 2026-09-20 for P3.1a completion,
+2026-09-19 for the P1.5 encoding decision, and 2026-09-18 for decoupled RTL
+development and P0.6 ASIC library adoption. The
 instruction encoding is now provisionally chosen and lives in `isa/`; P0.7 remains
 deferred; P0.5 is split into legacy/adopted runs, and pre-adoption P2.8 evidence is
 defined.
@@ -252,7 +253,7 @@ with the first pin/timer work in P1/P2.
   existing wrapper regression, Verilator lint, and generic synthesis against
   emitted RTL in the pinned LibreLane image. P0.5b has since recorded the
   physical rerun.
-- [ ] **P0.7 — Exercise registered program memory.** After P0.6 and library
+- [x] **P0.7 — Exercise registered program memory.** After P0.6 and library
   backend conformance, elaborate a small load/readback design using context-
   registered `Single_port_ram` and an explicitly selected flop implementation.
   Evidence: latency-one read, disabled-output hold, whole-word writes, consumer
@@ -260,8 +261,18 @@ with the first pin/timer work in P1/P2.
   RTL integration checks; the manifest records shape, identity, and selection.
   Consume the emitted bundle with the pinned flow and record mapped synthesis
   cost. This fixture does not complete P3's loader or instruction execution.
-  *Deferred:* follows P0.6. If P3.1a has landed by then, its contract-port
-  consumer can serve as the load/readback design in place of a separate fixture.
+  *Done:* P3.1a's 256x16 consumer is connected to context-registered
+  `Single_port_ram` in [`asic_bundle.ml`](../bin/asic_bundle.ml), with explicit
+  `Flops` policy and stable resource name `program`. Independent consumer,
+  behavioral/flop elaboration, and both emitted-RTL checks cover latency,
+  whole-word load/readback, validity, hold, bounds, rejected accesses, reset,
+  disable, and unspecified-output independence. Bundle `7ce444837068766c...` /
+  run `a538212c80fb407b...` completed mapped CMOS5L synthesis at 16,294 cells
+  and 349,314.9408 um^2 with zero latches, unmapped instances, or synthesis
+  errors. See the
+  [P0.7 record](../tinytapeout/reports/2026-09-20-p0.7-memory-synthesis.md) and
+  [archive](../flow_results/20260920-071538-a538212c/README.md). This is
+  synthesis-only evidence, not SRAM or physical closure.
 
 **Exit gate:** P0.1–P0.7 have evidence, including P0.5b. Because P0.6/P0.7 are
 deferred, this gate is expected to close after later phases have started. A small
@@ -555,15 +566,58 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
     independent input and shift-engine models, checks reconstructed pin transactions and
     RX/fault state for multi-bit directed and generated schedules, and measures 10--19
     ticks external-to-synchronized-event, 10 ticks event-to-engine, and 20--29 ticks
-    start-to-pin or cancellation-to-release. The verified digital envelope is 10-tick
-    external high/low, 10-tick start-to-engine-pace lead, and 30-tick
-    select-to-first-peer-sampling edge for TX.
+    start/launch-to-pin or cancellation-to-release. The audited envelope separates
+    10/10-tick input capture and RX-only operation from TX/duplex wire behavior. An
+    independent external peer verifies every bit of idle-low 8- and 32-bit TX/duplex at
+    all phases when the launch-to-sample half is at least 30 ticks and the opposite half
+    is at least 10 ticks, with one tick of peer setup. At an assumed 48 MHz system clock
+    this is 24 MHz for capture/RX-only, 12 MHz for asymmetric TX/duplex, or 8 MHz for
+    symmetric TX/duplex. The earlier unqualified 24 MHz statement was not TX wire evidence;
+    P2.6a remains complete on the corrected, explicitly restricted digital envelope.
+    *Supplementary preparation:* the peer sweep now also verifies idle-high, both physical
+    preload-first/launch-first mappings, and 1/8/32-bit boundaries. Wire claims use an
+    alternating `Either` clock initialized to the declared idle level; rise-only/fall-only
+    event streams remain functional tests rather than all-mode wire evidence.
   - [ ] **P2.6b -- Real core path.** Blocked: [`protocol_core.ml`](../lib/protocol_core.ml)
-    still has placeholder decode/execute and no event/engine/pin-bank integration. After
+    now has P3.1a's safe load/fetch boundary but still has no decode/execute or
+    event/engine/pin-bank integration. After
     P3.2/P3.3, run a loaded program through the documented fetch/execute contract and
     timestamp event, core decision, bank commit, and boundary pin. Parent P2.6 remains
-    unchecked until that actual path is measured; a testbench sequencer or direct
-    event-to-pin path is not evidence.
+     unchecked until that actual path is measured; a testbench sequencer or direct
+     event-to-pin path is not evidence.
+     *Return trigger:* P3.2 and P3.3 are prerequisites for P2.6b and therefore for
+     parent P2.6 closure, not prerequisites for the completed P2.6a primitive work.
+     When either prerequisite completes, reassess this blocker; as soon as both
+     provide the executable event-to-core-to-pin path, make P2.6b the next
+     implementation/verification slice. Return here to record the phase-swept real
+     core-path latency and the timing envelope at the committed boundary pins before
+     closing P2.6b and P2.6. Do not leave this return until P4 protocol work.
+     *Work possible before the trigger:* prepare the loaded-program scenario and
+     timestamp/monitor contract, and verify observed-transfer pin-bank timing and
+     idle-high wire mappings independently of the core. Those primitive/integration
+     results supplement P2.6a and prepare P2.6b; they do not satisfy its real-core
+     measurement or remove the blocker.
+     *Preparation completed:* [`observed_transfer_bank.ml`](../lib/observed_transfer_bank.ml)
+     reserves the output at arm acceptance, commits lane writes through the real bank,
+     clears output enable before release, and explicitly arbitrates software offers.
+     [`test/integration/observed_transfer_bank/`](../test/integration/observed_transfer_bank)
+     measures 20--29 ticks external-to-lane, 10 ticks for ordinary lane-to-bank data
+     commits, and 30--39 ticks
+     external-to-committed-bank output. The bank-boundary peer requires 40 ticks
+     launch-to-sample plus a 10-tick opposite half: 9.6 MHz asymmetric or 6 MHz symmetric
+     at an assumed 48 MHz system clock; 39 ticks fails some phases. Cancellation clears
+     bank output enable in 20--29 ticks and releases ownership in 30--39. The sweep covers
+     idle-low/high, both mappings and orders, TX/RX/duplex, 1/8/32 bits, conflicts,
+     symmetric/asymmetric duty cycles, interruption and rearming. This boundary is the
+     bank's registered outputs, not a chip wrapper or pad.
+     The prepared `wait_start_then_drive` program is assembled and executed now by the
+     independent core/store model: default-memory words `7804 0000 a300 7804 0001 0000`
+     predrive software-owned pin 0 low, wait for pin 3 rising, drive pin 0 high, and halt
+     in 13 model edges. The exact future timestamps, initial state, finite limit, diagnostics
+     and P3 observation points are in the
+     [P2 implementation record](p2-implementation.md#prepared-real-core-scenario).
+     This model execution and direct engine/bank composition are preparation only. P2.6b
+     and parent P2.6 remain unchecked until the loaded RTL core path exists and is measured.
 - [x] **P2.7 — Close the first UART TX demonstration.** Connect P1.3's sequence
   to the pin/timer hardware and the emitted-RTL harness. Evidence: an independent
   monitor checks idle, start, data, stop, bit periods, and reset/disable during
@@ -635,8 +689,8 @@ Filtering, extra descriptor slots, and extra lanes remain measured decisions.
 P0.6/P0.7's adopted ASIC path; the rest of P3 proceeds against the memory contract
 before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decoupled-from-asic-adoption)).
 
-- [ ] **P3.1 — Program store and load validity.** Split at the adoption boundary.
-  - [ ] **P3.1a — Contract-port consumer logic.** In the core, drive the store's 1RW
+- [x] **P3.1 — Program store and load validity.** Split at the adoption boundary.
+  - [x] **P3.1a — Contract-port consumer logic.** In the core, drive the store's 1RW
     latency-one port without instantiating it. Keep program/loaded-image
     validity and bounds enforcement in the emulator. Gate both host writes and
     readback on halted-and-engines-idle; reject requests during execution without
@@ -644,25 +698,43 @@ before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decouple
     against the testbench contract model: partial loads, reset,
     out-of-image/out-of-range fetches, and attempted live accesses cannot start or
     corrupt execution; post-write and unwritten outputs are never valid
-    instructions; nothing depends on bulk reset or initialization. *Progress:* the
-    [`protocol_core.ml`](../lib/protocol_core.ml) scaffold drives the contract port
-    with halted-only writes and a latency-one fetch
-    ([`test/core/protocol_core/`](../test/core/protocol_core)). Readback, validity,
-    bounds, load-complete, and engine-idle gating remain.
-  - [ ] **P3.1b — Context-registered store at the project top.** After P0.6/P0.7,
+    instructions; nothing depends on bulk reset or initialization.
+    *Done:* [`protocol_core.ml`](../lib/protocol_core.ml) implements the 256x16 default
+    P1.5-layout consumer, sequential bounded replacement loads, full-word ordered
+    readback comparison, verified completion, halted-and-idle host gating, explicit
+    fetch ownership/validity, and bounds checks before address narrowing. The independent
+    [`program_access.ml`](../f_model/program_access.ml) model and
+    [`test/core/protocol_core/`](../test/core/protocol_core) cover directed boundary and
+    interruption cases plus 240 generated scenarios at seed `20260920`, against three
+    legal choices for unspecified RAM output. Standalone emitted RTL passes Verilator
+    lint and generic Yosys synthesis under `@rtl`. Contracts, commands, results, and
+    limitations are in the [P3.1a implementation record](p3.1a-implementation.md).
+    Parent P3.1 remains open for P3.1b.
+  - [x] **P3.1b — Context-registered store at the project top.** After P0.6/P0.7,
     instantiate `hardcaml_asic.Single_port_ram` in the project design constructor
     and connect P3.1a's port. Evidence: P3.1a's checks rerun against the library's
     behavioral model and emitted RTL; selection and any allowed fallback are
     recorded in the build.
+    *Done:* P0.7 provides the exact connection and evidence linked above; the
+    manifest records explicit flops, not fallback or macro selection.
 - [ ] **P3.2 — Minimal control execution.** Implement fetch/decode, registers,
   flags, state operations, branches/loops, and halt for the provisional ISA.
   Evidence: independent-model comparisons cover each implemented instruction,
   taken/untaken paths, latency-one fetches, stalled fetch/output hold, pipeline
-  validity, extension-word fetches, invalid instructions, and cycle counts.
+   validity, extension-word fetches, invalid instructions, and cycle counts.
+   *Required follow-up:* on completion, reassess P2.6b's real-core-path blocker.
+   If P3.3 is also ready, return to P2.6b as the next slice and resolve the remaining
+   parent P2.6 evidence; otherwise carry that return explicitly into P3.3.
 - [ ] **P3.3 — Core-to-engine integration.** Connect pin, time, transfer, event,
   and FIFO instructions. Add boundary STOP, prompt ABORT, and single-step with
   engines idle. Evidence: engines continue through ordinary core waits; completion,
-  faults, ownership, queue pressure, and interruption match reference traces.
+   faults, ownership, queue pressure, and interruption match reference traces.
+   *Required follow-up:* once P3.2 and this integration provide the executable
+   event-to-core-to-pin path, return immediately to P2.6b as the next slice. Measure
+   event, core decision, pin-bank commit, and boundary pin through a real loaded
+   program, update the boundary timing envelope, and resolve P2.6b/parent P2.6
+   before moving on to P4 protocol acceptance. If the path is still unavailable,
+   record the exact missing prerequisite beside P2.6b rather than dropping the return.
 - [ ] **P3.4 — Host API and simulator backend.** Define version/capability
   discovery, program load/readback, pin configuration, data queues, execution
   control, register/engine inspection, and bounded timestamped trace retrieval.

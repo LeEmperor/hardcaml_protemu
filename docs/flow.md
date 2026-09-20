@@ -105,6 +105,7 @@ export PROTEMU_FLOW_OUT="$PWD/tinytapeout/build/my-experiment"
 | `PROTEMU_FLOW_RESULTS` | kept archives, one per run | `./flow_results` |
 | `PROTEMU_ARCHIVE` | exact archive directory for this run | derived from the run |
 | `PROTEMU_STAGE` | `full` or `synthesis`: how far `run` goes | `full` |
+| `PROTEMU_DESIGN` | `observable` or P0.7 `memory` bundle | `observable` |
 | `PROTEMU_TT` | tt-support-tools checkout | from bootstrap |
 | `PROTEMU_PDK_ROOT` | PDK root (IHP `sg13cmos5l`) | from bootstrap |
 | `PROTEMU_FLOW_PY` | python of the LibreLane venv | from bootstrap |
@@ -279,8 +280,9 @@ Not established:
 
 - Reporting on a **failed or interrupted real run** — only the missing-run and
   stub paths have been exercised.
-- `PROTEMU_STAGE=synthesis` is passed through and documented, but has not been
-  run since the migration.
+- `PROTEMU_STAGE=synthesis` completed for the P0.7 memory bundle; its mapped
+  result is archived at
+  [`flow_results/20260920-071538-a538212c`](../flow_results/20260920-071538-a538212c/README.md).
 - Emission is **not reproducible from `source_revision` alone**: the P0.5b bundle
   was emitted from a tree with modified and untracked inputs. The manifest pins
   content by hash and records each input's `git_status`, so the bundle is pinned;

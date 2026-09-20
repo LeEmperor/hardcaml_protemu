@@ -51,3 +51,10 @@
  (target uart_slice.generated.v)
  (action
   (run %{exe:../../bin/generate_p2.exe} uart_slice %{target})))
+
+; P3.1a contract-port consumer only. P3.1b supplies the registered RAM at the project top.
+
+(rule
+ (target protocol_core.generated.v)
+ (action
+  (run %{exe:../../bin/generate_core.exe} %{target})))

@@ -94,4 +94,30 @@
    ; The system diff, not dune's: dune's would make the trace a target of this rule and
    ; a dependency of its own action, and the whole point of the `rtl` alias is that
    ; nothing here is built unless the HDL tools are being asked for.
-   (run diff -u ../../test/integration/uart_slice/uart_frame.trace uart_slice_rtl.trace))))
+   (run
+    diff
+    -u
+    ../../test/integration/uart_slice/uart_frame.trace
+    uart_slice_rtl.trace))))
+
+; P3.1a emitted-RTL generation, HDL lint, and generic synthesis smoke. This proves the
+; consumer elaborates without an ASIC-library dependency; behavioral evidence remains in
+; test/core/protocol_core and backend integration remains P3.1b/P0.7.
+
+(rule
+ (alias rtl)
+ (deps ../src/protocol_core.generated.v)
+ (action
+  (progn
+   (run
+    verilator
+    --lint-only
+    --top-module
+    protocol_core
+    -Wno-DECLFILENAME
+    ../src/protocol_core.generated.v)
+   (run
+    yosys
+    -q
+    -p
+    "read_verilog ../src/protocol_core.generated.v; hierarchy -check -top protocol_core; synth -top protocol_core; stat"))))

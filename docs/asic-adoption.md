@@ -1,7 +1,7 @@
-# P0.6 ASIC bundle adoption
+# P0.6/P0.7 ASIC bundle adoption
 
-`bin/asic_bundle.ml` declares the current P0 observable circuit and its Tiny
-Tapeout wrapper as one `hardcaml_asic.Project.Design`. It preserves the existing
+`bin/asic_bundle.ml` declares selectable `observable` and `memory` Tiny Tapeout
+designs. The observable design preserves the existing
 `tinytapeout/src/project.v` pin map, two-edge reset release, and immediate pad
 release on reset or disable. The Verilog wrapper and hand-maintained
 `tinytapeout/info.yaml` and `src/config.json` remain the legacy P0 path; use an
@@ -25,6 +25,8 @@ installed or visible through `OCAMLPATH`.
 ./scripts/with-switch.sh dune build bin/asic_bundle.exe
 ./scripts/with-switch.sh dune exec bin/asic_bundle.exe -- \
   /tmp/protemu-adopted-bundle "$PWD"
+./scripts/with-switch.sh dune exec bin/asic_bundle.exe -- \
+  memory /tmp/protemu-memory-bundle "$PWD"
 ```
 
 The output directory must be new or empty. The emitter lists its own OCaml,
@@ -55,20 +57,25 @@ them against the actual board and host timing before physical closure.
 ```sh
 ./scripts/with-switch.sh dune build bin/asic_bundle.exe
 python3 tinytapeout/scripts/check-adopted-bundle.py
+python3 tinytapeout/scripts/check-adopted-bundle.py --kind memory
 ```
 
 The check emits twice, compares manifest identity and bytes, checks source
 copies and hashes, generated metadata/configuration/SDC, rejects conflicting
 `CLOCK_PERIOD`, `VERILOG_FILES`, and `DIE_AREA` overrides, and runs the existing
-`tinytapeout/test/tb.v` wrapper trace on emitted RTL. It also runs Verilator
+the applicable observable or memory wrapper trace on both emitted RTL source
+sets. It also runs Verilator
 lint and generic Yosys synthesis inside the pinned LibreLane Docker image.
 The full check needs an accessible Docker daemon and that image. The consumer
 can populate the image cache independently with
 `docker pull ghcr.io/librelane/librelane:3.1.0.dev3`; the check itself never
 pulls. It does not require the `hardcaml_asic` source checkout or host installs
 of the HDL binaries. `--metadata-only` runs the
-bundle and declaration checks without Docker. Physical flow execution and
-registered program memory remain separate P0.5b/P0.7 work.
+bundle and declaration checks without Docker. Memory mode additionally checks
+the exact RAM identity, 256x16 shape, explicit flop selection,
+behavioral/implementation source roles, and absence of initialization in
+implementation RTL. Its mapped-synthesis evidence is the
+[P0.7 record](../tinytapeout/reports/2026-09-20-p0.7-memory-synthesis.md).
 
 ## Running the flow
 

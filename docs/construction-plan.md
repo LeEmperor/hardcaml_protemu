@@ -1,9 +1,10 @@
 # Protocol emulator construction plan
 
-Status: architecture and integration plan, updated 2026-09-17 for the implemented
-`hardcaml_asic` slice (its P0–P3, P4.1–P4.4) and the decision to develop emulator
-RTL decoupled from ASIC adoption (section 1). Sizes, rates, and instruction
-names remain study parameters, not implemented capabilities or a frozen ISA.
+Status: architecture and integration plan, updated 2026-09-20 for P3.1a's bounded
+program load/access/fetch contract, and 2026-09-17 for the implemented `hardcaml_asic`
+slice (its P0–P3, P4.1–P4.4) and the decision to develop emulator RTL decoupled from
+ASIC adoption (section 1). Sizes, rates, and instruction names remain study parameters,
+not implemented capabilities or a frozen ISA.
 
 ## 1. Direction and scope
 
@@ -132,12 +133,13 @@ that rework.
 
 ## 2. What exists today
 
-- `lib/protocol_core.ml`: an Idle/Fetch/Decode/Execute scaffold with an 8-bit PC
-  and an output bank tied to zero. It drives an external 256x8 program store through
-  a contract-conforming 1RW port: fetch issues a read and decode consumes it one cycle
-  later, and host writes are accepted only while halted. Decode/execute, readback,
-  and image validity are placeholders. `test/core/protocol_core/` checks it against
-  a contract model of the store.
+- `lib/protocol_core.ml`: P3.1a's external-store consumer for the default 256x16 `m16`
+  image. It owns sequential load coverage, full-word ordered readback verification,
+  executable-image bounds, halted-and-engine-idle host gating, request rejection,
+  latency-one fetch ownership, and validity independent of memory data. It has no PC,
+  decoder, instruction execution, or engine/pin integration; those remain P3.2/P3.3.
+  `test/core/protocol_core/` compares it with an independent control model and a 1RW
+  contract store under varied unspecified outputs.
 - `isa/`: the instruction specification (Dune library `hardcaml_protemu.isa`, no
   Hardcaml dependency and no execution), which P1.5 chose and recorded in
   [the decision](p1.5-encoding-decision.md). `instruction.ml` is the instruction set,
@@ -173,8 +175,10 @@ that rework.
   the block-owned suites under `test/primitives/`, with `bin/generate_p2.ml` emitting
   standalone Verilog for every block. Their interfaces, contracts, and the latencies measured in
   digital simulation are in the [P2 record](p2-implementation.md). Mapped CMOS5L
-  cost for them is not measured (P2.8), and the lane's claim mask is not yet wired
-  through pin-bank arbitration at a project top.
+  cost for them is not measured (P2.8). `observed_transfer_bank.ml` now exercises one
+  observed lane through real pin-bank reservation, arbitration, masked commits and cleanup;
+  it is an integration block and measured fixture boundary, not yet the project top or
+  core-to-engine arbiter.
 - `test/integration/wrapper/` and `tinytapeout/test/tb.v`: focused P0
   Hardcaml/wrapper tests. They do not establish complete pin-bank or UART support.
 - `tinytapeout/`: wrapper, metadata, pinned flow inputs, staging, local checks,
@@ -327,6 +331,17 @@ software round trip. This generic facility is a candidate for UART start-bit
 alignment and externally clocked shifts. Add a second descriptor slot only if
 gap-free traffic measurements show that software cannot refill in time.
 
+For a wire clock, `idle_clock` defines the physical initial level and the first transition
+is the leading edge. An alternating external clock is represented by `Either`; the lane
+then maps physical leading/trailing edges to configured launch/sample phases. A rise-only
+or fall-only source supplies ordinal events and does not by itself represent both halves
+of a wire clock. Tests and firmware must not infer all SPI modes from changing
+`idle_clock` or an internal phase toggle without an independent peer checking the physical
+edges. A transfer-to-bank bridge reserves the output mask when arming, before an observed
+start can activate it, and clears output enable in one bank commit before a separate
+ownership release. Local select cancellation must not use the bank's global abort, which
+would also clear unrelated software ownership.
+
 ## 4. Minimum control ISA and memory study
 
 | Family | Candidate operations | Initial decision |
@@ -379,6 +394,75 @@ fetch outside that verified image and reject partial transport words. A write or
 an unwritten location must never supply a valid instruction. Model fetch latency,
 stalls, branches, and extension fetches independently of the RAM implementation.
 Any ROM is a deliberate hardware implementation, not an assumed power-up file load.
+
+### Program load, access, and fetch contract
+
+P3.1a fixes the first consumer configuration at 256 16-bit memory words. Addresses at
+the store port are memory-word addresses; the host and fetch interfaces carry nine-bit
+unsigned addresses or lengths so values at and above 256 are rejected before the
+eight-bit physical address is formed. This configuration directly supports P1.5's
+default `m16` image, one 16-bit instruction slot per memory word. A later packed `m32`
+selection changes the configured word width and slot extraction in P3.2, not the access,
+verification, or 1RW timing contract.
+
+An image always starts at word zero and has a declared length from 1 through 256. The
+small bounded loading protocol is deliberately sequential rather than carrying a
+per-word validity bitmap:
+
+1. An accepted load-start declares the length, invalidates any executable image, clears
+   prior progress and verification failure, and starts a replacement session.
+2. A write is accepted only at the session's next address, beginning at zero, and only
+   below the declared length. An accepted write advances that address. Missing and
+   duplicate writes therefore cannot complete; an out-of-order or out-of-range offer is
+   rejected without touching the store or changing progress. A new accepted load-start
+   interrupts and replaces an incomplete session.
+3. After every declared word has been written, verification reads are accepted only in
+   the same zero-based order. Each request carries the expected complete memory word.
+   The core issues a normal latency-one store read, associates its saved expected word
+   with that response, and advances verification only on equality. A mismatch latches a
+   verification failure; recovery requires a new load-start. Ordinary readback uses the
+   same response timing but does not advance verification.
+4. Load-complete is accepted only after all declared words have produced matching
+   verification responses, with no read outstanding and no verification failure. This
+   is the concrete meaning of "verified": hardware checks accepted write coverage,
+   ordered read coverage, and every full-word comparison. The future loader supplies the
+   declared length and expected words after assembling complete little-endian transport
+   words; it cannot authorize an image with an unchecked pulse.
+
+Zero and oversized lengths are rejected and preserve the previously valid image. Once a
+valid load-start is accepted, however, the old image is immediately non-executable, so a
+shorter replacement can never expose its tail. Reset halts execution, cancels a load
+session and every outstanding response, clears executable-image metadata, and leaves RAM
+contents untouched. Disable has the same control-pipeline cancellation and halt effect
+but preserves a completed image; it neither reads nor writes the store.
+
+Host writes, readback, load-start, load-complete, and RUN require the core halted and the
+explicit `engines_idle_i` input high. A readback address must be below the accepted-write
+count of an active load or below the completed image length otherwise. Only one host read
+may be outstanding. Every offered request has an accepted or rejected indication; a
+rejection has no store or control-state effect. During execution all host program-memory
+requests are rejected and fetch retains the port, address, and state it would have had
+without them.
+
+An accepted RUN requires a completed image, idle engines, and no outstanding read. It
+enters the running state but does not itself fetch. P3.2 supplies word-addressed fetch
+requests. A legal request while running issues one store read and returns
+`fetch_response_valid_o` with the word exactly one edge later. No response validity is
+inferred from data. A request at or beyond the completed image length, including an
+address at or above physical depth, issues no read, latches a fetch fault, and halts.
+P3.2 supplies `execution_halt_i` when an executed Halt, invalid instruction, STOP, or
+other defined boundary returns control; ordinary absence of a fetch request stalls with
+the port disabled. At most one fetch is outstanding, preserving P1.6's non-overlapped
+fetch schedule.
+
+At one edge the priority is synchronous reset, disable, execution halt or invalid fetch,
+load-start, write, readback, load-complete, RUN, then an otherwise legal fetch. Host
+operations are considered only while halted, and fetch only while running, so the latter
+groups do not contend in a legal state. Higher-priority accepted work rejects simultaneous
+lower-priority offers. Reset, disable, execution halt, accepted load-start, and invalid
+fetch discard outstanding response ownership; held, stale, post-write, and unwritten RAM
+outputs consequently cannot assert either response-valid signal. A response that is due
+on an ordinary halted or running edge is delivered before a new request may be accepted.
 
 Start with an explicitly selected flop implementation. Investigate CMOS5L macro
 availability early, but begin a macro backend only after exact shape/behavior,

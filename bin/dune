@@ -54,3 +54,14 @@
   (pps ppx_jane))
  (lint
   (pps ppx_js_style)))
+
+; Standalone P3 core/store-consumer emitter. The RAM remains an external port.
+
+(executable
+ (name generate_core)
+ (libraries core hardcaml jane_rope hardcaml_protemu)
+ (modules generate_core)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))

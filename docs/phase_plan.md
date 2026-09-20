@@ -272,7 +272,10 @@ with the first pin/timer work in P1/P2.
   errors. See the
   [P0.7 record](../tinytapeout/reports/2026-09-20-p0.7-memory-synthesis.md) and
   [archive](../flow_results/20260920-071538-a538212c/README.md). This is
-  synthesis-only evidence, not SRAM or physical closure.
+  synthesis-only evidence, not SRAM or physical closure. The archive now carries
+  the complete original dirty-tree input bundle. A raw ABC driving-cell lookup
+  diagnostic qualifies only ABC's post-map delay print for this `AREA 0` run;
+  source-backed investigation found that mapping and area were unaffected.
 
 **Exit gate:** P0.1–P0.7 have evidence, including P0.5b. Because P0.6/P0.7 are
 deferred, this gate is expected to close after later phases have started. A small

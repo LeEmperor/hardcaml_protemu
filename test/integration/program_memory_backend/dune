@@ -1,22 +1,17 @@
 (library
- (name protemu_protocol_core_tests)
+ (name protemu_program_memory_backend_tests)
  (wrapped false)
- (modules
-  protocol_core_testbench
-  protocol_core_unit_tests
-  protocol_core_property_tests)
- ; Keep the ppx_expect source-tree workaround described in test/common/dune.
+ (modules program_memory_backend_tests)
  (inline_tests
   (flags
    (:standard -source-tree-root .)))
  (libraries
   core
   hardcaml
+  hardcaml_asic
   hardcaml_protemu
   protemu_f_model
-  protemu_test_common
-  base_quickcheck
-  splittable_random)
+  protemu_protocol_core_tests)
  (preprocess
   (pps ppx_hardcaml ppx_jane))
  (lint

@@ -739,8 +739,9 @@ let paced_scenario ~config ~phase ~lead ~high_width ~low_width ~rx_word =
     | Internal _ -> failwith "observed-transfer timing requires observed pacing"
   in
   let initial_for_edge = function
-    | Kinds.Edge.Rising | Either -> false
+    | Kinds.Edge.Rising -> false
     | Falling -> true
+    | Either -> descriptor.idle_clock
   in
   let pad = ref 0 in
   pad := set_pin !pad config.start_pin (initial_for_edge config.start_edge);

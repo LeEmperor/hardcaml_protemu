@@ -6,8 +6,18 @@ open! Core
 open! Observed_transfer_timing_testbench
 
 let require_passed run = [%test_result: Outcome.t] ~expect:Passed run.Run.outcome
+let peer_setup_ticks = 1
 
-let config ~direction ~bit_count ~bit_order ~tx_value ~launch ~sample ~pacing_edge =
+let config
+  ~idle_clock
+  ~direction
+  ~bit_count
+  ~bit_order
+  ~tx_value
+  ~launch
+  ~sample
+  ~pacing_edge
+  =
   let output_pin, input_pin =
     match direction with
     | Kinds.Direction.Tx_only -> Some 0, None
@@ -23,7 +33,7 @@ let config ~direction ~bit_count ~bit_order ~tx_value ~launch ~sample ~pacing_ed
       ; input_pin
       ; clock_pin = None
       ; idle_output = false
-      ; idle_clock = false
+      ; idle_clock
       ; initial_delay = None
       ; launch
       ; sample
@@ -33,6 +43,24 @@ let config ~direction ~bit_count ~bit_order ~tx_value ~launch ~sample ~pacing_ed
   ; start_edge = Kinds.Edge.Rising
   ; cancel = None
   }
+;;
+
+let wire_cases ~idle_clock =
+  if idle_clock
+  then
+    [ ( Kinds.Clock_phase.On_rising
+      , Kinds.Clock_phase.On_falling
+      , 30
+      , [ 30, 10; 30, 17; 37, 10; 31, 19; 30, 30 ] )
+    ; On_falling, On_rising, 10, [ 10, 30; 17, 30; 10, 37; 19, 31; 30, 30 ]
+    ]
+  else
+    [ ( Kinds.Clock_phase.On_falling
+      , Kinds.Clock_phase.On_rising
+      , 30
+      , [ 10, 30; 17, 30; 10, 37; 19, 31; 30, 30 ] )
+    ; On_rising, On_falling, 10, [ 30, 10; 30, 17; 37, 10; 31, 19; 30, 30 ]
+    ]
 ;;
 
 let%expect_test "timestamped event-to-engine-to-pin transactions match the independent \
@@ -161,34 +189,46 @@ let%test_unit "multi-bit external transfers cover directions, orders, phases, an
     ]
   in
   List.iter cases ~f:(fun (direction, bit_count, bit_order, pacing_edge, phase) ->
-    List.iter
-      [ Kinds.Clock_phase.On_falling, Kinds.Clock_phase.On_rising; On_rising, On_falling ]
-      ~f:(fun (launch, sample) ->
-        let mask = if bit_count = 32 then -1 else (1 lsl bit_count) - 1 in
-        let tx_value = 0xa5a55a5a land mask in
-        let rx_word = 0x5aa5a55a land mask in
-        let config =
-          config ~direction ~bit_count ~bit_order ~tx_value ~launch ~sample ~pacing_edge
-        in
-        let run =
-          run
-            (paced_scenario
-               ~config
-               ~phase
-               ~lead:(if Kinds.Direction.equal direction Rx_only then 10 else 30)
-               ~high_width:10
-               ~low_width:17
-               ~rx_word)
-        in
-        require_passed run;
-        [%test_result: bool] ~message:"transfer completed" ~expect:true (completed run);
-        if not (Kinds.Direction.equal direction Tx_only)
-        then [%test_result: int option] ~expect:(Some rx_word) (received run)))
+    List.iter [ false; true ] ~f:(fun idle_clock ->
+      List.iter
+        [ Kinds.Clock_phase.On_falling, Kinds.Clock_phase.On_rising
+        ; On_rising, On_falling
+        ]
+        ~f:(fun (launch, sample) ->
+          let mask = if bit_count = 32 then -1 else (1 lsl bit_count) - 1 in
+          let tx_value = 0xa5a55a5a land mask in
+          let rx_word = 0x5aa5a55a land mask in
+          let config =
+            config
+              ~idle_clock
+              ~direction
+              ~bit_count
+              ~bit_order
+              ~tx_value
+              ~launch
+              ~sample
+              ~pacing_edge
+          in
+          let run =
+            run
+              (paced_scenario
+                 ~config
+                 ~phase
+                 ~lead:(if Kinds.Direction.equal direction Rx_only then 10 else 30)
+                 ~high_width:10
+                 ~low_width:17
+                 ~rx_word)
+          in
+          require_passed run;
+          [%test_result: bool] ~message:"transfer completed" ~expect:true (completed run);
+          if not (Kinds.Direction.equal direction Tx_only)
+          then [%test_result: int option] ~expect:(Some rx_word) (received run))))
 ;;
 
 let%test_unit "all phases support ten-tick pulses and ten-tick start lead" =
   let config =
     config
+      ~idle_clock:false
       ~direction:Kinds.Direction.Rx_only
       ~bit_count:4
       ~bit_order:Kinds.Bit_order.Lsb_first
@@ -248,6 +288,7 @@ let%test_unit "every start and pacing edge selection passes every integer phase"
     List.iter edge_kinds ~f:(fun pacing_edge ->
       let config =
         { (config
+             ~idle_clock:false
              ~direction:Kinds.Direction.Rx_only
              ~bit_count:1
              ~bit_order:Kinds.Bit_order.Msb_first
@@ -278,6 +319,7 @@ let%test_unit "every start and pacing edge selection passes every integer phase"
 let%test_unit "TX preload precedes a peer sampling clock after a thirty-tick lead" =
   let config =
     config
+      ~idle_clock:false
       ~direction:Kinds.Direction.Tx_only
       ~bit_count:1
       ~bit_order:Kinds.Bit_order.Lsb_first
@@ -312,6 +354,221 @@ let%test_unit "TX preload precedes a peer sampling clock after a thirty-tick lea
     ~message:"twenty-nine ticks can coincide with the registered preload"
     ~expect:true
     lead_twenty_nine_has_no_margin
+;;
+
+let%test_unit "external peer receives every TX and duplex bit inside the wire envelope" =
+  let first_setups = ref [] in
+  let later_setups = ref [] in
+  let launch_latencies = ref [] in
+  List.iter [ Kinds.Direction.Tx_only; Duplex ] ~f:(fun direction ->
+    List.iter [ Kinds.Bit_order.Lsb_first; Msb_first ] ~f:(fun bit_order ->
+      List.iter [ false; true ] ~f:(fun idle_clock ->
+        List.iter [ 1; 8 ] ~f:(fun bit_count ->
+          List.iter (wire_cases ~idle_clock) ~f:(fun (launch, sample, lead, widths) ->
+            let tx_value =
+              if bit_count = 1
+              then 1
+              else if Kinds.Bit_order.equal bit_order Lsb_first
+              then 0x55
+              else 0xaa
+            in
+            let config =
+              config
+                ~idle_clock
+                ~direction
+                ~bit_count
+                ~bit_order
+                ~tx_value
+                ~launch
+                ~sample
+                ~pacing_edge:Kinds.Edge.Either
+            in
+            List.iter widths ~f:(fun (high_width, low_width) ->
+              for phase = 0 to period - 1 do
+                let scenario =
+                  paced_scenario ~config ~phase ~lead ~high_width ~low_width ~rx_word:0xa6
+                in
+                let run = run scenario in
+                require_passed run;
+                let samples = peer_samples scenario run.actual_transactions in
+                [%test_result: int]
+                  ~message:"peer sampled every bit"
+                  ~expect:config.descriptor.bit_count
+                  (List.length samples);
+                List.iter samples ~f:(fun sample ->
+                  [%test_result: bool]
+                    ~message:"peer bit and setup"
+                    ~expect:true
+                    (Peer_sample.valid sample ~minimum_setup:peer_setup_ticks));
+                first_setups
+                := Option.value_exn (List.hd_exn samples).setup :: !first_setups;
+                later_setups
+                := List.filter_map (List.tl_exn samples) ~f:(fun sample -> sample.setup)
+                   @ !later_setups;
+                launch_latencies
+                := launch_response_latencies scenario run.actual_transactions
+                   @ !launch_latencies
+              done))))));
+  [%test_result: int]
+    ~message:"minimum first-bit peer setup"
+    ~expect:peer_setup_ticks
+    (List.min_elt !first_setups ~compare:Int.compare |> Option.value_exn);
+  [%test_result: int]
+    ~message:"minimum subsequent-bit peer setup"
+    ~expect:peer_setup_ticks
+    (List.min_elt !later_setups ~compare:Int.compare |> Option.value_exn);
+  [%test_result: int]
+    ~message:"minimum external launch to registered output"
+    ~expect:20
+    (List.min_elt !launch_latencies ~compare:Int.compare |> Option.value_exn);
+  [%test_result: int]
+    ~message:"maximum external launch to registered output"
+    ~expect:29
+    (List.max_elt !launch_latencies ~compare:Int.compare |> Option.value_exn)
+;;
+
+let%test_unit "capture-rate clocks and twenty-nine-tick deadlines fail the TX peer" =
+  let any_invalid samples =
+    List.exists samples ~f:(fun sample ->
+      not (Peer_sample.valid sample ~minimum_setup:peer_setup_ticks))
+  in
+  let make ~idle_clock ~launch ~sample ~lead ~high_width ~low_width phase =
+    let config =
+      config
+        ~idle_clock
+        ~direction:Kinds.Direction.Tx_only
+        ~bit_count:8
+        ~bit_order:Kinds.Bit_order.Lsb_first
+        ~tx_value:0x55
+        ~launch
+        ~sample
+        ~pacing_edge:Kinds.Edge.Either
+    in
+    let scenario =
+      paced_scenario ~config ~phase ~lead ~high_width ~low_width ~rx_word:0
+    in
+    let run = run scenario in
+    require_passed run;
+    peer_samples scenario run.actual_transactions
+  in
+  let capture_limit_fails =
+    List.exists (List.init period ~f:Fn.id) ~f:(fun phase ->
+      make
+        ~idle_clock:false
+        ~launch:Kinds.Clock_phase.On_falling
+        ~sample:Kinds.Clock_phase.On_rising
+        ~lead:30
+        ~high_width:10
+        ~low_width:10
+        phase
+      |> List.tl_exn
+      |> any_invalid)
+  in
+  [%test_result: bool]
+    ~message:"10/10 capture limit is not a multi-bit TX wire limit"
+    ~expect:true
+    capture_limit_fails;
+  let preload_29_fails =
+    List.exists (List.init period ~f:Fn.id) ~f:(fun phase ->
+      make
+        ~idle_clock:false
+        ~launch:Kinds.Clock_phase.On_falling
+        ~sample:Kinds.Clock_phase.On_rising
+        ~lead:29
+        ~high_width:10
+        ~low_width:30
+        phase
+      |> List.hd_exn
+      |> fun sample -> not (Peer_sample.valid sample ~minimum_setup:peer_setup_ticks))
+  in
+  [%test_result: bool]
+    ~message:"29-tick select-to-first-sample has no setup margin"
+    ~expect:true
+    preload_29_fails;
+  let launch_29_fails ~idle_clock ~launch ~sample ~high_width ~low_width =
+    List.exists (List.init period ~f:Fn.id) ~f:(fun phase ->
+      make ~idle_clock ~launch ~sample ~lead:30 ~high_width ~low_width phase
+      |> List.tl_exn
+      |> any_invalid)
+  in
+  [%test_result: bool]
+    ~message:"29-tick low launch-to-sample half-cycle has no setup margin"
+    ~expect:true
+    (launch_29_fails
+       ~idle_clock:false
+       ~launch:Kinds.Clock_phase.On_falling
+       ~sample:Kinds.Clock_phase.On_rising
+       ~high_width:10
+       ~low_width:29);
+  [%test_result: bool]
+    ~message:"29-tick high launch-to-sample half-cycle has no setup margin"
+    ~expect:true
+    (launch_29_fails
+       ~idle_clock:false
+       ~launch:Kinds.Clock_phase.On_rising
+       ~sample:Kinds.Clock_phase.On_falling
+       ~high_width:29
+       ~low_width:10);
+  [%test_result: bool]
+    ~message:"idle-high 29-tick high launch-to-sample half-cycle has no setup margin"
+    ~expect:true
+    (launch_29_fails
+       ~idle_clock:true
+       ~launch:Kinds.Clock_phase.On_rising
+       ~sample:Kinds.Clock_phase.On_falling
+       ~high_width:29
+       ~low_width:10);
+  [%test_result: bool]
+    ~message:"idle-high 29-tick low launch-to-sample half-cycle has no setup margin"
+    ~expect:true
+    (launch_29_fails
+       ~idle_clock:true
+       ~launch:Kinds.Clock_phase.On_falling
+       ~sample:Kinds.Clock_phase.On_rising
+       ~high_width:10
+       ~low_width:29)
+;;
+
+let%test_unit "external peer receives the 32-bit TX and duplex boundary cases" =
+  List.iter [ Kinds.Direction.Tx_only; Duplex ] ~f:(fun direction ->
+    List.iter [ Kinds.Bit_order.Lsb_first; Msb_first ] ~f:(fun bit_order ->
+      List.iter [ false; true ] ~f:(fun idle_clock ->
+        List.iter (wire_cases ~idle_clock) ~f:(fun (launch, sample, lead, widths) ->
+          let high_width, low_width = List.hd_exn widths in
+          let tx_value =
+            if Kinds.Bit_order.equal bit_order Lsb_first then 0x55555555 else 0xaaaaaaaa
+          in
+          let config =
+            config
+              ~idle_clock
+              ~direction
+              ~bit_count:32
+              ~bit_order
+              ~tx_value
+              ~launch
+              ~sample
+              ~pacing_edge:Kinds.Edge.Either
+          in
+          for phase = 0 to period - 1 do
+            let scenario =
+              paced_scenario
+                ~config
+                ~phase
+                ~lead
+                ~high_width
+                ~low_width
+                ~rx_word:0x5a5aa5a5
+            in
+            let run = run scenario in
+            require_passed run;
+            let samples = peer_samples scenario run.actual_transactions in
+            [%test_result: int] ~expect:32 (List.length samples);
+            List.iter samples ~f:(fun sample ->
+              [%test_result: bool]
+                ~message:"32-bit peer bit and setup"
+                ~expect:true
+                (Peer_sample.valid sample ~minimum_setup:peer_setup_ticks))
+          done))))
 ;;
 
 let%test_unit "data must be present when the pacing transition reaches a sampling edge" =
@@ -352,8 +609,11 @@ let%test_unit "bounded generated external schedules match the independent model"
       if Random.State.bool random then Kinds.Bit_order.Lsb_first else Msb_first
     in
     let pacing_edge =
-      [| Kinds.Edge.Rising; Falling; Either |].(Random.State.int random 3)
+      if Kinds.Direction.equal direction Rx_only
+      then [| Kinds.Edge.Rising; Falling; Either |].(Random.State.int random 3)
+      else Kinds.Edge.Either
     in
+    let idle_clock = Random.State.bool random in
     let launch, sample =
       if Random.State.bool random
       then Kinds.Clock_phase.On_falling, Kinds.Clock_phase.On_rising
@@ -363,7 +623,15 @@ let%test_unit "bounded generated external schedules match the independent model"
     let tx_value = Random.State.bits random land mask in
     let rx_word = Random.State.bits random land mask in
     let config =
-      config ~direction ~bit_count ~bit_order ~tx_value ~launch ~sample ~pacing_edge
+      config
+        ~idle_clock
+        ~direction
+        ~bit_count
+        ~bit_order
+        ~tx_value
+        ~launch
+        ~sample
+        ~pacing_edge
     in
     let config =
       { config with
@@ -371,18 +639,33 @@ let%test_unit "bounded generated external schedules match the independent model"
           [| Kinds.Edge.Rising; Falling; Either |].(Random.State.int random 3)
       }
     in
-    let run =
-      run
-        (paced_scenario
-           ~config
-           ~phase:(Random.State.int random period)
-           ~lead:
-             ((if Kinds.Direction.equal direction Rx_only then 10 else 30)
-              + Random.State.int random 11)
-           ~high_width:(10 + Random.State.int random 9)
-           ~low_width:(10 + Random.State.int random 9)
-           ~rx_word)
+    let launch_trailing, _ = trailing_phases config.descriptor in
+    let lead =
+      if Kinds.Direction.equal direction Rx_only
+      then 10 + Random.State.int random 11
+      else if launch_trailing
+      then 30 + Random.State.int random 11
+      else 10 + Random.State.int random 11
     in
+    let high_width, low_width =
+      if Kinds.Direction.equal direction Rx_only
+      then 10 + Random.State.int random 9, 10 + Random.State.int random 9
+      else (
+        let launch_is_rising = Kinds.Clock_phase.equal launch On_rising in
+        if launch_is_rising
+        then 30 + Random.State.int random 9, 10 + Random.State.int random 9
+        else 10 + Random.State.int random 9, 30 + Random.State.int random 9)
+    in
+    let scenario =
+      paced_scenario
+        ~config
+        ~phase:(Random.State.int random period)
+        ~lead
+        ~high_width
+        ~low_width
+        ~rx_word
+    in
+    let run = run scenario in
     if not (Run.passed run)
     then (
       let replay =
@@ -402,6 +685,15 @@ let%test_unit "bounded generated external schedules match the independent model"
       ~expect:true
       (completed run);
     if not (Kinds.Direction.equal direction Tx_only)
-    then [%test_result: int option] ~expect:(Some rx_word) (received run)
+    then [%test_result: int option] ~expect:(Some rx_word) (received run);
+    if not (Kinds.Direction.equal direction Rx_only)
+    then (
+      let samples = peer_samples scenario run.actual_transactions in
+      [%test_result: int] ~expect:bit_count (List.length samples);
+      List.iter samples ~f:(fun sample ->
+        [%test_result: bool]
+          ~message:"generated peer bit and setup"
+          ~expect:true
+          (Peer_sample.valid sample ~minimum_setup:peer_setup_ticks)))
   done
 ;;

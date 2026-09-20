@@ -34,8 +34,8 @@ let assemble_exn ?depth ?memory program =
   | Error invalid -> raise_s [%message "did not assemble" (invalid : Invalid.t)]
 ;;
 
-let run ?depth ?max_cycles ?memory board program =
-  match Control_core.run ?depth ?max_cycles ?memory board (unwrap program) with
+let run ?depth ?max_cycles ?memory ?machine board program =
+  match Control_core.run ?depth ?max_cycles ?memory ?machine board (unwrap program) with
   | Ok trace -> trace
   | Error invalid -> raise_s [%message "did not assemble" (invalid : Invalid.t)]
 ;;
@@ -707,6 +707,54 @@ let show_run ?(pin = 0) ?(show_wire = true) trace =
   then (
     let period, uniform = bit_period trace ~pin in
     print_s [%message "" ~bit_period:(period : int) ~uniform:(uniform : bool)])
+;;
+
+let%expect_test "loaded event decision commits a pin in the reference core" =
+  let program =
+    Program.create
+      ~name:"wait_start_then_drive"
+      [ Instr (Write_pins_imm { mode = Push_pull; mask = 1; value = 0 })
+      ; Instr (Wait_edge { pin = 3; edge = Rising; timeout = None })
+      ; Instr (Write_pins_imm { mode = Push_pull; mask = 1; value = 1 })
+      ; Instr Halt
+      ]
+  in
+  let assembled = assemble_exn program in
+  let board =
+    { Firmware.Board.initial = 0
+    ; next =
+        (fun edge _machine ->
+          let edge = edge + 1 in
+          edge, if edge >= 7 then 1 lsl 3 else 0)
+    }
+  in
+  print_s
+    [%message
+      ""
+        ~words:(Array.to_list assembled.image.words : int list)
+        ~bytes:(Assembler.Image.bytes assembled.image : int list)];
+  let machine = Machine.create () in
+  let pins =
+    match Pin_bank.claim machine.pins ~owner:Kinds.Owner.Software ~mask:1 with
+    | Ok pins -> pins
+    | Error reason ->
+      raise_s [%message "initial pin claim failed" (reason : Fault.Reject.t)]
+  in
+  let trace = run ~machine:{ machine with pins } board program in
+  show_run ~show_wire:false trace;
+  print_s [%message "" ~pin0:(Control_core.Trace.wave trace ~pin:0 : string)];
+  [%expect
+    {|
+    ((words (30724 0 41728 30724 1 0)) (bytes (4 120 0 0 0 163 4 120 1 0 0 0)))
+    ((name wait_start_then_drive) (memory m16) (outcome Halted)
+     (size
+      ((instructions 4) (slots 6) (extension_words 2) (memory_words 6)
+       (memory_bits 96)))
+     (counts
+      ((cycles 13) (fetch_cycles 6) (execute_cycles 4) (stall_cycles 3)
+       (instructions 4) (extension_fetches 2) (memory_reads 6) (buffer_hits 0))))
+    (pin0 zz00000000111)
+    |}]
 ;;
 
 let%expect_test "UART 8N1 transmit, three ways" =

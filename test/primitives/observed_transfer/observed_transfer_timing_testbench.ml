@@ -443,6 +443,34 @@ let peer_samples (scenario : Scenario.t) transactions =
     else None)
 ;;
 
+let launch_response_latencies (scenario : Scenario.t) transactions =
+  let descriptor = scenario.config.descriptor in
+  let output_pin = Option.value_exn descriptor.output_pin in
+  let launch_trailing, _ = trailing_phases descriptor in
+  external_pacing_times scenario
+  |> List.filter_mapi ~f:(fun half_edge time ->
+    let trailing = half_edge mod 2 = 1 in
+    if Bool.equal trailing launch_trailing
+    then (
+      let bit_index = (half_edge / 2) + if trailing then 1 else 0 in
+      if bit_index >= descriptor.bit_count
+      then None
+      else (
+        let ordinal =
+          if Kinds.Bit_order.equal descriptor.bit_order Lsb_first
+          then bit_index
+          else descriptor.bit_count - 1 - bit_index
+        in
+        let expected = (descriptor.tx_value lsr ordinal) land 1 in
+        List.find_map transactions ~f:(fun transaction ->
+          let value = (transaction.Pin_transaction.pins lsr output_pin) land 1 in
+          let driven = transaction.pin_oe land (1 lsl output_pin) <> 0 in
+          if transaction.time > time && driven && value = expected
+          then Some (transaction.time - time)
+          else None)))
+    else None)
+;;
+
 let run_evsim (scenario : Scenario.t) =
   let config = scenario.config in
   let descriptor = config.descriptor in

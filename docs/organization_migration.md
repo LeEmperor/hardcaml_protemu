@@ -1,7 +1,23 @@
 # `lib/` organization migration (option A)
 
-Status: planned, not started. This is a pure file move. No module is renamed, no
+Status: implemented and verified in the working tree on 2026-09-21, uncommitted, pending
+the owner's commit and post-commit history check; see
+[Implementation record](#implementation-record-2026-09-21). The baseline commit
+prerequisite (HL0) is resolved at `9f6ed2d`, confirmed by the repository owner. This document is the
+procedure for [HL1](host_link_migration.md#hl1--move). No module is renamed, no
 identifier changes, and the emitted RTL must stay byte-identical.
+
+## Agent execution rules
+
+Every `dune build` and `dune runtest` invocation must include `-j 5`, including focused
+checks and forced reruns through scripts. Heavy workloads have caused server crashes;
+run these commands sequentially rather than launching overlapping builds/tests. Also
+use `-j 5` on `dune exec` generation commands, which can trigger builds.
+
+Agents must not create or amend commits: only the repository owner commits. Prepare
+HL1 and its evidence, then return the changes uncommitted. Commit references below
+describe the owner's eventual review unit. Do not stage changes unless requested,
+apart from index updates inherent in the documented `git mv`/`git rm` operations.
 
 ## Why
 
@@ -48,6 +64,10 @@ belongs in `emulator_core/`, not `pluggable_primitives/`, because it consumes
 `Control_execution`'s command port. Putting it with the primitives would make the two
 directories depend on each other.
 
+With unqualified modules, these are architectural dependency rules, not Dune-enforced
+library boundaries. Review cross-directory references against this table at acceptance
+and when adding modules. Stronger namespace/library enforcement is a later decision.
+
 ### What the confusing names mean
 
 Option A keeps these names. They are listed here so the layout reads correctly, and
@@ -67,10 +87,11 @@ the renames are proposed under [Later steps](#later-steps).
 1. **Nothing else is editing `lib/`, `bin/asic_bundle.ml`, or the checker.** A move
    of twenty files conflicts with any concurrent feature work in those files. Land or
    pause that work first.
-2. **The working tree is committed.** `hardware_loader.ml` and `loader_core.ml` are
-   currently untracked, and several `lib/` files have uncommitted edits. `git mv`
-   refuses untracked files, and history is easier to follow if the move commit holds
-   only the move.
+2. **The implementation baseline is committed — resolved (HL0).** The loader sources
+   and in-flight repair work are committed at `9f6ed2d`; the owner confirmed this
+   prerequisite is satisfied. Before starting HL1, record the current revision and any
+   local diff. Planning-document updates do not reopen HL0; distinguish them from the
+   mechanical move so the implementation baseline and move remain reviewable.
 3. **A baseline of the emitted RTL** exists for the byte-identity check in
    [Verification](#verification).
 
@@ -81,10 +102,19 @@ the renames are proposed under [Later steps](#later-steps).
 ```sh
 base=$(mktemp -d)
 for mode in access executable integrated loader; do
-  dune exec bin/generate_core.exe -- $mode "$base/$mode.v"
+  ./scripts/with-switch.sh dune exec -j 5 bin/generate_core.exe -- "$mode" "$base/$mode.v"
 done
-dune exec bin/generate.exe -- -output "$base/p0.v" -module-name p0_observable
+./scripts/with-switch.sh dune exec -j 5 bin/generate.exe -- -output "$base/p0.v" -module-name p0_observable
+for block in pin_bank input_events timing byte_fifo_8 shift_lane observed_transfer \
+  observed_transfer_bank primitive_demo uart_tx uart_slice; do
+  ./scripts/with-switch.sh dune exec -j 5 bin/generate_p2.exe -- "$block" "$base/$block.v"
+done
 ```
+
+Record the baseline directory, revision/local diff, and tool/dependency identity. Generate
+the same outputs into a second directory after the move, using identical options. Compare
+all three bundles' emitted Verilog source roles as well; changed manifest source paths
+and identity hashes are expected, changed RTL bytes are not.
 
 ### 2. Move the files
 
@@ -161,10 +191,12 @@ the paths as they were at the time.
 | --- | --- |
 | `./scripts/with-switch.sh dune build @install @lint -j 5` | PASS |
 | `./scripts/with-switch.sh dune build @runtest -j 5` | PASS, no expect-test diffs |
-| `./scripts/with-switch.sh dune build @rtl -j 5` | PASS, including both P3.5 loader peer tiers |
+| `./scripts/with-switch.sh dune build @rtl -j 5` | PASS, including all three P3.5 loader peer tiers (reusable core, behavioral wrapper, production synthesis wrapper) |
 | Regenerate step 1's outputs and `diff -r` against the baseline | No differences. Any difference means something other than a move happened. |
-| `python3 tinytapeout/scripts/check-adopted-bundle.py --kind {observable,memory,loader} --metadata-only` | PASS for all three |
-| `git log --follow lib/emulator_core/integrated_core.ml` | Shows pre-move history |
+| Run `python3 tinytapeout/scripts/check-adopted-bundle.py --kind KIND --metadata-only` separately with `KIND` set to `observable`, `memory`, and `loader` | PASS for all three |
+| `git diff HEAD -M --summary` before commit; `git log --follow lib/emulator_core/integrated_core.ml` after the owner commits | Agent verifies rename detection; owner verifies history after committing |
+| Compare pre/post bundle Verilog for observable, memory, and loader | Byte-identical for every emitted Verilog source role |
+| Review cross-directory OCaml references | Follow the dependency table; unqualified Dune modules do not enforce it |
 
 Expected, not a regression: the bundle manifest's `source_inputs` paths change, so
 every bundle's identity hash changes. The emitted Verilog under `src/` must not
@@ -173,6 +205,7 @@ change.
 
 ## Commit
 
+Only the repository owner makes this commit; agents leave the work uncommitted.
 One commit containing only steps 2–5. No logic, formatting, or naming changes ride
 along, so reviewers can check it with `git diff -M --stat` and rebases onto it stay
 mechanical.
@@ -182,6 +215,57 @@ mechanical.
 About 30 minutes of work plus one full `@runtest @rtl` pass. The risk is low: dune
 resolves modules by name, so the only ways to break the build are a missed path
 string in step 4 or a file left behind in step 2, and both fail loudly.
+
+## Implementation record (2026-09-21)
+
+Implemented by an agent and left uncommitted for the owner's review unit.
+
+**Tested revision.** `HEAD` = `9f6ed2d`. The local diff before the move held only planning
+documents (`docs/README.md`, `organization_migration.md`, `p3.5-hardware-loader.md`,
+`phase_plan.md`, `verification.md`, and untracked `host_link_migration.md`); no source,
+Dune, script, or test file was modified, so the step 1 baseline is `9f6ed2d`'s sources.
+
+**Tool identity.** opam switch `5.2.0+ox` (OCaml 5.2.0+ox), Dune 3.24.2; `hardcaml`,
+`ppx_hardcaml`, `core`, `ppx_jane`, `ppx_js_style` `v0.18~preview.130.106+341`;
+`hardcaml_asic` 0.1.0 (rsync pin of `~/devel/jane/hardcaml_asic`, checkout at
+`037e670`); Verilator 5.020, Icarus Verilog 12.0, Yosys 0.33, Python 3.12.3. The same
+installed switch served the pre- and post-move runs.
+
+**What changed.** Steps 2–5 as written: 19 `git mv` renames and `git rm
+lib/protemu_types.ml` (no reference in any `.ml`, `.mli`, or `dune` file); the
+`lib/dune` stanza and comment; the paths in `bin/asic_bundle.ml` `input_paths`
+(entry order unchanged, loader's `lib/staging/observed_transfer.ml` kept) and the
+checker's `expected_source` and loader source-set assertion. A tree-wide search found
+no other non-documentation consumer of `lib/*.ml` paths. Documentation: all 63 Markdown
+links into `lib/`, the two link texts in `verification.md`, and the current-state
+inventory in `construction-plan.md` §2 were rewritten; that inventory's
+`protemu_types.ml` bullet was removed with the file. Historical command-result records
+keep the paths as they were: the `@fmt` backlog lists in the P3.1a, P3.1b, P3.4, and
+P3.5 records, the worktree note in `verification_migration.md`, and dated evidence
+under `tinytapeout/reports/` and `flow_results/`.
+
+**Baseline artifacts.** Step 1 outputs (4 core modes, P0, 10 P2 blocks) and the
+observable/memory/loader bundles emitted by `_build/default/bin/asic_bundle.exe KIND
+DIR ROOT` were captured before the move in the agent's session scratch directory
+(`…/scratchpad/hl1/{pre,bundles-pre}`), which is temporary. The durable record is the
+checksum lists: the 15 step 1 files hash to list digest `29831c119d353a19…` and the
+six bundle Verilog files to `cbd0dc8df2d2547a…`; both lists are identical after the
+move.
+
+| Check (run sequentially, post-move) | Result |
+| --- | --- |
+| `./scripts/with-switch.sh dune build @install @lint -j 5` | PASS |
+| `./scripts/with-switch.sh dune build @runtest -j 5` | PASS, no output, no expect-test diffs |
+| `./scripts/with-switch.sh dune build @rtl -j 5` | PASS; then `--force -j 5` re-executed every alias action (462 s): PASS for the P0, P2 UART/slice, P3.1b, P3.2, P3.3 benches and all three P3.5 loader tiers (reusable core, behavioral wrapper, production synthesis wrapper) |
+| Step 1 outputs regenerated with identical options, `diff -r` against baseline | Identical, 15 of 15 files |
+| Bundle Verilog, pre vs post | Identical for `src/` (synthesis) and `simulation/` (behavioral) roles of observable, memory, and loader; `info.yaml`, `config.json`, and SDC also identical |
+| Bundle manifests | Only `identity`, `source_inputs`, and the `inputs/` entries of `files` change. Every moved source keeps its content hash; only `bin/asic_bundle.ml` and `lib/dune` content changed. Identities: observable `64fabdc9…` → `ae82eb2c…`, memory `6de12a45…` → `23541abb…`, loader `6d6a8ca1…` → `b29eba38…` |
+| `check-adopted-bundle.py --kind KIND --metadata-only` for `observable`, `memory`, `loader` (separately) | PASS, PASS, PASS |
+| Cross-directory references | Match the dependency table; no violations |
+| Old-path search, `lib/` link resolution | 63 of 63 `lib/` links resolve; remaining old paths are only the historical records listed above |
+| `git diff --check` | PASS |
+| `git diff HEAD -M --summary` | 19 renames at 100% similarity, one delete |
+| `git log --follow lib/emulator_core/integrated_core.ml` | Pending: owner checks after committing |
 
 ## Later steps
 

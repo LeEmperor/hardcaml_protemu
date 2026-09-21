@@ -9,10 +9,10 @@ the hand formatting used within those modules and in the plain OCaml model.
 
 | For | Read |
 | --- | --- |
-| Hardware state, handshakes, a mux, and an `Always.compile` block | [byte_fifo.ml](../lib/byte_fifo.ml) |
-| A small hardware wrapper and an aligned lane descriptor | [uart_tx.ml](../lib/uart_tx.ml) |
+| Hardware state, handshakes, a mux, and an `Always.compile` block | [byte_fifo.ml](../lib/pluggable_primitives/byte_fifo.ml) |
+| A small hardware wrapper and an aligned lane descriptor | [uart_tx.ml](../lib/staging/uart_tx.ml) |
 | Plain OCaml state, accessors, and a step algorithm | [fifo.ml](../f_model/fifo.ml) |
-| A larger circuit with an FSM and memory-port timing | [protocol_core.ml](../lib/protocol_core.ml) |
+| A larger circuit with an FSM and memory-port timing | [protocol_core.ml](../lib/memory_control/protocol_core.ml) |
 | A larger model with edge ordering and lifecycle notes | [machine.ml](../f_model/machine.ml) |
 
 These examples show different amounts of detail. Give a short wrapper less

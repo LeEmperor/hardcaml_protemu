@@ -365,8 +365,8 @@ let input_paths kind =
   ]
   @
   match kind with
-  | "observable" -> [ "lib/p0_observable.ml" ]
-  | "memory" -> [ "lib/protocol_core.ml" ]
+  | "observable" -> [ "lib/legacy/p0_observable.ml" ]
+  | "memory" -> [ "lib/memory_control/protocol_core.ml" ]
   | "loader" ->
     [ "isa/dune"
     ; "isa/assembler.ml"
@@ -379,19 +379,19 @@ let input_paths kind =
     ; "isa/kinds.ml"
     ; "isa/pins.ml"
     ; "isa/program.ml"
-    ; "lib/byte_fifo.ml"
-    ; "lib/control_execution.ml"
-    ; "lib/core_mechanisms.ml"
-    ; "lib/hardware_loader.ml"
-    ; "lib/input_events.ml"
-    ; "lib/instruction_decoder.ml"
-    ; "lib/integrated_core.ml"
-    ; "lib/loader_core.ml"
-    ; "lib/observed_transfer.ml"
-    ; "lib/pin_bank.ml"
-    ; "lib/protocol_core.ml"
-    ; "lib/shift_lane.ml"
-    ; "lib/timing.ml"
+    ; "lib/pluggable_primitives/byte_fifo.ml"
+    ; "lib/emulator_core/control_execution.ml"
+    ; "lib/emulator_core/core_mechanisms.ml"
+    ; "lib/host_link/hardware_loader.ml"
+    ; "lib/pluggable_primitives/input_events.ml"
+    ; "lib/emulator_core/instruction_decoder.ml"
+    ; "lib/emulator_core/integrated_core.ml"
+    ; "lib/host_link/loader_core.ml"
+    ; "lib/staging/observed_transfer.ml"
+    ; "lib/pluggable_primitives/pin_bank.ml"
+    ; "lib/memory_control/protocol_core.ml"
+    ; "lib/pluggable_primitives/shift_lane.ml"
+    ; "lib/pluggable_primitives/timing.ml"
     ]
   | _ -> failwith "kind must be observable, memory, or loader"
 ;;

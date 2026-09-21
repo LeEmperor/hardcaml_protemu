@@ -20,6 +20,37 @@ architecture survey and step-testbench backend notes. The temporary
 [flow.md](flow.md) owns physical-flow execution. Those documents link here for
 verification policy rather than maintaining another test architecture.
 
+### Agent execution constraints
+
+Every `dune build` and `dune runtest` call must include `-j 5`, including focused or
+forced reruns and calls through scripts. Run them sequentially to avoid multiplying
+the workload; this server has experienced crashes under heavy workloads. Use `-j 5`
+on `dune exec` commands that generate or verify artifacts as well. Apply this rule when
+executing examples below even where historical command records omit the flag; historical
+records describe what ran at the time and are not rewritten.
+
+Agents must not create or amend commits. Only the repository owner commits. Return
+source changes and verification evidence uncommitted; do not stage changes unless
+requested, except for index updates inherent in an explicitly planned `git mv`/`git rm`.
+
+### Host-link migration preservation rule
+
+[host_link_migration.md](host_link_migration.md) owns the planned structural migration
+and [organization_migration.md](organization_migration.md) its initial file move.
+The independent `tinytapeout/test/p3_loader_tb.v` peer must retain its own constants,
+frame construction, CRC, and expected responses. Do not derive them from the planned
+OCaml `Wire` library or RTL helpers. As with `f_model/` independence from RTL, this
+prevents one shared implementation mistake from satisfying both sides of a comparison.
+Shared-wire OCaml tests supplement, rather than replace, all three emitted-RTL peer
+tiers and their existing obligations.
+
+HL4 establishes cycle-observed serial behavior against the unsplit loader before
+extracting blocks. Each extraction must preserve offer/completion timing, cancellation,
+correlation, replay, and final-fall commit, with focused tests for the new boundary.
+Record exact synthesis tool/configuration identity and cell-count deltas; investigate
+nonzero deltas instead of accepting an unspecified noise allowance. These are planned
+acceptance gates, not claims that the codec, harness, or split blocks already exist.
+
 ## Current state
 
 Paths in this section describe files that exist now. The rename to `f_model`, per-block
@@ -357,7 +388,7 @@ SPI modes from a parameter toggle.
 
 ### Observed-transfer pin-bank integration
 
-[`observed_transfer_bank.ml`](../lib/observed_transfer_bank.ml) and
+[`observed_transfer_bank.ml`](../lib/staging/observed_transfer_bank.ml) and
 [`test/integration/observed_transfer_bank/`](../test/integration/observed_transfer_bank)
 form the smallest current product composition through the real bank. The bridge reserves
 the configured TX pin at arm acceptance, before a synchronized start can activate the lane;
@@ -397,7 +428,7 @@ there is no chip wrapper, pad model, routed delay, analog setup/hold, or metasta
 evidence in these measurements.
 
 Those are the direct event-to-engine paths. P3.3 now supplies the separate loaded
-event-to-core-decision-to-pin path in [`integrated_core.ml`](../lib/integrated_core.ml).
+event-to-core-decision-to-pin path in [`integrated_core.ml`](../lib/emulator_core/integrated_core.ml).
 The time-resolved fixture runs the actual P3.1a load/verify/RUN sequence, timestamps the
 shared synchronized event, decoded decision, bank request, registered commit and boundary
 pin, and sweeps all ten integer phases. Run it with
@@ -963,7 +994,7 @@ Historical run reports are not fresh results for later source revisions.
 | Core program load/access/fetch behavior | [`test/core/protocol_core/`](../test/core/protocol_core): twelve directed cases plus 240 generated fresh-state scenarios at seed `20260920` compare RTL with independent [`f_model/program_access.ml`](../f_model/program_access.ml) and a 1RW contract store. P0.7 additionally reruns the consumer against selected context-registered Simulation/Flops backends. P3.3 supplies real engine-idle production and boundary STOP/ABORT/single-step integration under [`test/integration/core_engine/`](../test/integration/core_engine). | The physical `Host_api.Device` transport and full-system physical evidence remain later obligations. |
 | Core decode and mechanism integration | [`test/core/control_execution/`](../test/core/control_execution) preserves P3.2 decoder/retirement evidence. [`test/integration/core_engine/`](../test/integration/core_engine) adds seventeen loaded-program, generated and timed cases for all delegated kinds, real mechanisms, background transfer, ownership/pressure, observed pacing, control/event collisions, interruption, cleanup and engine-idle gating. `p3_control_tb.v` retains the 16-cycle P3.2 image; `p3_integration_tb.v` runs the loaded wait/event/pin path and ABORT release from emitted RTL. See the [P3.3 record](p3.3-implementation.md). | P5 still owns mapped area/timing; formal invariants, the physical `Host_api.Device` transport, and physical protocol acceptance are not established. |
 | Host API and integrated simulator workflow | [`test/host/`](../test/host) checks serialization, compatibility, and stable timeout codes independently of command parsing. [`test/integration/host_simulator/`](../test/integration/host_simulator) drives the actual P3.3 DUT and contract RAM, including logical-image read bounds, refusal classification, signature/capability conformance, engine-owned pin conflicts and ABORT release, partial queue recovery and full-FIFO concurrent pop, defined execution-fault recovery, exact trace loss/cursors/ordering, and executable workflows with defined machine-readable failures. See the [P3.4 record](p3.4-host-api.md). | P3.5 supplies transport interruption, fixed hardware loading/framing, and retained-response replay/commit. P3.6 owns queue transport, physical error/time mapping, a physical backend, and two-image portable reload evidence. Simulator-side trace is not hardware trace storage. |
-| Independent hardware loader | [`lib/hardware_loader.ml`](../lib/hardware_loader.ml) and [`lib/loader_core.ml`](../lib/loader_core.ml), with [`p3_loader_tb.v`](../tinytapeout/test/p3_loader_tb.v) driving emitted serial pins at reusable-core, behavioral-wrapper, and production synthesis-wrapper tiers. The independent peer checks framing/CRC/correlation and decoded INFO/STATUS; rejects the reproduced counter-wrap attacks, long prefixes and extra bytes without dispatch/write/progress; protects dispatch/READ/ABORT context; validates before explicit response commit and replays one side-effecting RUN response without repeating its output-enable effect; performs actual RAM verification; sweeps the four-cycle envelope at every phase and asymmetric duties; and recovers looping, blocked-queue, active-transfer, driven-pin, and invalid-instruction states before replacement loading. See the [P3.5 record](p3.5-hardware-loader.md). | P3.6 still owns queue transport, the physical `Host_api.Device` backend, unsupported step/pin/trace mapping, full portable inspection/error strategy, physical timeout semantics, and the two-image portable workflow. Board timing, metastability reliability, mapped cost, and physical closure remain unclaimed. |
+| Independent hardware loader | [`lib/host_link/hardware_loader.ml`](../lib/host_link/hardware_loader.ml) and [`lib/host_link/loader_core.ml`](../lib/host_link/loader_core.ml), with [`p3_loader_tb.v`](../tinytapeout/test/p3_loader_tb.v) driving emitted serial pins at reusable-core, behavioral-wrapper, and production synthesis-wrapper tiers. The independent peer checks framing/CRC/correlation and decoded INFO/STATUS; rejects the reproduced counter-wrap attacks, long prefixes and extra bytes without dispatch/write/progress; protects dispatch/READ/ABORT context; validates before explicit response commit and replays one side-effecting RUN response without repeating its output-enable effect; performs actual RAM verification; sweeps the four-cycle envelope at every phase and asymmetric duties; and recovers looping, blocked-queue, active-transfer, driven-pin, and invalid-instruction states before replacement loading. See the [P3.5 record](p3.5-hardware-loader.md). | P3.6 still owns queue transport, the physical `Host_api.Device` backend, unsupported step/pin/trace mapping, full portable inspection/error strategy, physical timeout semantics, and the two-image portable workflow. Board timing, metastability reliability, mapped cost, and physical closure remain unclaimed. |
 | P0 wrapper | Two tests in `test/integration/wrapper/` plus `@rtl` wrapper checks | Later host/load/recovery evidence |
 | P2.2 external phase and pulse capture | `test/primitives/input_events/input_events_timing_{testbench,tests}.ml`; directed cases plus 160 generated trials, 10--19 tick deterministic latency, captured/missed pulse cases, reset/event interactions, temporal shrink/replay | Physical CDC/setup/hold/metastability evidence remains separate |
 | P2.6 event-to-engine/core-to-pin latency | The primitive timed suite covers idle-low/high physical mappings at the lane boundary: external-to-event is 10--19 ticks, event-to-lane is 10, and external-to-lane is 20--29. `test/integration/observed_transfer_bank/` gives 30--39 ticks external-to-bank. The P3.3 loaded-program sweep measures 60--69 ticks external-to-bank: 10--19 to synchronization, 20 to the core decision and 30 to the decoded bank request/commit edge. | Wrapper/pad, analog CDC/setup/hold and physical timing remain separate |

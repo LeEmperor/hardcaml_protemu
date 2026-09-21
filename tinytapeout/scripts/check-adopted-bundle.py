@@ -63,9 +63,9 @@ def check_bundle(root, bundle, kind):
     assert "create_clock -name clk" in (bundle / "constraints/top.sdc").read_text()
     source_paths = {item["path"] for item in manifest["source_inputs"]}
     expected_source = {
-        "observable": "lib/p0_observable.ml",
-        "memory": "lib/protocol_core.ml",
-        "loader": "lib/hardware_loader.ml",
+        "observable": "lib/legacy/p0_observable.ml",
+        "memory": "lib/memory_control/protocol_core.ml",
+        "loader": "lib/host_link/hardware_loader.ml",
     }[kind]
     assert {
         "bin/asic_bundle.ml", expected_source, "tinytapeout/asic-dependencies.lock"
@@ -80,7 +80,7 @@ def check_bundle(root, bundle, kind):
         else:
             assert 'ui[0]: "Loader select, active low"' in info
             assert 'uo[1]: "Loader response ready"' in info
-            assert {"lib/loader_core.ml", "lib/integrated_core.ml"} <= source_paths
+            assert {"lib/host_link/loader_core.ml", "lib/emulator_core/integrated_core.ml"} <= source_paths
         request = (
             "((kind single_port_ram)\n (contract\n  ((width 16) (depth 256) "
             "(read_latency 1) (port 1rw) (disabled_output hold)\n   "

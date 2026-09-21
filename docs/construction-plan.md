@@ -98,7 +98,7 @@ register file, decoder/control core, and the loader. The rules that keep it so:
   the [program-memory contract](../../hardcaml_asic/docs/program-memory-contract.md),
   not its constructor. `Elaboration_context.t` is not threaded through the hierarchy;
   only the top-level design constructor instantiates the RAM and connects the port.
-  [`protocol_core.ml`](../lib/protocol_core.ml) follows this.
+  [`protocol_core.ml`](../lib/memory_control/protocol_core.ml) follows this.
 - Emulator testbenches use a small contract model of the store: latency-one reads,
   held output while disabled, and poison after a write or for an unwritten word
   ([`protocol_core_testbench.ml`](../test/core/protocol_core/protocol_core_testbench.ml)).
@@ -135,7 +135,7 @@ that rework.
 
 ## 2. What exists today
 
-- `lib/protocol_core.ml`: P3.1a's external-store consumer for the default 256x16 `m16`
+- `lib/memory_control/protocol_core.ml`: P3.1a's external-store consumer for the default 256x16 `m16`
   image. It owns sequential load coverage, full-word ordered readback verification,
   executable-image bounds, halted-and-engine-idle host gating, request rejection,
   latency-one fetch ownership, and validity independent of memory data. It has no PC,
@@ -170,13 +170,12 @@ that rework.
   not executed (P2.5). P3.2's RTL decoder and local execution are independently compared
   with this model; delegated mechanisms remain P3.3.
   Tests are in `test/f_model/`.
-- `lib/instruction_decoder.ml`, `lib/control_execution.ml`, and `lib/executable_core.ml`:
+- `lib/emulator_core/instruction_decoder.ml`, `lib/emulator_core/control_execution.ml`, and `lib/legacy/executable_core.ml`:
   P3.2's shared-spec decoder, architectural execution state, and composition with the
   P3.1a access controller. Local state/control instructions execute in RTL; all mechanism
   instructions use one retained P3.3-facing handshake. The implementation and evidence are
   recorded in [the P3.2 record](p3.2-implementation.md).
-- `lib/protemu_types.ml`: candidate pin/configure/transfer instruction variants.
-- `lib/p0_observable.ml` and `bin/generate.ml`: an observable pin/timer circuit
+- `lib/legacy/p0_observable.ml` and `bin/generate.ml`: an observable pin/timer circuit
   and working parameterized Verilog emitter, separate from the control scaffold.
 - The P2 primitives in `lib/`: `pin_bank.ml`, `input_events.ml`, `timing.ml`,
   `byte_fifo.ml`, `shift_lane.ml`, `observed_transfer.ml`, `uart_tx.ml`, and

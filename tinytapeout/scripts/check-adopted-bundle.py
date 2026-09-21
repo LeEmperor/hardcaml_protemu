@@ -9,8 +9,13 @@ import subprocess
 import tempfile
 
 
-def run(*args, cwd=None):
-    subprocess.run(args, cwd=cwd, check=True)
+def run(*args, cwd=None, quiet=False):
+    subprocess.run(
+        args,
+        cwd=cwd,
+        check=True,
+        stdout=subprocess.DEVNULL if quiet else None,
+    )
 
 
 def lock_values(path):
@@ -148,9 +153,34 @@ def main():
         suffix = {"observable": "", "memory": "_memory", "loader": "_loader"}[args.kind]
         top = "tt_um_leemperor_hardcaml_protemu" + suffix
         if args.kind == "loader":
+            for role in ("simulation", "src"):
+                obj_dir = scratch / ("loader-" + role)
+                source = first / role / f"{top}.v"
+                run(
+                    "verilator",
+                    "--binary",
+                    "--timing",
+                    "--Mdir",
+                    str(obj_dir),
+                    "--top-module",
+                    "p3_loader_tb",
+                    "-DLOADER_WRAPPER",
+                    "-Wno-DECLFILENAME",
+                    "-Wno-COMBDLY",
+                    "-Wno-TIMESCALEMOD",
+                    "-Wno-INITIALDLY",
+                    "-Wno-WIDTHTRUNC",
+                    "-Wno-WIDTHEXPAND",
+                    "-Wno-ZERODLY",
+                    str(source),
+                    str(root / "tinytapeout/test/p3_loader_tb.v"),
+                    "-j",
+                    "1",
+                    cwd=root,
+                    quiet=True,
+                )
+                run(str(obj_dir / "Vp3_loader_tb"), cwd=root, quiet=True)
             commands = "\n".join([
-                f"verilator --binary --timing --Mdir /tmp/protemu-loader --top-module p3_loader_tb -DLOADER_WRAPPER -Wno-DECLFILENAME -Wno-COMBDLY -Wno-TIMESCALEMOD -Wno-INITIALDLY -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND /bundle/simulation/{top}.v /test/p3_loader_tb.v -j 1",
-                "/tmp/protemu-loader/Vp3_loader_tb",
                 f"verilator --lint-only --top-module {top} -Wno-DECLFILENAME -Wno-COMBDLY /bundle/src/{top}.v",
                 f"yosys -p 'read_verilog /bundle/src/{top}.v; hierarchy -check -top {top}; synth -top {top}; stat'",
             ])
@@ -165,12 +195,24 @@ def main():
                 f"yosys -p 'read_verilog /bundle/src/{top}.v; hierarchy -check -top {top}; synth -top {top}; stat'",
             ])
         run(
-            "docker", "run", "--rm", "--pull=never", "--network", "none",
-            "-v", f"{first}:/bundle:ro",
-            "-v", f"{root / 'tinytapeout/test'}:/test:ro",
-            "--entrypoint", "sh", image, "-ec", commands,
+            "docker",
+            "run",
+            "--rm",
+            "--pull=never",
+            "--network",
+            "none",
+            "-v",
+            f"{first}:/bundle:ro",
+            "-v",
+            f"{root / 'tinytapeout/test'}:/test:ro",
+            "--entrypoint",
+            "sh",
+            image,
+            "-ec",
+            commands,
+            quiet=True,
         )
-        print(f"PASS emitted RTL wrapper trace, lint, and synthesis ({image_id})")
+        print(f"PASS emitted RTL wrapper roles, lint, and synthesis ({image_id})")
 
 
 if __name__ == "__main__":

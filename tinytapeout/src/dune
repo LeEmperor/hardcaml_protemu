@@ -85,7 +85,9 @@
 ; context-registered program RAM. The temporary bundle remains inside Dune's sandbox.
 
 (rule
- (target loader_wrapper.simulation.generated.v)
+ (targets
+  loader_wrapper.simulation.generated.v
+  loader_wrapper.synthesis.generated.v)
  (deps
   ../../dune-project
   ../../hardcaml_protemu.opam
@@ -109,7 +111,11 @@
    (run
     /bin/cp
     loader_bundle/simulation/tt_um_leemperor_hardcaml_protemu_loader.v
-    %{target}))))
+    loader_wrapper.simulation.generated.v)
+   (run
+    /bin/cp
+    loader_bundle/src/tt_um_leemperor_hardcaml_protemu_loader.v
+    loader_wrapper.synthesis.generated.v))))
 
 ; P3.1b verification tops. These are the same context-registered consumer/RAM
 ; circuits used by the Cyclesim backend suite, emitted separately by source role.

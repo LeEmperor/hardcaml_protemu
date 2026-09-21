@@ -309,10 +309,48 @@
       1)))
    (run /bin/sh -c ./p3_loader_wrapper_obj/Vp3_loader_tb))))
 
+; Run the same public-pin behavior against the actual production synthesis source set.
+; The selected explicit-flop RAM is executable RTL; this is behavioral simulation, not
+; mapped synthesis or physical timing evidence.
+
+(rule
+ (alias loader-production-rtl)
+ (deps
+  (alias loader-wrapper-rtl)
+  p3_loader_tb.v
+  ../src/loader_wrapper.synthesis.generated.v)
+ (action
+  (progn
+   (with-stdout-to
+    %{null}
+    (setenv
+     MAKEFLAGS
+     -s
+     (run
+      verilator
+      --binary
+      --timing
+      --Mdir
+      p3_loader_production_obj
+      --top-module
+      p3_loader_tb
+      -DLOADER_WRAPPER
+      -Wno-DECLFILENAME
+      -Wno-COMBDLY
+      -Wno-TIMESCALEMOD
+      -Wno-INITIALDLY
+      -Wno-WIDTHTRUNC
+      -Wno-WIDTHEXPAND
+      ../src/loader_wrapper.synthesis.generated.v
+      p3_loader_tb.v
+      -j
+      1)))
+   (run /bin/sh -c ./p3_loader_production_obj/Vp3_loader_tb))))
+
 (alias
  (name loader-rtl)
  (deps
-  (alias loader-wrapper-rtl)))
+  (alias loader-production-rtl)))
 
 (alias
  (name rtl)

@@ -436,7 +436,7 @@ per-word validity bitmap:
 4. Load-complete is accepted only after all declared words have produced matching
    verification responses, with no read outstanding and no verification failure. This
    is the concrete meaning of "verified": hardware checks accepted write coverage,
-   ordered read coverage, and every full-word comparison. The future loader supplies the
+   ordered read coverage, and every full-word comparison. The P3.5 loader supplies the
    declared length and expected words after assembling complete little-endian transport
    words; it cannot authorize an image with an unchecked pulse.
 
@@ -676,20 +676,28 @@ ready. The remaining `ui` and `uo` bits are reserved and driven low; all eight
 the 48 MHz system-clock domain through two-stage synchronizers rather than forming
 a second clock domain. Host high and low phases, select lead/trail, and input-data
 setup/hold are each at least four system-clock periods, giving a specified maximum
-host clock of 6 MHz at 48 MHz. This is a digital capture envelope, not a physical
-metastability or board-timing result.
+continuous symmetric bit clock of 6 MHz at 48 MHz. Complete request/response time also
+includes selected-frame lead/trail, inter-frame high time, response readiness, and any core
+completion latency. This is a digital capture envelope, not a physical metastability or
+board-timing result.
 
 The bounded version-1 wire protocol is detailed in
 [`p3.5-hardware-loader.md`](p3.5-hardware-loader.md). A selected request carries a
 magic byte, version, transaction tag, command, little-endian payload length, at
-most four payload bytes, and CRC-8/ATM. Selection loss terminates the frame; only
-an exact, complete, version-compatible, length-consistent frame with a matching
-CRC can reach dispatch. Commands cover discovery/status, load-start, one complete
+most four payload bytes, and CRC-8/ATM. The eleven-byte derived maximum uses a saturating
+count and sticky overrun, so neither a counter wrap nor a valid-looking suffix can restore
+eligibility. Selection loss terminates the frame; only an exact, complete,
+version-compatible, length-consistent frame with a matching CRC can reach dispatch.
+Commands cover discovery/status, load-start, one complete
 word write, one read or verification read, load-complete, RUN, STOP, and ABORT.
 The loader presents those operations once to `Integrated_core`; it never accesses
-RAM or image-valid state directly. A response is retained until drained. While a
-response is pending, a selected transfer reads that response rather than accepting
-a new command; early deselection preserves it and the next selection restarts it.
+RAM or image-valid state directly. A response is retained until explicitly committed.
+The host samples the final bit on a rising edge and validates the complete CRC while the
+clock remains high. Deselecting before the final fall rejects the received copy and keeps
+the response for replay; supplying the final fall and then deselecting commits consumption.
+While a response is pending, a selected transfer reads that response rather than accepting
+a new command. An early selection during dispatch or completion is not accepted and cannot
+alter retained command context; the host must deselect and begin a later legal transaction.
 There is no inactivity timeout, so a selected host may pause indefinitely.
 
 This per-command framing deliberately avoids a 512-byte image buffer. An accepted
@@ -712,12 +720,19 @@ send/receive bytes, and export timestamped traces. Keep these commands usable
 without a UI. A later operator interface can use the same API through a local
 service, with its placement decided after the device workflow works.
 
+P3.6 must add queue transport before the physical workflow can exchange application data.
+The current wire protocol does not support step, pin configuration, or trace, and compact
+STATUS is not the full portable inspection record. The backend must define transport errors
+for currently infallible status methods, map cycle budgets to physical polling/time, and
+decide whether stable wire refusals need richer host errors. These are backend/API handoff
+items; they do not reopen P3.5 framing and are not implemented by the loader repair.
+
 P3.4 settles the software boundary in [`host/host_api.ml`](../host/host_api.ml). API and
 abstract operation-protocol version 1.0 identify this software contract, while ISA identity
 `protemu-p1.5` version 1 and image-format version 1 identify program compatibility.
 Discovery advertises only the implemented `m16` configuration: 256 sixteen-bit memory
 words, word addresses, complete words in a metadata-bearing S-expression, and
-little-endian byte order for a future byte transport. The file representation does not
+little-endian byte order for the P3.5 serial byte transport. The file representation does not
 accept raw or packed bytes, so an incomplete trailing word is not representable; `m32`
 images are rejected before load-start. Pin configuration at this boundary is the
 architecture's software claim/release operation. Direct pin writes remain firmware
@@ -777,9 +792,10 @@ snapshot after an optional cursor; clear removes retained records and clears los
 does not rewind sequence numbers. A new session starts with an empty trace and sequence
 zero. Sequence and loss values are nonnegative OCaml `int` values; sessions that would
 exceed `Int.max_value` are outside this in-process backend's supported lifetime, rather than
-having defined wraparound semantics. Physical trace storage, register addresses, serial
-framing, loader acknowledgements, and transport timeouts remain P3.5/P3.6 rather than being
-inferred from this backend.
+having defined wraparound semantics. Physical trace storage and physical-backend transport
+timeouts remain P3.6 rather than being inferred from this backend. P3.5 now fixes serial
+framing, acknowledgement, wire encodings, response replay/commit, and compact INFO/STATUS
+records.
 
 Development integration with Hardcaml Workbench is a separate optional track:
 generic Dune commands first, then a small versioned manifest and a project-side

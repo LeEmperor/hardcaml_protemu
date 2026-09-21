@@ -5,7 +5,8 @@
 
    Program RAM remains an external latency-one 1RW port so the behavioral core stays
    independent of ASIC infrastructure. The production project supplies the registered
-   resource at this boundary. *)
+   resource at this boundary.
+*)
 
 open! Core
 open! Hardcaml

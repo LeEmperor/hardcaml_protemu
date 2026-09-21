@@ -5,9 +5,10 @@
 
    The external host clock is observed through synchronizers; it never clocks logic. A
    complete CRC-protected request is retained before exactly one core request is offered.
-   Responses are retained until completely drained, and an interrupted response restarts
-   from byte zero without repeating the command. Program RAM and image validity remain
-   exclusively owned by Protocol_core. *)
+   Responses are retained until explicitly committed, and an interrupted or rejected
+   response restarts from byte zero without repeating the command. Program RAM and image
+   validity remain exclusively owned by Protocol_core.
+*)
 
 open! Core
 open! Hardcaml
@@ -18,6 +19,8 @@ module Config = struct
   let request_magic = 0xa5
   let response_magic = 0x5a
   let max_payload_bytes = 4
+  let max_request_bytes = 6 + max_payload_bytes + 1
+  let request_byte_count_bits = Int.ceil_log2 (max_request_bytes + 1)
   let max_response_bytes = 21
   let response_bits = max_response_bytes * 8
 end
@@ -50,6 +53,23 @@ module Result = struct
   let image_bounds = 0x23
   let verification_mismatch = 0x24
   let hardware_rejected = 0x2f
+end
+
+(* Stable INFO capability bits. These are wire definitions, not constructor positions from
+   the transport-independent host API.
+*)
+module Capability = struct
+  let status = 1 lsl 0
+  let program_load = 1 lsl 1
+  let program_read = 1 lsl 2
+  let program_verify = 1 lsl 3
+  let run = 1 lsl 4
+  let stop = 1 lsl 5
+  let abort = 1 lsl 6
+
+  let supported =
+    status lor program_load lor program_read lor program_verify lor run lor stop lor abort
+  ;;
 end
 
 module I = struct
@@ -128,11 +148,15 @@ end
 
 [@@@ocamlformat "disable"]
 
+(* Registered parser, dispatch, completion, and retained-response state. Fields hold unless
+   explicitly assigned by [compile]; reset clears every field.
+*)
 module I_Regs = struct
   type 'a t =
     { select_meta      : 'a
     ; select_sync      : 'a
     ; select_previous  : 'a
+    ; select_high_count : 'a [@bits 3]
     ; clock_meta       : 'a
     ; clock_sync       : 'a
     ; clock_previous   : 'a
@@ -140,7 +164,9 @@ module I_Regs = struct
     ; data_sync        : 'a
     ; byte_shift       : 'a [@bits 8]
     ; bit_count        : 'a [@bits 3]
-    ; byte_count       : 'a [@bits 4]
+    ; byte_count       : 'a [@bits Config.request_byte_count_bits]
+    ; request_active   : 'a
+    ; request_overrun  : 'a
     ; request_magic    : 'a [@bits 8]
     ; request_version  : 'a [@bits 8]
     ; request_tag      : 'a [@bits 8]
@@ -153,6 +179,7 @@ module I_Regs = struct
     ; wait_read        : 'a
     ; wait_abort       : 'a
     ; response_pending : 'a
+    ; response_active  : 'a
     ; response_store   : 'a [@bits Config.response_bits]
     ; response_shift   : 'a [@bits Config.response_bits]
     ; response_length  : 'a [@bits 5]
@@ -204,12 +231,12 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   let select_release = ~:(r.select_sync.value) &: r.select_previous.value in
   let clock_rise = r.clock_sync.value &: ~:(r.clock_previous.value) in
   let clock_fall = ~:(r.clock_sync.value) &: r.clock_previous.value in
+  let command_busy = r.dispatch.value |: r.wait_read.value |: r.wait_abort.value in
+  let request_idle =
+    ~:(r.request_active.value) &: ~:command_busy &: ~:(r.response_pending.value)
+  in
   let receiving =
-    r.select_sync.value
-    &: ~:(r.response_pending.value)
-    &: ~:(r.dispatch.value)
-    &: ~:(r.wait_read.value)
-    &: ~:(r.wait_abort.value)
+    i.enable_i &: r.select_sync.value &: r.request_active.value
   in
   let completed_byte = concat_lsb [ r.data_sync.value; select r.byte_shift.value ~high:6 ~low:0 ] in
   let expected_crc_index = uresize r.payload_length.value ~width:16 +:. 6 in
@@ -218,7 +245,8 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   let expected_frame_bytes = r.payload_length.value +:. 7 in
   let request_bytes = uresize r.byte_count.value ~width:16 in
   let request_complete =
-    (r.bit_count.value ==:. 0)
+    ~:(r.request_overrun.value)
+    &: (r.bit_count.value ==:. 0)
     &: (request_bytes >=:. 7)
     &: (request_bytes ==: expected_frame_bytes)
   in
@@ -280,7 +308,7 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
     ; byte 0
     ; byte 1
     ; byte 1
-    ; byte 0x7f
+    ; byte Capability.supported
     ; byte 0
     ; byte Protocol_core.Config.program_width
     ; byte 0
@@ -332,13 +360,21 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
       status_payload
   in
   let parser_error =
-    mux2 (~:(request_complete)) (byte Result.incomplete)
+    mux2 r.request_overrun.value (byte Result.bad_length)
+      (mux2 (~:(request_complete)) (byte Result.incomplete)
       (mux2 (r.request_magic.value <>:. Config.request_magic) (byte Result.bad_magic)
          (mux2 (r.request_version.value <>:. Config.wire_version) (byte Result.bad_version)
             (mux2 (r.payload_length.value >:. Config.max_payload_bytes) (byte Result.bad_length)
-               (mux2 (~:(r.crc_match.value)) (byte Result.bad_crc) (byte Result.complete)))))
+               (mux2 (~:(r.crc_match.value)) (byte Result.bad_crc) (byte Result.complete))))))
   in
-  let parser_error_response = empty_response parser_error in
+  let correlation_valid = r.byte_count.value >=:. 4 in
+  let parser_error_response =
+    response_frame
+      ~tag:(mux2 correlation_valid r.request_tag.value (zero 8))
+      ~command:(mux2 correlation_valid r.request_command.value (zero 8))
+      ~result:parser_error
+      []
+  in
 
   let response_drained =
     r.response_bits.value ==: sll (uresize r.response_length.value ~width:8) ~by:3
@@ -383,6 +419,7 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
       r.select_meta <-- selected_async
     ; r.select_sync <-- r.select_meta.value
     ; r.select_previous <-- r.select_sync.value
+    ; r.select_high_count <-- r.select_high_count.value
     ; r.clock_meta <-- i.serial_clock_i
     ; r.clock_sync <-- r.clock_meta.value
     ; r.clock_previous <-- r.clock_sync.value
@@ -391,6 +428,8 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
     ; r.byte_shift <-- r.byte_shift.value
     ; r.bit_count <-- r.bit_count.value
     ; r.byte_count <-- r.byte_count.value
+    ; r.request_active <-- r.request_active.value
+    ; r.request_overrun <-- r.request_overrun.value
     ; r.request_magic <-- r.request_magic.value
     ; r.request_version <-- r.request_version.value
     ; r.request_tag <-- r.request_tag.value
@@ -403,15 +442,24 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
     ; r.wait_read <-- r.wait_read.value
     ; r.wait_abort <-- r.wait_abort.value
     ; r.response_pending <-- r.response_pending.value
+    ; r.response_active <-- r.response_active.value
     ; r.response_store <-- r.response_store.value
     ; r.response_shift <-- r.response_shift.value
     ; r.response_length <-- r.response_length.value
     ; r.response_bits <-- r.response_bits.value
 
-    ; when_ (select_assert &: ~:(r.response_pending.value))
+    ; if_ r.select_sync.value
+        [ r.select_high_count <--. 0 ]
+        [ when_ (r.select_high_count.value <:. 4)
+            [ r.select_high_count <-- r.select_high_count.value +:. 1 ]
+        ]
+
+    ; when_ (select_assert &: i.enable_i &: request_idle)
         [ r.byte_shift <--. 0
         ; r.bit_count <--. 0
         ; r.byte_count <--. 0
+        ; r.request_active <--. 1
+        ; r.request_overrun <--. 0
         ; r.request_magic <--. 0
         ; r.request_version <--. 0
         ; r.request_tag <--. 0
@@ -425,42 +473,50 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
         [ r.byte_shift <-- completed_byte
         ; if_ (r.bit_count.value ==:. 7)
             [ r.bit_count <--. 0
-            ; r.byte_count <-- r.byte_count.value +:. 1
-            ; if_ completed_is_crc
-                [ r.crc_match <-- (completed_byte ==: r.request_crc.value) ]
-                [ r.request_crc <-- crc8_byte r.request_crc.value completed_byte ]
-            ; switch r.byte_count.value
-                [ of_int_trunc ~width:4 0, [ r.request_magic <-- completed_byte ]
-                ; of_int_trunc ~width:4 1, [ r.request_version <-- completed_byte ]
-                ; of_int_trunc ~width:4 2, [ r.request_tag <-- completed_byte ]
-                ; of_int_trunc ~width:4 3, [ r.request_command <-- completed_byte ]
-                ; of_int_trunc ~width:4 4, [ r.payload_length <-- concat_msb [ zero 8; completed_byte ] ]
-                ; of_int_trunc ~width:4 5,
+            ; if_ (r.byte_count.value >=:. Config.max_request_bytes)
+                [ (* Saturation plus a sticky error prevents any suffix from becoming a
+                     second frame before deselection. *)
+                  r.byte_count <--. Config.max_request_bytes
+                ; r.request_overrun <--. 1
+                ]
+                [ r.byte_count <-- r.byte_count.value +:. 1
+                ; if_ completed_is_crc
+                    [ r.crc_match <-- (completed_byte ==: r.request_crc.value) ]
+                    [ r.request_crc <-- crc8_byte r.request_crc.value completed_byte ]
+                ; switch r.byte_count.value
+                [ of_int_trunc ~width:Config.request_byte_count_bits 0, [ r.request_magic <-- completed_byte ]
+                ; of_int_trunc ~width:Config.request_byte_count_bits 1, [ r.request_version <-- completed_byte ]
+                ; of_int_trunc ~width:Config.request_byte_count_bits 2, [ r.request_tag <-- completed_byte ]
+                ; of_int_trunc ~width:Config.request_byte_count_bits 3, [ r.request_command <-- completed_byte ]
+                ; of_int_trunc ~width:Config.request_byte_count_bits 4, [ r.payload_length <-- concat_msb [ zero 8; completed_byte ] ]
+                ; of_int_trunc ~width:Config.request_byte_count_bits 5,
                   [ r.payload_length <--
                       concat_msb [ completed_byte; select r.payload_length.value ~high:7 ~low:0 ]
                   ]
-                ; of_int_trunc ~width:4 6, [ r.payload <-- concat_msb [ zero 24; completed_byte ] ]
-                ; of_int_trunc ~width:4 7,
+                ; of_int_trunc ~width:Config.request_byte_count_bits 6, [ r.payload <-- concat_msb [ zero 24; completed_byte ] ]
+                ; of_int_trunc ~width:Config.request_byte_count_bits 7,
                   [ r.payload <--
                       concat_msb
                         [ zero 16; completed_byte; select r.payload.value ~high:7 ~low:0 ]
                   ]
-                ; of_int_trunc ~width:4 8,
+                ; of_int_trunc ~width:Config.request_byte_count_bits 8,
                   [ r.payload <--
                       concat_msb
                         [ zero 8; completed_byte; select r.payload.value ~high:15 ~low:0 ]
                   ]
-                ; of_int_trunc ~width:4 9,
+                ; of_int_trunc ~width:Config.request_byte_count_bits 9,
                   [ r.payload <--
                       concat_msb [ completed_byte; select r.payload.value ~high:23 ~low:0 ]
                   ]
+                ]
                 ]
             ]
             [ r.bit_count <-- r.bit_count.value +:. 1 ]
         ]
     ; (* Deselect validates the complete frame before any core-facing request exists. *)
-      when_ (select_release &: ~:(r.response_pending.value) &: ~:(r.dispatch.value))
-        [ if_ (parser_error ==:. Result.complete)
+      when_ (select_release &: r.request_active.value)
+        [ r.request_active <--. 0
+        ; if_ (parser_error ==:. Result.complete)
             [ r.dispatch <--. 1 ]
             (set_response parser_error_response)
         ]
@@ -547,35 +603,57 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
         ([ r.wait_abort <--. 0 ] @ set_response complete_response)
 
     ; (* A response selection starts or restarts a retained frame. *)
-      when_ (select_assert &: r.response_pending.value)
-        [ r.response_shift <-- r.response_store.value; r.response_bits <--. 0 ]
+      when_
+        (select_assert
+         &: i.enable_i
+         &: r.response_pending.value
+         &: (r.select_high_count.value >=:. 4))
+        [ r.response_shift <-- r.response_store.value
+        ; r.response_bits <--. 0
+        ; r.response_active <--. 1
+        ]
     ; when_
         (clock_fall
-         &: r.select_sync.value
-         &: r.response_pending.value
+         &: r.response_active.value
          &: ~:response_drained)
         [ r.response_shift <-- sll r.response_shift.value ~by:1
         ; r.response_bits <-- r.response_bits.value +:. 1
         ]
-    ; when_ (select_release &: r.response_pending.value &: response_drained)
-        [ r.response_pending <--. 0; r.response_bits <--. 0 ]
+    ; when_ (select_release &: r.response_active.value)
+        [ r.response_active <--. 0
+        ; if_ response_drained
+            [ r.response_pending <--. 0; r.response_bits <--. 0 ]
+            []
+        ]
 
     ; (* Disable is cancellation, not a delayed wire timeout. *)
       when_ (~:(i.enable_i))
         [ r.byte_shift <--. 0
         ; r.bit_count <--. 0
         ; r.byte_count <--. 0
+        ; r.select_high_count <--. 0
+        ; r.request_active <--. 0
+        ; r.request_overrun <--. 0
+        ; r.request_magic <--. 0
+        ; r.request_version <--. 0
+        ; r.request_tag <--. 0
+        ; r.request_command <--. 0
+        ; r.payload_length <--. 0
+        ; r.payload <--. 0
+        ; r.request_crc <--. 0
+        ; r.crc_match <--. 0
         ; r.dispatch <--. 0
         ; r.wait_read <--. 0
         ; r.wait_abort <--. 0
         ; r.response_pending <--. 0
+        ; r.response_active <--. 0
         ; r.response_bits <--. 0
         ]
     ];
 
   { O.serial_data_o =
       mux2
-        (i.enable_i &: r.response_pending.value &: r.select_sync.value &: ~:response_drained)
+        (i.enable_i &: r.response_active.value &: ~:response_drained)
         (msb r.response_shift.value)
         gnd
   ; serial_ready_o = i.enable_i &: r.response_pending.value
@@ -593,9 +671,11 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   ; stop_valid_o = stop_offer
   ; abort_valid_o = abort_offer
   ; busy_o =
-      r.select_sync.value
+      r.request_active.value
       |: r.dispatch.value
       |: r.wait_read.value
       |: r.wait_abort.value
       |: r.response_pending.value
   }
+;;
+[@@@ocamlformat "enable"]

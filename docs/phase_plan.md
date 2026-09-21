@@ -813,7 +813,12 @@ before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decouple
   without declaring the image valid. Add fixed loader logic and
   wrapper integration independent of firmware execution. Evidence: malformed or
   interrupted loads are rejected and a halted/broken program remains recoverable.
-  *Done:* [`hardware_loader.ml`](../lib/hardware_loader.ml) implements the fixed
+  *Repair done:* the 2026-09-21 independent review reproduced
+  acceptance after a sixteen-byte counter wrap, invalidating the previous completion claim.
+  The repaired [`hardware_loader.ml`](../lib/hardware_loader.ml) derives the eleven-byte
+  maximum, saturates and latches overrun, arms request/response selections, protects
+  dispatch/READ/ABORT context, and implements rising-edge validation followed by explicit
+  replay or final-fall commit. It otherwise retains the fixed
   synchronized host-clock parser, CRC-8/ATM validation, bounded four-byte command
   payload, one-shot core dispatch, completion waits, and retained/restartable response.
   [`loader_core.ml`](../lib/loader_core.ml) connects it only through the real
@@ -822,14 +827,15 @@ before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decouple
   `program` RAM and maps `ui[0]` select, `ui[1]` clock, `ui[2]` input data,
   `uo[0]` output data, and `uo[1]` ready while preserving all eight `uio` protocol
   pads. [`p3_loader_tb.v`](../tinytapeout/test/p3_loader_tb.v) is an independent
-  serial peer run against both emitted `Loader_core` plus a contract store and the
-  actual wrapper/behavioral adopted memory source. It covers discovery/status,
-  complete-word load/read/verify/complete/RUN, framing/version/command/CRC/length/
-  address errors, interrupted requests and responses, reset/disable, all ten phases
-  at the four-system-clock half-period boundary, asymmetric duties, deterministic
-  generated corruption seed `20260921`, active-execution refusal, ABORT of an
-  infinite loop, and replacement loading. Protocol, result/retry/recovery rules,
-  resource bounds, measured 6 MHz digital envelope, verification, limitations, and
+  serial peer run against emitted `Loader_core` plus a contract store, the
+  wrapper/behavioral memory source, and the production synthesis wrapper with explicit-flop
+  RAM. It covers decoded discovery/status; maximum and overlength frames; the reported
+  wrap attacks and multi-wrap prefixes; protected in-flight state; validated response
+  replay of a side-effecting RUN; complete-word load/read/verify/complete; all ten race-free
+  phases at the four-system-clock boundary; asymmetric duties; deterministic malformed
+  seed `20260921`; and ABORT/replacement recovery from loops, blocked queues, driven active
+  transfers, and invalid instructions. Protocol, result/retry/recovery rules,
+  resource bounds, derived 6 MHz digital bit-clock envelope, verification, limitations, and
   the exact P3.6 handoff are in the [P3.5 record](p3.5-hardware-loader.md). P3.6,
   board verification, current mapped cost, and the P3 exit gate remain open.
 - [ ] **P3.6 — Device backend and reload demonstration.** Implement the physical
@@ -837,7 +843,11 @@ before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decouple
   exercise hardware when available. Use the same CLI/API to load and run two
   different protocol programs without regenerating RTL. Evidence: readback,
   observed pin transactions, data exchange, status, and recovery traces; state
-  explicitly whether the backend has been verified on a board.
+  explicitly whether the backend has been verified on a board. Add queue transport for
+  data exchange; step, pin configuration, and trace remain unsupported in hardware.
+  Reconcile compact wire STATUS with portable inspection, define transport failures for
+  infallible status calls, map simulator cycle budgets to physical time, and settle richer
+  wire-refusal-to-host-error mapping.
 
 **Exit gate:** one generated hardware design can load/read back/run two protocol
 programs, exchange bytes, and report status through the host workflow. Recovery

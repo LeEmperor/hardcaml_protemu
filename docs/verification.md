@@ -1,13 +1,15 @@
 # System verification
 
-Status: current implementation updated on 2026-09-20 after the P3.2 executable control
-core, P3.1 program-store integration, independent load/access and execution models,
+Status: current implementation updated on 2026-09-21 after the P3.5 independent
+hardware loader and wrapper serial peer, the P3.4 host/simulator
+workflow, P3.3 integrated core/mechanisms and loaded core-decision path, P3.2 executable
+control core, P3.1 program-store integration, independent load/access and execution models,
 generated core regression, functional-model
 rename, per-block suite reorganization, cycle/event adapter conformance experiment,
 timed `Input_events` pilot, one four-state `Input_events` property, the timed P2.6
 event-to-engine path, the observed-transfer/pin-bank composition, and the integrated P2.7
-UART-slice suite. The real loaded RTL core-decision path, resolved-bus four-state behavior,
-and the physical obligations below remain unimplemented.
+UART-slice suite. Resolved-bus four-state behavior, physical host transport, and the
+physical obligations below remain unimplemented.
 
 This is the enduring source of truth for verification architecture, suite ownership,
 current evidence, and the intended next state. It incorporates the former test
@@ -23,8 +25,8 @@ verification policy rather than maintaining another test architecture.
 Paths in this section describe files that exist now. The rename to `f_model`, per-block
 suite layout, backend sampling characterization, timed P2.2 and P2.6 paths, P3.2 control
 execution, and one named four-state P2.2 property are implemented. A core-to-pin timed
-path and a resolved-bus
-four-state suite are not.
+path and a stateful simulator host workflow are implemented; a resolved-bus four-state
+suite is not.
 
 ### Backend and test inventory
 
@@ -89,6 +91,9 @@ integration cases extend them:
 | [`test/core/protocol_core/`](../test/core/protocol_core) | 14 | P3.1a has twelve directed load/access/fetch cases and two generated/replay expect tests. RTL is compared cycle by cycle with independent [`Program_access`](../f_model/program_access.ml) control and a local 1RW contract store under three unspecified-output policies. |
 | [`test/core/control_execution/`](../test/core/control_execution) | 25 | P3.2 exhaustive base-word legality/extension classification, directed local-execution/model agreement, all condition/loop/control paths, mechanism handshakes and collisions, faults, lifecycle/bounds, and 96 generated assembled-program comparisons at seed `20260920`. |
 | [`test/integration/core_engine/`](../test/integration/core_engine) | 17 | P3.3 loaded-program, fixed-seed generated and timed integration: all delegated kinds, independent FIFO/ownership projections, internal/observed transfer, control and event collisions, interruption, background progress, cleanup, engine-idle gating, and the real P2.6b path. |
+| [`test/host/`](../test/host) | 5 | P3.4 metadata-bearing image round trips and malformed, image/API/ISA compatibility, bounds, structured refusal/error classification, and distinct control/transfer timeout codes. |
+| [`test/integration/host_simulator/`](../test/integration/host_simulator) | 15 backend tests plus 6 CLI cases | P3.4 real integrated-core load/readback/verify, all-or-error image bounds, missing-image and length-mismatch classification, explicit capabilities/`Device` conformance, live and engine-busy access refusal, engine-owned pin conflicts, queue echo/partial resume/full concurrent-pop pressure, STOP timeout, step, post-edge active-transfer ABORT, malformed-program fault recovery, register/flag inspection, deterministic time/pad ordering, exact bounded-trace cursor/loss/clear/order semantics, generated-image diff, actual stateful CLI workflow, and machine-readable failure/transfer-timeout output. |
+| [`tinytapeout/test/p3_loader_tb.v`](../tinytapeout/test/p3_loader_tb.v) | 2 emitted-RTL tiers | P3.5 independent serial peer against `Loader_core` plus a contract 1RW store and against the actual adopted wrapper/behavioral `program` resource. Covers framing/CRC/errors, complete-word loading and hardware verification, phase/duty timing, response restart, reset/disable, live refusal, infinite-loop ABORT, replacement load, readback and RUN, plus 16 generated corruptions at seed `20260921`. |
 | [`test/integration/program_memory_backend/`](../test/integration/program_memory_backend) | 4 | P0.7/P3.1b checks exact resource records and contract-defined responses, then reruns P3.1a's twelve directed and 240 fixed-seed generated scenarios against both `Single_port_ram` Simulation and explicit-Flops Implementation elaborations. |
 | [`wrapper_unit_tests.ml`](../test/integration/wrapper/wrapper_unit_tests.ml) | 2 | The P0 observable wrapper. |
 
@@ -957,6 +962,8 @@ Historical run reports are not fresh results for later source revisions.
 | Other primitive cycle behavior | 55 block-owned inline directed, expect, generated, timed, and four-state cases under `test/primitives/`, plus one integration case under `test/integration/primitive_demo/` | Add bounded generated properties where they provide distinct evidence |
 | Core program load/access/fetch behavior | [`test/core/protocol_core/`](../test/core/protocol_core): twelve directed cases plus 240 generated fresh-state scenarios at seed `20260920` compare RTL with independent [`f_model/program_access.ml`](../f_model/program_access.ml) and a 1RW contract store. P0.7 additionally reruns the consumer against selected context-registered Simulation/Flops backends. P3.3 supplies real engine-idle production and boundary STOP/ABORT/single-step integration under [`test/integration/core_engine/`](../test/integration/core_engine). | Host transport and full-system physical evidence remain later obligations. |
 | Core decode and mechanism integration | [`test/core/control_execution/`](../test/core/control_execution) preserves P3.2 decoder/retirement evidence. [`test/integration/core_engine/`](../test/integration/core_engine) adds seventeen loaded-program, generated and timed cases for all delegated kinds, real mechanisms, background transfer, ownership/pressure, observed pacing, control/event collisions, interruption, cleanup and engine-idle gating. `p3_control_tb.v` retains the 16-cycle P3.2 image; `p3_integration_tb.v` runs the loaded wait/event/pin path and ABORT release from emitted RTL. See the [P3.3 record](p3.3-implementation.md). | P5 still owns mapped area/timing; formal invariants, host transport and protocol acceptance are not established. |
+| Host API and integrated simulator workflow | [`test/host/`](../test/host) checks serialization, compatibility, and stable timeout codes independently of command parsing. [`test/integration/host_simulator/`](../test/integration/host_simulator) drives the actual P3.3 DUT and contract RAM, including logical-image read bounds, refusal classification, signature/capability conformance, engine-owned pin conflicts and ABORT release, partial queue recovery and full-FIFO concurrent pop, defined execution-fault recovery, exact trace loss/cursors/ordering, and executable workflows with defined machine-readable failures. See the [P3.4 record](p3.4-host-api.md). | P3.1a retains accepted-start/interrupted-load validity evidence at the hardware boundary. P3.5 owns transport interruption, fixed hardware loading/framing, and response correlation; P3.6 owns a physical backend and two-image reload evidence. Simulator-side trace is not hardware trace storage. |
+| Independent hardware loader | [`lib/hardware_loader.ml`](../lib/hardware_loader.ml) and [`lib/loader_core.ml`](../lib/loader_core.ml), with [`p3_loader_tb.v`](../tinytapeout/test/p3_loader_tb.v) driving emitted serial pins at both reusable-core and actual adopted-wrapper tiers. The peer independently generates/checks CRC and correlation; proves malformed/incomplete frames cannot authorize or partially issue a word; performs actual RAM verification; measures the four-cycle/6 MHz digital envelope at every phase and asymmetric duties; and recovers an infinite loop by fixed ABORT and replacement loading. See the [P3.5 record](p3.5-hardware-loader.md). | P3.6 still owns the physical `Host_api.Device` backend and full portable-API reload workflow. Board timing, metastability reliability, mapped cost, and physical closure remain unclaimed. |
 | P0 wrapper | Two tests in `test/integration/wrapper/` plus `@rtl` wrapper checks | Later host/load/recovery evidence |
 | P2.2 external phase and pulse capture | `test/primitives/input_events/input_events_timing_{testbench,tests}.ml`; directed cases plus 160 generated trials, 10--19 tick deterministic latency, captured/missed pulse cases, reset/event interactions, temporal shrink/replay | Physical CDC/setup/hold/metastability evidence remains separate |
 | P2.6 event-to-engine/core-to-pin latency | The primitive timed suite covers idle-low/high physical mappings at the lane boundary: external-to-event is 10--19 ticks, event-to-lane is 10, and external-to-lane is 20--29. `test/integration/observed_transfer_bank/` gives 30--39 ticks external-to-bank. The P3.3 loaded-program sweep measures 60--69 ticks external-to-bank: 10--19 to synchronization, 20 to the core decision and 30 to the decoded bank request/commit edge. | Wrapper/pad, analog CDC/setup/hold and physical timing remain separate |

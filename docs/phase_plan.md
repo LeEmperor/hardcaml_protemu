@@ -1,6 +1,7 @@
 # Protocol emulator phase plan
 
-Status: working execution plan, updated 2026-09-20 for P3.2 completion,
+Status: working execution plan, updated 2026-09-21 for P3.5 completion,
+2026-09-20 for P3.2 completion,
 2026-09-19 for the P1.5 encoding decision, and 2026-09-18 for decoupled RTL
 development and P0.6 ASIC library adoption. The
 instruction encoding is now provisionally chosen and lives in `isa/`; P0.7 and P3.1
@@ -774,7 +775,7 @@ before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decouple
    cover completion, faults, ownership, pressure, background progress and interruption.
    P2.6b was immediately measured and closed above. Contracts, timing, commands and limits
    are in the [P3.3 implementation record](p3.3-implementation.md).
-- [ ] **P3.4 — Host API and simulator backend.** Define version/capability
+- [x] **P3.4 — Host API and simulator backend.** Define version/capability
   discovery, program load/readback, pin configuration, data queues, execution
   control, register/engine inspection, and bounded timestamped trace retrieval.
   Add CLI operations over a simulator backend. Evidence: a scripted CLI workflow
@@ -782,13 +783,55 @@ before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decouple
   observable and capability/ISA mismatches have defined errors. Advertise memory
   width/depth and image format; active-execution program-access requests have a
   defined rejection. Keep ordinary status/data-queue operations separate.
-- [ ] **P3.5 — Independent hardware loader.** Specify the dedicated serial link's
+  *Done:* [`host_api.ml`](../host/host_api.ml) defines the versioned discovery, image,
+  structured-error, program, control, queue, pin, inspection and trace boundary;
+  [`simulator_backend.ml`](../host/simulator_backend.ml) drives one live
+  [`Integrated_core`](../lib/integrated_core.ml) and an external contract RAM with explicit
+  cycle advancement. [`sim_cli.ml`](../bin/sim_cli.ml) adds machine-readable `sim info`,
+  image generation and stateful script commands. The checked
+  [`p3.4-workflow.sim`](../examples/p3.4-workflow.sim) loads and independently reads the
+  three-word queue-echo image, uses real RX/core/TX paths, exercises STOP, ABORT and step,
+  observes live-access and full/empty refusals, and proves bounded trace loss/clear state.
+  API/backend tests and actual-executable Dune rules live under
+  [`test/host/`](../test/host) and
+  [`test/integration/host_simulator/`](../test/integration/host_simulator). Contracts,
+  commands, results, limitations and the P3.5/P3.6 handoff are recorded in the
+  [P3.4 implementation and CLI guide](p3.4-host-api.md). This completes P3.4 only; no
+  physical transport, independent hardware loader, P4 protocol acceptance, or P3 exit gate
+  is claimed. *Review follow-up:* the bounded P3.4 cleanup added all-or-error logical-image
+  read bounds with structured unexpected-progress failures, authoritative refusal reasons,
+  distinct transfer timeout codes, explicit capabilities and backend signature conformance,
+  post-edge ABORT completion, current-request pin-conflict reporting, and focused queue,
+  fault/recovery, trace-order/loss and CLI regressions. It also confirmed and enforced the
+  latency-one response invariant and corrected post-RAM settling for concurrent FIFO
+  readiness. The API remains 1.0 because this cleanup precedes the first P3.5 transport and
+  removes unused reviewed-draft reasons rather than preserving an already released backend.
+- [x] **P3.5 — Independent hardware loader.** Specify the dedicated serial link's
   framing, pin allocation, host clock envelope, acknowledgement, length/error
   checks, byte order/word assembly, and flow control before implementation.
   Issue only complete configured memory words; reject incomplete trailing words
   without declaring the image valid. Add fixed loader logic and
   wrapper integration independent of firmware execution. Evidence: malformed or
   interrupted loads are rejected and a halted/broken program remains recoverable.
+  *Done:* [`hardware_loader.ml`](../lib/hardware_loader.ml) implements the fixed
+  synchronized host-clock parser, CRC-8/ATM validation, bounded four-byte command
+  payload, one-shot core dispatch, completion waits, and retained/restartable response.
+  [`loader_core.ml`](../lib/loader_core.ml) connects it only through the real
+  `Integrated_core` program/control requests. The adopted `loader` project in
+  [`asic_bundle.ml`](../bin/asic_bundle.ml) supplies the context-registered 256x16
+  `program` RAM and maps `ui[0]` select, `ui[1]` clock, `ui[2]` input data,
+  `uo[0]` output data, and `uo[1]` ready while preserving all eight `uio` protocol
+  pads. [`p3_loader_tb.v`](../tinytapeout/test/p3_loader_tb.v) is an independent
+  serial peer run against both emitted `Loader_core` plus a contract store and the
+  actual wrapper/behavioral adopted memory source. It covers discovery/status,
+  complete-word load/read/verify/complete/RUN, framing/version/command/CRC/length/
+  address errors, interrupted requests and responses, reset/disable, all ten phases
+  at the four-system-clock half-period boundary, asymmetric duties, deterministic
+  generated corruption seed `20260921`, active-execution refusal, ABORT of an
+  infinite loop, and replacement loading. Protocol, result/retry/recovery rules,
+  resource bounds, measured 6 MHz digital envelope, verification, limitations, and
+  the exact P3.6 handoff are in the [P3.5 record](p3.5-hardware-loader.md). P3.6,
+  board verification, current mapped cost, and the P3 exit gate remain open.
 - [ ] **P3.6 — Device backend and reload demonstration.** Implement the physical
   transport backend and run its transaction sequence against wrapper simulation;
   exercise hardware when available. Use the same CLI/API to load and run two

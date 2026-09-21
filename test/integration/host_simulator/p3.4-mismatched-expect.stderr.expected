@@ -1,0 +1,4 @@
+sim script failed: (Invalid_argument (operation expect-error)
+ (detail
+   "expected incompatible_isa, got incompatible_api: (Incompatible_api (required ((major 2) (minor 0)))\
+  \n (actual ((major 1) (minor 0))))"))

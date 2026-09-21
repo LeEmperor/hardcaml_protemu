@@ -286,5 +286,4 @@ let scenarios =
 ;;
 
 let run_all create = List.iter scenarios ~f:(fun (_, scenario) -> scenario create)
-
 let%test_unit "directed P3.1a scenarios" = run_all (fun poison -> create ~poison ())

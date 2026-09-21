@@ -73,6 +73,44 @@
  (action
   (run %{exe:../../bin/generate_core.exe} integrated %{target})))
 
+; P3.5 fixed serial loader plus integrated core. Program RAM remains an external
+; latency-one port in this fixture; the adopted project supplies the registered resource.
+
+(rule
+ (target loader_core.generated.v)
+ (action
+  (run %{exe:../../bin/generate_core.exe} loader %{target})))
+
+; P3.5 adopted wrapper simulation source, including the behavioral implementation of the
+; context-registered program RAM. The temporary bundle remains inside Dune's sandbox.
+
+(rule
+ (target loader_wrapper.simulation.generated.v)
+ (deps
+  ../../dune-project
+  ../../hardcaml_protemu.opam
+  ../../bin/dune
+  ../../bin/asic_bundle.ml
+  ../../isa/dune
+  (source_tree ../../isa)
+  ../../lib/dune
+  (source_tree ../../lib)
+  ../asic-dependencies.lock
+  ../toolchain.lock)
+ (action
+  (progn
+   (with-stdout-to
+    %{null}
+    (run
+     %{exe:../../bin/asic_bundle.exe}
+     loader
+     loader_bundle
+     %{workspace_root}))
+   (run
+    /bin/cp
+    loader_bundle/simulation/tt_um_leemperor_hardcaml_protemu_loader.v
+    %{target}))))
+
 ; P3.1b verification tops. These are the same context-registered consumer/RAM
 ; circuits used by the Cyclesim backend suite, emitted separately by source role.
 

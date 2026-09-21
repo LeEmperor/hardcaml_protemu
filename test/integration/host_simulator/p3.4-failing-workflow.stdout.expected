@@ -1,0 +1,1 @@
+(protemu-cli(version 1)(line 2)(command"check-api 2 0")(status error)(cycle 0)(value(Incompatible_api(required((major 2)(minor 0)))(actual((major 1)(minor 0))))))

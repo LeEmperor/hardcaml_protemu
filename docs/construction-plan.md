@@ -1,7 +1,8 @@
 # Protocol emulator construction plan
 
-Status: architecture and integration plan, updated 2026-09-20 for P3.1a's bounded
-program load/access/fetch contract and P3.2's minimal control execution, and 2026-09-17
+Status: architecture and integration plan, updated 2026-09-21 for P3.5's independent
+hardware loader, 2026-09-20 for P3.1a's bounded program load/access/fetch contract,
+P3.2's minimal control execution, and P3.4's host and simulator-session contract, and 2026-09-17
 for the implemented `hardcaml_asic` slice (its P0–P3, P4.1–P4.4) and the decision to
 develop emulator RTL decoupled from
 ASIC adoption (section 1). Sizes and rates remain study parameters; the provisional
@@ -667,18 +668,118 @@ readback and writes initially require halted execution and idle engines, as in
 section 4; inspection of status is not a second memory port. Make protocol
 examples runnable through a simulator backend before real hardware exists.
 
-A proposed first physical loader is a slow clocked serial debug link using
-dedicated Tiny Tapeout inputs and an output. It must operate with the protocol
-core halted so an empty or broken program remains recoverable. Its fixed loader
-logic is infrastructure, separate from the programmable protocol bank. Specify
-framing, maximum host clock, command acknowledgement, length/error checks, and
-flow control before implementation. Start without concurrent program writes.
+The P3.5 physical loader is a slow host-clocked, mode-0-style serial debug link
+using dedicated Tiny Tapeout pins: `ui[0]` active-low select, `ui[1]` host clock,
+`ui[2]` host-to-device data, `uo[0]` device-to-host data, and `uo[1]` response
+ready. The remaining `ui` and `uo` bits are reserved and driven low; all eight
+`uio` pads remain the programmable protocol bank. The host clock is observed in
+the 48 MHz system-clock domain through two-stage synchronizers rather than forming
+a second clock domain. Host high and low phases, select lead/trail, and input-data
+setup/hold are each at least four system-clock periods, giving a specified maximum
+host clock of 6 MHz at 48 MHz. This is a digital capture envelope, not a physical
+metastability or board-timing result.
+
+The bounded version-1 wire protocol is detailed in
+[`p3.5-hardware-loader.md`](p3.5-hardware-loader.md). A selected request carries a
+magic byte, version, transaction tag, command, little-endian payload length, at
+most four payload bytes, and CRC-8/ATM. Selection loss terminates the frame; only
+an exact, complete, version-compatible, length-consistent frame with a matching
+CRC can reach dispatch. Commands cover discovery/status, load-start, one complete
+word write, one read or verification read, load-complete, RUN, STOP, and ABORT.
+The loader presents those operations once to `Integrated_core`; it never accesses
+RAM or image-valid state directly. A response is retained until drained. While a
+response is pending, a selected transfer reads that response rather than accepting
+a new command; early deselection preserves it and the next selection restarts it.
+There is no inactivity timeout, so a selected host may pause indefinitely.
+
+This per-command framing deliberately avoids a 512-byte image buffer. An accepted
+load-start invalidates the prior image, each write frame can issue only one fully
+assembled 16-bit word, and the host supplies each expected word again for the
+ordered hardware verification pass. A malformed write frame therefore cannot
+issue a partial word. Interruption after load-start may leave earlier writes in RAM
+but cannot make the image executable; a new valid load-start replaces that session.
+STOP acknowledges boundary-request acceptance and may remain pending. ABORT does
+not complete on acceptance: its response waits for the post-edge halted,
+engine-idle, claim-free, output-disabled state. Thus ABORT followed by a replacement
+load is the fixed recovery path for looping, waiting, faulted, or engine-owning
+firmware. Reset clears loader state and image validity; disable cancels parser and
+load-session state while preserving a previously completed image, consistently
+with the existing core contract.
 
 Keep register addresses and binary transport versioned; expose capabilities for
 memory width/depth, pin count, engines, and ISA version. A CLI should load firmware,
 send/receive bytes, and export timestamped traces. Keep these commands usable
 without a UI. A later operator interface can use the same API through a local
 service, with its placement decided after the device workflow works.
+
+P3.4 settles the software boundary in [`host/host_api.ml`](../host/host_api.ml). API and
+abstract operation-protocol version 1.0 identify this software contract, while ISA identity
+`protemu-p1.5` version 1 and image-format version 1 identify program compatibility.
+Discovery advertises only the implemented `m16` configuration: 256 sixteen-bit memory
+words, word addresses, complete words in a metadata-bearing S-expression, and
+little-endian byte order for a future byte transport. The file representation does not
+accept raw or packed bytes, so an incomplete trailing word is not representable; `m32`
+images are rejected before load-start. Pin configuration at this boundary is the
+architecture's software claim/release operation. Direct pin writes remain firmware
+instructions, while asynchronous pad value and external occupancy are explicitly
+simulator-only facilities. A claim or release that overlaps engine ownership is refused
+without changing either owner or the driven output.
+
+The first backend, [`host/simulator_backend.ml`](../host/simulator_backend.ml), owns one
+`Integrated_core`, one contract-compatible latency-one RAM, and one clock for the lifetime
+of a CLI script. Session creation applies reset, then presents cycle zero with no valid
+image, empty queues, zero external pads/occupancy, an enabled empty trace, and a monotonic
+cycle counter. For an advancing operation the backend drives persistent pad state and the
+host request, settles combinational logic, samples acceptance and the memory request before
+the rising edge, advances the edge, services the external RAM port, and samples registered
+state. A read request takes its acceptance edge plus one response edge. This fixed-latency
+response is a backend invariant, not an ordinary retryable transport timeout. Load uses the
+exact load-start, ordered-write, ordered hardware-verify, load-complete sequence. Discovery,
+status, loaded-image inspection, compatibility checks, trace retrieval/clear, and changing
+the next external-pad stimulus do not advance time. Pin claims, accepted queue transfers,
+control offers, and program operations do.
+
+Explicit `advance` and finite `wait-halted`, STOP, step, and queue waiting budgets are the
+only way idle/background cycles pass. Queue budgets count cycles spent waiting; each
+accepted byte still consumes one deterministic edge. A zero budget is nonblocking and a
+blocked operation advances no edge. Host TX means host-to-device and enters the DUT RX
+FIFO; host RX drains the DUT TX FIFO. Results preserve requested and transferred counts.
+A timeout after an accepted STOP or step reports `accepted = true` and neither aborts nor
+resets the device; the request remains governed by hardware until later clocks or an
+explicit ABORT. RUN returns on acceptance rather than waiting for program termination.
+Ordinary status, trace, and queue operations remain available while execution owns program
+memory. Program requests are still offered once to hardware and a refusal is reported; the
+backend never retries a side effect.
+
+Ordinary completed-image reads use all-or-error range semantics. The simulator validates
+the complete physical and verified-image range before the first read edge, so an
+out-of-image range returns `Image_bounds` with no partial progress and no time advance.
+No image, active execution, and active engines have distinct refusal reasons. An unexpected
+mid-range hardware refusal still reports its failing address, completed count, and prior
+words in `Read_failed`; a missing accepted latency-one response is a backend-invariant
+failure. `verify_image` distinguishes no image, incompatible loaded length, and a data-word
+mismatch without invalidating a valid image.
+
+Queue operations return partial progress as successful `Transfer` values. An exact-transfer
+presentation such as the CLI converts `Would_block` or `Timed_out` to an error only after
+preserving requested/transferred counts and received data. The latter uses the distinct
+stable code `transfer_timeout`; a caller resumes only the remaining count and must not
+repeat already transferred bytes. ABORT completion is sampled from its post-edge halted,
+engine-idle, ownership-released and output-disabled state rather than inferred solely from
+acceptance.
+
+The simulator trace is observation storage, not synthesizable hardware. It samples after
+each rising edge in stable host-operation, instruction, mechanism/engine, pin-transition,
+fault order. Records use the session cycle as timestamp and a monotonic cursor sequence.
+The fixed-capacity ring drops the oldest record, retains a cumulative sticky loss count,
+and never stalls execution. Retrieval and clear do not advance time. Retrieval is a
+snapshot after an optional cursor; clear removes retained records and clears loss state but
+does not rewind sequence numbers. A new session starts with an empty trace and sequence
+zero. Sequence and loss values are nonnegative OCaml `int` values; sessions that would
+exceed `Int.max_value` are outside this in-process backend's supported lifetime, rather than
+having defined wraparound semantics. Physical trace storage, register addresses, serial
+framing, loader acknowledgements, and transport timeouts remain P3.5/P3.6 rather than being
+inferred from this backend.
 
 Development integration with Hardcaml Workbench is a separate optional track:
 generic Dune commands first, then a small versioned manifest and a project-side

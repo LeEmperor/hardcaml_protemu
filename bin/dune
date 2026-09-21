@@ -37,8 +37,11 @@
   core_unix
   core_unix.command_unix
   core_unix.filename_unix
-  core_unix.sys_unix)
- (modules protemu)
+  core_unix.sys_unix
+  protemu_host
+  protemu_simulator
+  protemu_isa)
+ (modules protemu sim_cli)
  (preprocess
   (pps ppx_jane))
  (lint

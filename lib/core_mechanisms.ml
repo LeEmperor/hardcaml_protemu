@@ -523,6 +523,14 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   in
   assign bank_software_claim bank.software_claim_o;
   assign bank_engine_claim bank.engine_claim_o;
+  let software_bank_rejected =
+    host_bank_allowed
+    &: ((i.software_claim_valid_i
+         &: ((i.software_claim_mask_i &: bank_engine_claim) <>:. 0))
+        |: (i.software_release_valid_i
+            &: ((i.software_release_mask_i &: ~:bank_software_claim) <>:. 0))
+        |: (i.software_claim_valid_i &: i.software_release_valid_i))
+  in
 
   let immediate_accept =
     read_pins
@@ -678,7 +686,7 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   ; pin_oe_o = bank.pin_oe_o
   ; software_claim_o = bank.software_claim_o
   ; engine_claim_o = bank.engine_claim_o
-  ; software_request_rejected_o = software_request_rejected |: bank.rejected_o
+  ; software_request_rejected_o = software_request_rejected |: software_bank_rejected
   ; bank_conflict_o = bank.conflict_o
   ; timing_busy_o = timing.busy_o
   ; transfer_busy_o = lane.busy_o |: lane.armed_o |: ~:bridge_idle

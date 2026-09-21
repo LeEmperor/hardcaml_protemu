@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check fresh observable and memory ASIC bundles and their TT wrapper traces."""
+"""Check fresh observable, memory, and loader ASIC bundles and wrapper traces."""
 
 import argparse
 import hashlib
@@ -28,7 +28,7 @@ def check_bundle(root, bundle, kind):
     assert manifest["source_revision"] == subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=root, text=True
     ).strip()
-    suffix = "" if kind == "observable" else "_memory"
+    suffix = {"observable": "", "memory": "_memory", "loader": "_loader"}[kind]
     assert manifest["top_module"] == "tt_um_leemperor_hardcaml_protemu" + suffix
     assert manifest["project"] == "protemu_" + kind
     assert manifest["requested_tools"] == {
@@ -57,9 +57,11 @@ def check_bundle(root, bundle, kind):
     assert f'top_module: "{manifest["top_module"]}"' in info
     assert "create_clock -name clk" in (bundle / "constraints/top.sdc").read_text()
     source_paths = {item["path"] for item in manifest["source_inputs"]}
-    expected_source = (
-        "lib/p0_observable.ml" if kind == "observable" else "lib/protocol_core.ml"
-    )
+    expected_source = {
+        "observable": "lib/p0_observable.ml",
+        "memory": "lib/protocol_core.ml",
+        "loader": "lib/hardware_loader.ml",
+    }[kind]
     assert {
         "bin/asic_bundle.ml", expected_source, "tinytapeout/asic-dependencies.lock"
     } <= source_paths
@@ -68,7 +70,12 @@ def check_bundle(root, bundle, kind):
         assert manifest["resources"] == []
         assert manifest["simulation_resources"] == []
     else:
-        assert '"Memory request opcode bit 2 / response bit 7"' in info
+        if kind == "memory":
+            assert '"Memory request opcode bit 2 / response bit 7"' in info
+        else:
+            assert 'ui[0]: "Loader select, active low"' in info
+            assert 'uo[1]: "Loader response ready"' in info
+            assert {"lib/loader_core.ml", "lib/integrated_core.ml"} <= source_paths
         request = (
             "((kind single_port_ram)\n (contract\n  ((width 16) (depth 256) "
             "(read_latency 1) (port 1rw) (disabled_output hold)\n   "
@@ -106,7 +113,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--metadata-only", action="store_true")
     parser.add_argument(
-        "--kind", choices=("observable", "memory"), default="observable"
+        "--kind", choices=("observable", "memory", "loader"), default="observable"
     )
     args = parser.parse_args()
     root = pathlib.Path(__file__).resolve().parents[2]
@@ -138,18 +145,25 @@ def main():
                 f"pinned LibreLane image unavailable: {image}; "
                 f"install Docker and run 'docker pull {image}'"
             ) from error
-        top = "tt_um_leemperor_hardcaml_protemu" + (
-            "" if args.kind == "observable" else "_memory"
-        )
-        testbench = "tb.v" if args.kind == "observable" else "p0_memory_tb.v"
-        commands = "\n".join([
-            f"iverilog -g2012 -Wall -Wno-timescale -s tb -o /tmp/protemu-wrapper /bundle/src/{top}.v /test/{testbench}",
-            "vvp /tmp/protemu-wrapper",
-            f"iverilog -g2012 -Wall -Wno-timescale -s tb -o /tmp/protemu-wrapper-sim /bundle/simulation/{top}.v /test/{testbench}",
-            "vvp /tmp/protemu-wrapper-sim",
-            f"verilator --lint-only --top-module {top} -Wno-DECLFILENAME -Wno-COMBDLY /bundle/src/{top}.v",
-            f"yosys -p 'read_verilog /bundle/src/{top}.v; hierarchy -check -top {top}; synth -top {top}; stat'",
-        ])
+        suffix = {"observable": "", "memory": "_memory", "loader": "_loader"}[args.kind]
+        top = "tt_um_leemperor_hardcaml_protemu" + suffix
+        if args.kind == "loader":
+            commands = "\n".join([
+                f"verilator --binary --timing --Mdir /tmp/protemu-loader --top-module p3_loader_tb -DLOADER_WRAPPER -Wno-DECLFILENAME -Wno-COMBDLY -Wno-TIMESCALEMOD -Wno-INITIALDLY -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND /bundle/simulation/{top}.v /test/p3_loader_tb.v -j 1",
+                "/tmp/protemu-loader/Vp3_loader_tb",
+                f"verilator --lint-only --top-module {top} -Wno-DECLFILENAME -Wno-COMBDLY /bundle/src/{top}.v",
+                f"yosys -p 'read_verilog /bundle/src/{top}.v; hierarchy -check -top {top}; synth -top {top}; stat'",
+            ])
+        else:
+            testbench = "tb.v" if args.kind == "observable" else "p0_memory_tb.v"
+            commands = "\n".join([
+                f"iverilog -g2012 -Wall -Wno-timescale -s tb -o /tmp/protemu-wrapper /bundle/src/{top}.v /test/{testbench}",
+                "vvp /tmp/protemu-wrapper",
+                f"iverilog -g2012 -Wall -Wno-timescale -s tb -o /tmp/protemu-wrapper-sim /bundle/simulation/{top}.v /test/{testbench}",
+                "vvp /tmp/protemu-wrapper-sim",
+                f"verilator --lint-only --top-module {top} -Wno-DECLFILENAME -Wno-COMBDLY /bundle/src/{top}.v",
+                f"yosys -p 'read_verilog /bundle/src/{top}.v; hierarchy -check -top {top}; synth -top {top}; stat'",
+            ])
         run(
             "docker", "run", "--rm", "--pull=never", "--network", "none",
             "-v", f"{first}:/bundle:ro",

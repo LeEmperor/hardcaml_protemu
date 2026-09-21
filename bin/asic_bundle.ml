@@ -163,6 +163,59 @@ module Memory_design = struct
   ;;
 end
 
+module Loader_design = struct
+  module I = Tt_cmos5l.I
+  module O = Tt_cmos5l.O
+
+  let name = "tt_um_leemperor_hardcaml_protemu_loader"
+
+  let create context (i : _ I.t) =
+    let open Signal in
+    let core_reset = Tt_cmos5l.synchronised_reset ~clock:i.clk ~rst_n:i.rst_n () in
+    let memory_read_data = wire Protocol_core.Config.program_width in
+    let system =
+      Loader_core.create
+        (Elaboration_context.scope context)
+        { Loader_core.I.clock_i = i.clk
+        ; reset_i = core_reset
+        ; enable_i = i.ena
+        ; serial_select_n_i = bit i.ui_in ~pos:0
+        ; serial_clock_i = bit i.ui_in ~pos:1
+        ; serial_data_i = bit i.ui_in ~pos:2
+        ; prog_mem_read_data_i = memory_read_data
+        ; pin_async_i = i.uio_in
+        ; occupied_i = zero Protemu_isa.Pins.count
+        }
+    in
+    let memory_config =
+      Single_port_ram.Config.create_exn
+        ~width:Protocol_core.Config.program_width
+        ~depth:Protocol_core.Config.program_depth
+        ~read_latency:1
+    in
+    let ram_read_data =
+      Single_port_ram.create
+        context
+        ~name:"program"
+        memory_config
+        ~clock:i.clk
+        ~enable:system.prog_mem_enable_o
+        ~write_enable:system.prog_mem_write_enable_o
+        ~address:system.prog_mem_address_o
+        ~write_data:system.prog_mem_write_data_o
+    in
+    assign memory_read_data ram_read_data;
+    let pads_enabled = i.rst_n &: i.ena &: ~:core_reset in
+    { O.uo_out =
+        Tt_cmos5l.gate
+          ~enable:pads_enabled
+          (concat_msb [ zero 6; system.serial_ready_o; system.serial_data_o ])
+    ; uio_out = Tt_cmos5l.gate ~enable:pads_enabled system.pins_o
+    ; uio_oe = Tt_cmos5l.gate ~enable:pads_enabled system.pin_oe_o
+    }
+  ;;
+end
+
 let observable_pinout : Pinout.t =
   let descriptions = function
     | Pinout.Bank.Ui ->
@@ -222,6 +275,35 @@ let memory_pinout : Pinout.t =
       { Pinout.bank; bit; description }))
 ;;
 
+let loader_pinout : Pinout.t =
+  let descriptions = function
+    | Pinout.Bank.Ui ->
+      [ "Loader select, active low"
+      ; "Loader host clock, idle low"
+      ; "Loader host-to-device data"
+      ; "Reserved"
+      ; "Reserved"
+      ; "Reserved"
+      ; "Reserved"
+      ; "Reserved"
+      ]
+    | Uo ->
+      [ "Loader device-to-host data"
+      ; "Loader response ready"
+      ; "Reserved"
+      ; "Reserved"
+      ; "Reserved"
+      ; "Reserved"
+      ; "Reserved"
+      ; "Reserved"
+      ]
+    | Uio -> List.init 8 ~f:(fun bit -> "Protocol pin " ^ Int.to_string bit)
+  in
+  List.concat_map [ Pinout.Bank.Ui; Uo; Uio ] ~f:(fun bank ->
+    List.mapi (descriptions bank) ~f:(fun bit description ->
+      { Pinout.bank; bit; description }))
+;;
+
 let project ?(overrides = Tt_cmos5l.overrides ()) kind =
   let design, name, title, description, pinout =
     match kind with
@@ -237,7 +319,13 @@ let project ?(overrides = Tt_cmos5l.overrides ()) kind =
       , "Hardcaml protocol emulator memory consumer"
       , "P0.7 whole-word load and readback through registered flop memory"
       , memory_pinout )
-    | _ -> failwith "kind must be observable or memory"
+    | "loader" ->
+      ( (module Loader_design : Project.Design)
+      , "protemu_loader"
+      , "Hardcaml protocol emulator with independent hardware loader"
+      , "P3.5 fixed serial loader, integrated core, and registered program memory"
+      , loader_pinout )
+    | _ -> failwith "kind must be observable, memory, or loader"
   in
   Project.create
     ~name
@@ -279,7 +367,33 @@ let input_paths kind =
   match kind with
   | "observable" -> [ "lib/p0_observable.ml" ]
   | "memory" -> [ "lib/protocol_core.ml" ]
-  | _ -> failwith "kind must be observable or memory"
+  | "loader" ->
+    [ "isa/dune"
+    ; "isa/assembler.ml"
+    ; "isa/descriptor.ml"
+    ; "isa/encoding.ml"
+    ; "isa/enum.ml"
+    ; "isa/event_kind.ml"
+    ; "isa/instruction.ml"
+    ; "isa/invalid.ml"
+    ; "isa/kinds.ml"
+    ; "isa/pins.ml"
+    ; "isa/program.ml"
+    ; "lib/byte_fifo.ml"
+    ; "lib/control_execution.ml"
+    ; "lib/core_mechanisms.ml"
+    ; "lib/hardware_loader.ml"
+    ; "lib/input_events.ml"
+    ; "lib/instruction_decoder.ml"
+    ; "lib/integrated_core.ml"
+    ; "lib/loader_core.ml"
+    ; "lib/observed_transfer.ml"
+    ; "lib/pin_bank.ml"
+    ; "lib/protocol_core.ml"
+    ; "lib/shift_lane.ml"
+    ; "lib/timing.ml"
+    ]
+  | _ -> failwith "kind must be observable, memory, or loader"
 ;;
 
 let check_conflicts kind =
@@ -341,6 +455,6 @@ let () =
     printf "%s %s\n" output_dir (Bundle.identity bundle)
   | _ ->
     failwith
-      "usage: asic_bundle [observable|memory] OUTPUT_DIR SOURCE_ROOT | --check-conflicts \
-       [observable|memory]"
+      "usage: asic_bundle [observable|memory|loader] OUTPUT_DIR SOURCE_ROOT | \
+       --check-conflicts [observable|memory|loader]"
 ;;

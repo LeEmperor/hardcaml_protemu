@@ -186,7 +186,7 @@
     p3_integration
     ../src/integrated_core.generated.v
     p3_integration_tb.v)
-    (run vvp p3_integration))))
+   (run vvp p3_integration))))
 
 ; P3.1b's full-interface verification top uses the same context-registered RAM
 ; composition as the backend Cyclesim suite. Compile each emitted source role alone.
@@ -224,3 +224,97 @@
     ../src/program_memory_backend.implementation.generated.v
     p3_memory_backend_tb.v)
    (run vvp p3_memory_backend_implementation))))
+
+; P3.5 emitted RTL: an independent physical serial peer drives the real loader and
+; integrated core through asynchronous pins. The testbench supplies the normative
+; latency-one 1RW memory behavior and never bypasses the serial loader to load a program.
+
+(rule
+ (alias loader-core-rtl)
+ (deps p3_loader_tb.v ../src/loader_core.generated.v)
+ (action
+  (progn
+   (run
+    verilator
+    --lint-only
+    --top-module
+    loader_core
+    -Wno-DECLFILENAME
+    -Wno-COMBDLY
+    ../src/loader_core.generated.v)
+   (run
+    yosys
+    -q
+    -p
+    "read_verilog ../src/loader_core.generated.v; hierarchy -check -top loader_core; synth -top loader_core; stat")
+   (with-stdout-to
+    %{null}
+    (setenv
+     MAKEFLAGS
+     -s
+     (run
+      verilator
+      --binary
+      --timing
+      --Mdir
+      p3_loader_obj
+      --top-module
+      p3_loader_tb
+      -Wno-DECLFILENAME
+      -Wno-COMBDLY
+      -Wno-TIMESCALEMOD
+      -Wno-INITIALDLY
+      -Wno-WIDTHTRUNC
+      -Wno-WIDTHEXPAND
+      ../src/loader_core.generated.v
+      p3_loader_tb.v
+      -j
+      1)))
+   (run /bin/sh -c ./p3_loader_obj/Vp3_loader_tb))))
+
+; The same independent peer at the actual Tiny Tapeout wrapper pins, with the adopted
+; behavioral program-memory source role emitted by the production project declaration.
+
+(rule
+ (alias loader-wrapper-rtl)
+ (deps
+  (alias loader-core-rtl)
+  p3_loader_tb.v
+  ../src/loader_wrapper.simulation.generated.v)
+ (action
+  (progn
+   (with-stdout-to
+    %{null}
+    (setenv
+     MAKEFLAGS
+     -s
+     (run
+      verilator
+      --binary
+      --timing
+      --Mdir
+      p3_loader_wrapper_obj
+      --top-module
+      p3_loader_tb
+      -DLOADER_WRAPPER
+      -Wno-DECLFILENAME
+      -Wno-COMBDLY
+      -Wno-TIMESCALEMOD
+      -Wno-INITIALDLY
+      -Wno-WIDTHTRUNC
+      -Wno-WIDTHEXPAND
+      ../src/loader_wrapper.simulation.generated.v
+      p3_loader_tb.v
+      -j
+      1)))
+   (run /bin/sh -c ./p3_loader_wrapper_obj/Vp3_loader_tb))))
+
+(alias
+ (name loader-rtl)
+ (deps
+  (alias loader-wrapper-rtl)))
+
+(alias
+ (name rtl)
+ (deps
+  (alias loader-rtl)))

@@ -247,7 +247,7 @@ let precheck =
 
 let command =
   Command.group
-    ~summary:"Environment and ASIC flow commands for hardcaml_protemu"
+    ~summary:"Host, simulator, environment, and ASIC flow commands for hardcaml_protemu"
     ~readme:(fun () ->
       "First time on a machine or clone: ./bootstrap.sh\n\
        Each new shell: source env.sh\n\
@@ -261,6 +261,7 @@ let command =
     ; "stage", stage
     ; "precheck", precheck
     ; "legacy-harden", legacy_harden
+    ; "sim", Sim_cli.command
     ]
 ;;
 

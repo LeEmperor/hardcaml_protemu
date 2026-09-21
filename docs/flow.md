@@ -105,7 +105,7 @@ export PROTEMU_FLOW_OUT="$PWD/tinytapeout/build/my-experiment"
 | `PROTEMU_FLOW_RESULTS` | kept archives, one per run | `./flow_results` |
 | `PROTEMU_ARCHIVE` | exact archive directory for this run | derived from the run |
 | `PROTEMU_STAGE` | `full` or `synthesis`: how far `run` goes | `full` |
-| `PROTEMU_DESIGN` | `observable` or P0.7 `memory` bundle | `observable` |
+| `PROTEMU_DESIGN` | `observable`, P0.7 `memory`, or P3.5 `loader` bundle | `observable` |
 | `PROTEMU_TT` | tt-support-tools checkout | from bootstrap |
 | `PROTEMU_PDK_ROOT` | PDK root (IHP `sg13cmos5l`) | from bootstrap |
 | `PROTEMU_FLOW_PY` | python of the LibreLane venv | from bootstrap |

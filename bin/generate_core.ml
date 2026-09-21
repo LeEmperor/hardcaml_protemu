@@ -1,8 +1,8 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
 (* Module: "generate_core.ml" *)
-(* Emit the standalone P3.1a access controller, P3.2 executable core, or P3.3 integrated
-   core. The external RAM is intentionally not part of any circuit. *)
+(* Emit a standalone P3 access, execution, integration, or serial-loader composition. The
+   external RAM is intentionally not part of any circuit. *)
 
 open! Core
 open! Hardcaml
@@ -11,7 +11,7 @@ open! Hardcaml_protemu
 let () =
   let args = Sys.get_argv () in
   if Array.length args <> 3
-  then failwith "usage: generate_core.exe (access|executable|integrated) OUTPUT.v";
+  then failwith "usage: generate_core.exe (access|executable|integrated|loader) OUTPUT.v";
   let scope = Scope.create ~flatten_design:true () in
   let circuit =
     match args.(1) with
@@ -24,6 +24,9 @@ let () =
     | "integrated" ->
       let module C = Circuit.With_interface (Integrated_core.I) (Integrated_core.O) in
       C.create_exn ~name:"integrated_core" (Integrated_core.create scope)
+    | "loader" ->
+      let module C = Circuit.With_interface (Loader_core.I) (Loader_core.O) in
+      C.create_exn ~name:"loader_core" (Loader_core.create scope)
     | mode -> failwithf "unknown core mode %S" mode ()
   in
   let rtl = Rtl.create Verilog [ circuit ] |> Rtl.full_hierarchy |> Rope.to_string in

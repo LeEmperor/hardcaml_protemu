@@ -91,6 +91,9 @@ module O = struct
     ; retired_o : 'a
     ; pc_o : 'a [@bits Control_execution.Config.pc_bits]
     ; registers_o : 'a [@bits 128]
+    ; zero_o : 'a
+    ; carry_o : 'a
+    ; negative_o : 'a
     ; descriptor_o : 'a [@bits Control_execution.Config.descriptor_bits]
     ; phase_o : 'a [@bits Control_execution.Phase.width]
     ; fetch_cycles_o : 'a [@bits Control_execution.Config.count_bits]
@@ -357,6 +360,9 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   ; retired_o = execution.retired_o
   ; pc_o = execution.pc_o
   ; registers_o = execution.registers_o
+  ; zero_o = execution.zero_o
+  ; carry_o = execution.carry_o
+  ; negative_o = execution.negative_o
   ; descriptor_o = execution.descriptor_o
   ; phase_o = execution.phase_o
   ; fetch_cycles_o = execution.fetch_cycles_o

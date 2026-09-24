@@ -1,0 +1,21 @@
+(library
+ (name protemu_core_engine_tests)
+ (wrapped false)
+ (modules core_engine_testbench core_engine_tests core_engine_timing_tests)
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries
+  core
+  hardcaml
+  hardcaml_event_driven_sim
+  hardcaml_protemu
+  protemu_isa
+  protemu_f_model
+  protemu_test_common)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

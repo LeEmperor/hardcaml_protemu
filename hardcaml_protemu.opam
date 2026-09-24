@@ -2,9 +2,9 @@
 opam-version: "2.0"
 synopsis: "Protocol emulator ASIC written in Hardcaml"
 description: """
-Synthesizable protocol emulator blocks written in Hardcaml. Installs as hardcaml_protemu,
-the wrapped RTL library, and hardcaml_protemu.isa, the instruction specification and
-assembler it shares with the reference model."""
+Synthesizable protocol emulator blocks written in Hardcaml. Installs the wrapped RTL
+and ISA libraries plus a transport-independent host API and integrated-core simulator
+backend."""
 maintainer: ["Bohdan Purtell <bohdanpurtell@gmail.com>"]
 authors: ["Bohdan Purtell <bohdanpurtell@gmail.com>"]
 homepage: "https://github.com/LeEmperor/hardcaml_protemu"

@@ -1,0 +1,21 @@
+(library
+ (name protemu_host)
+ (public_name hardcaml_protemu.host)
+ (modules host_api)
+ (libraries core protemu_isa)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))
+
+(library
+ (name protemu_simulator)
+ (public_name hardcaml_protemu.simulator)
+ (modules simulator_backend)
+ (libraries core hardcaml hardcaml_protemu protemu_host protemu_isa)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

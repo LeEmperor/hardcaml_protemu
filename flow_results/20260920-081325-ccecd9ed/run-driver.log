@@ -1,0 +1,18 @@
+flow: output directory /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920
+
+== run --stage full (hardening; this is the long one)
+flow: results will be under /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs
+flow: run directory /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac
+
+== summary
+  run                   26m 50s
+  end to end            26m 50s
+
+  output             /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920
+  bundle             /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/bundle
+  preflight          /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/preflight.json
+  run                /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac
+  run record         /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac/run.json
+  execution log      /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac/execution.log
+  flow outputs       /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac/project/runs/asic
+  exit status 0

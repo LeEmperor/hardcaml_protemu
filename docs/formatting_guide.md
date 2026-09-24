@@ -377,38 +377,17 @@ names. When a port is renamed, update:
 
 ### 10.1 Testbench architecture
 
-Follow [verification.md](verification.md) for the accepted P1.6 approach: directed
-expect tests and bounded Quickcheck scenarios use one environment, which owns the
-drivers, independent model, pin-to-item monitors, and checker. A runner alone
-advances time, feeding matching stimuli to DUT and model and comparing defined
-observations on exact edges. Capture pre-edge acceptance and settled post-edge
-results explicitly; give each trial fresh state and a finite cycle budget.
+[verification.md](verification.md) is the source of truth for current and target
+suite architecture, functional-model independence, simulator responsibilities,
+observations, and reproduction. Follow its per-module testbench/expect/property
+convention and the temporary [migration guide](verification_migration.md) when
+moving existing tests. The current `Env` is the synchronous foundation; timed
+verification may use a separate runner under the shared contracts defined there.
 
-The harness is [`test/env.ml`](../test/env.ml), with
-[`test/observation.ml`](../test/observation.ml) and
-[`test/replay.ml`](../test/replay.ml) beside it; a new block joins it by writing one
-`Env.Device` and nothing else, as [`test/pin_bank_env.ml`](../test/pin_bank_env.ml)
-does for P2.1. Do not add a second runner, a second checker, or a private cycle
-loop next to it. [verification.md section 8](verification.md#8-the-implemented-harness)
-lists what a `Device` supplies and the switches the reports honour.
-
-The reference model lives in `model/` (library `protemu_model`) and its tests in
-`test/model/`, both without a Hardcaml dependency. Its files keep the four-part
-source header and the direction-neutral naming of section 5; the `_i`/`_o` suffixes
-of section 4 do not apply, because a model record is a value, not a port.
-
-`hardcaml_asic` owns resource/backend conformance. Emulator tests own shared-port
-load/readback/fetch arbitration, program validity, loaded-image bounds, and
-recovery. Do not require physical memory outputs to match simulation poison;
-compare contract-defined values across backends and check disabled-output hold
-within each backend. Keep diagnostic models separate from synthesis source sets.
-
-Use compact expect snapshots for directed cases and property assertions for generated
-cases. Record explicit seeds, generator settings, failing/shrunk scenarios, first
-mismatch context, and reproduction commands as specified in verification.md.
-Waveforms are optional diagnostics; keep them out of expect snapshots and document
-artifact paths with the harness. Optional Workbench views consume those artifacts;
-they do not replace CLI tests or the independent model.
+Functional-model source retains the four-part header and direction-neutral naming
+of section 5. The `_i`/`_o` suffixes apply to hardware ports, not model value records.
+The functional model lives in `f_model/`, with standalone tests in `test/f_model/`.
+Keep both outside synthesizable source lists and free of Hardcaml dependencies.
 
 ## 11. Formatting and verification
 

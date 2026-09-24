@@ -1,0 +1,38 @@
+name: verification
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  required:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out protemu
+        uses: actions/checkout@v4
+        with:
+          path: scaf
+
+      # hardcaml_asic is an unpublished test/build dependency. Keep it beside this
+      # checkout, which is the same topology scripts/ocaml-deps.sh uses locally.
+      - name: Check out the recorded ASIC library
+        uses: actions/checkout@v4
+        with:
+          repository: LeEmperor/hardcaml_asic
+          ref: a257424c3ae31fd6ee10cea052cc7577f15d2677
+          path: hardcaml_asic
+
+      - name: Install host verification tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes opam iverilog verilator yosys
+          opam init --bare --no-setup --yes
+
+      - name: Install the pinned OCaml verification environment
+        working-directory: scaf
+        run: scripts/ocaml-deps.sh --install
+
+      - name: Run every required verification tier
+        working-directory: scaf
+        run: ./scripts/with-switch.sh dune build @verification

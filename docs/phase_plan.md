@@ -1,10 +1,13 @@
 # Protocol emulator phase plan
 
-Status: working execution plan, updated 2026-09-19 for the P1.5 encoding decision,
-and 2026-09-18 for decoupled RTL development and P0.6 ASIC library adoption. The
-instruction encoding is now provisionally chosen and lives in `isa/`; P0.7 remains
-deferred; P0.5 is split into legacy/adopted runs, and pre-adoption P2.8 evidence is
-defined.
+Status: working execution plan, updated 2026-09-21 for P3.5 completion,
+2026-09-20 for P3.2 completion,
+2026-09-19 for the P1.5 encoding decision, and 2026-09-18 for decoupled RTL
+development and P0.6 ASIC library adoption. The
+instruction encoding is now provisionally chosen and lives in `isa/`; P0.7 and P3.1
+are complete; P0 is closed with registered-memory mapped synthesis and the
+clean-staging adopted observable physical reproduction. P0.5 retains its
+legacy/adopted records, and pre-adoption P2.8 evidence is defined.
 P0.1–P0.3 retain their recorded completion; P0.6 has adopted the observable top.
 A scaffold, accepted architecture, or emitted build is not completion evidence.
 
@@ -35,12 +38,12 @@ the corresponding decision has evidence.
 
 Follow [formatting_guide.md](formatting_guide.md) for source changes. Existing
 locations are `lib/` for hardware, `bin/` for executables, `test/` for tests,
-`isa/` for the instruction specification and assembler, `model/` for the reference
-execution model, and `tinytapeout/` for ASIC integration. `model/` is a separate Dune
-library, `protemu_model`, with no Hardcaml dependency, so a diagnostic model can never
+`isa/` for the instruction specification and assembler, `f_model/` for the reference
+execution model, and `tinytapeout/` for ASIC integration. `f_model/` is a separate Dune
+library, `protemu_f_model`, with no Hardcaml dependency, so a diagnostic model can never
 reach a synthesis source set and cannot share a mistake with the RTL; its tests live in
-`test/model/`. `isa/` is a third library, `hardcaml_protemu.isa`, below both of them:
-P1.5 put the encoding there because `lib/` is installed and `model/` is not, so the
+`test/f_model/`. `isa/` is a third library, `hardcaml_protemu.isa`, below both of them:
+P1.5 put the encoding there because `lib/` is installed and `f_model/` is not, so the
 assembler and the RTL decoder could not otherwise share one description of the
 instruction word. New host and firmware locations should be chosen when their first real
 implementation lands.
@@ -70,7 +73,7 @@ adopting the library; a sibling checkout path alone is not dependency management
 
 | Phase | Outcome | Main prerequisites | Architecture source |
 | --- | --- | --- | --- |
-| P0 — Tool path | Observable RTL, adopted ASIC bundle, registered flop memory, and a proven small physical-flow run | Existing P0 path; consumable ASIC library (ASIC P5.1) for the deferred P0.6/P0.7 | [§8](construction-plan.md#8-construction-sequence), [flow plan](../tinytapeout/README.md) |
+| P0 — Tool path (closed) | Observable RTL, adopted ASIC bundle, registered flop memory, and a proven small physical-flow run | Existing P0 path; consumable ASIC library (ASIC P5.1) for P0.6/P0.7 | [§8](construction-plan.md#8-construction-sequence), [flow plan](../tinytapeout/README.md) |
 | P1 — Execution model | Executable contracts, typed programs, and encoding study | Can begin alongside P0 | [§3](construction-plan.md#3-initial-architecture), [§4](construction-plan.md#4-minimum-control-isa-and-memory-study) |
 | P2 — Reusable primitives | Verified pins, timing, events, transfers, and queues | Relevant P1 contracts; P0 emitter for RTL checks | [§3](construction-plan.md#3-initial-architecture), [§9](construction-plan.md#9-verification-and-measurements) |
 | P3 — Reloadable system | Core, storage, loader, and CLI execute replaceable programs | P1 execution specification and relevant P2 blocks; P0.6/P0.7 only for P3.1b | [§4](construction-plan.md#4-minimum-control-isa-and-memory-study), [§7](construction-plan.md#7-host-control-now-application-later) |
@@ -96,12 +99,14 @@ declaration, bundle emission), and every other module is plain Hardcaml. Store
 consumers expose the 1RW port and are tested against a contract model. As a result,
 phase numbers describe gates and dependencies, not the order work happens in:
 
-- **P0.6 is adopted; P0.7 remains deferred.** P0.6 adopted the then-current
-  observable top after ASIC P5.1 became available. P0.7 follows with registered
-  program memory. Both physical runs are done: P0.5a recorded the legacy
+- **P0.6 and P0.7 are adopted.** P0.6 adopted the then-current observable top after
+  ASIC P5.1 became available. P0.7 subsequently added registered program memory.
+  The physical evidence is complete: P0.5a recorded the legacy
   scripts' own result and P0.5b reran the same design from the adopted bundle,
   so the `tinytapeout/` scripts are now a retired baseline rather than the
-  physical path. P0 stays open on P0.7's memory evidence alone.
+  physical path. P0.5c reproduced the adopted observable path from committed
+  clean staging. P0.7's memory integration and mapped-synthesis evidence are
+  recorded below; together these close P0.
 - **P3 splits at the adoption boundary.** P3.1a (program-store consumer logic against
   the contract port) and P3.2–P3.5 proceed without adoption; only P3.1b
   (context-registered `Single_port_ram` at the top) waits for P0.6/P0.7.
@@ -116,16 +121,14 @@ phase numbers describe gates and dependencies, not the order work happens in:
   items. Late
   adoption can surface top-level interface, clock, or metadata mismatches. Keep the
   wrapper thin to bound that rework.
-- **Deferral has a deadline.** P0.7 must have evidence before P3 exits, since
-  P3.1b is part of that gate, and before any P5 item is checked, so that P5 sweeps
-  run through project declarations and P6 reproduces from pinned dependencies. If
-  P3.2–P3.5 are nearly done and adoption has not started, adoption becomes the next
-  slice.
+- **The deferral deadline was met.** P0.7/P3.1b landed before P3 exit or P5
+  selection work. P5 sweeps can therefore run through project declarations and P6 can
+  reproduce from pinned dependencies.
 
-The remaining emulator work postpones ASIC P5.3–P5.4 and the library's M3
-milestone, in the
-[library's own plan](../../hardcaml_asic/docs/phase_plan.md#8-p5--reference-consumer-adoption-and-initial-usage),
-which records the same trigger. The library can still close ASIC P5.1 on its own.
+Consumer evidence now closes ASIC P5.3–P5.4 in the
+[library's own plan](../../hardcaml_asic/docs/phase_plan.md#8-p5--reference-consumer-adoption-and-initial-usage).
+The library's P5.5 usage documentation and therefore M3 remain open; they do
+not block continued emulator development or its physical studies.
 
 ### First working slice: programmable UART transmit
 
@@ -134,7 +137,7 @@ Use this sequence as the initial implementation queue:
 1. `P1.1` and the pin/timer portion of `P1.2`: specify cycle edges, pin commits,
    reset, and timed waits in a small executable model.
 2. `P2.1` and the countdown portion of `P2.3`: implement atomic pin updates and
-   timing with focused model/Hardcaml comparisons.
+   timing with focused functional-model/Hardcaml comparisons.
 3. Reuse `P0.1`–`P0.3`'s completed tool path for the evolving observable circuit;
    rerun its checks without treating the original P0 tests as UART evidence.
 4. `P1.3` and `P2.7`: drive a typed UART 8N1 transmit sequence through a test
@@ -146,11 +149,14 @@ Use this sequence as the initial implementation queue:
 
 The slice is complete when model, Hardcaml, and emitted RTL agree on the UART
 frame and reset/disable release behavior, and the small physical run has recorded
-results. Simulation work can progress while the physical environment is prepared.
+results. Both halves now have records: P2.7 holds the agreement and the release
+behavior, and P0.5a holds the physical run — of P0's small observable circuit, which is
+what that step asked for, not of the UART slice itself. Simulation work can progress while the physical environment is prepared.
 The harness may issue typed commands directly; runtime loading and a full control
 core are P3 deliverables. This early demonstration does not complete baseline UART.
 Its functional work does not wait for the ASIC APIs, an SRAM macro, or Workbench.
-Full P0 closure now requires only P0.7 evidence below; P0.5b has its record.
+P0 is closed: P0.7 has its memory evidence and P0.5c supplies the clean-staging
+adopted physical reproduction.
 
 ## 3. P0 — Make the tool path real
 
@@ -161,7 +167,7 @@ with the first pin/timer work in P1/P2.
   that emits a named, observable pin/timer circuit. Define the output path and
   parameters. Evidence: the build succeeds, generation is repeatable for the
   same inputs, and the emitted design contains functional outputs. Evidence:
-  [`p0_observable.ml`](../lib/p0_observable.ml),
+  [`p0_observable.ml`](../lib/legacy/p0_observable.ml),
   [`generate.ml`](../bin/generate.ml), and
   [`check-p0.sh`](../tinytapeout/scripts/check-p0.sh).
 - [x] **P0.2 — Integrate the wrapper.** Add the thin Tiny Tapeout wrapper, explicit
@@ -176,20 +182,26 @@ with the first pin/timer work in P1/P2.
   command using the wrapper. Compare a timed output trace with the Hardcaml
   expectation. Evidence: reset, enable/disable, pin value/enable, and timer
   transitions pass at the wrapper boundary. Evidence:
-  [`test_hardcaml_protemu.ml`](../test/test_hardcaml_protemu.ml),
+  [`wrapper_unit_tests.ml`](../test/integration/wrapper/wrapper_unit_tests.ml),
   [`test-rtl.sh`](../tinytapeout/scripts/test-rtl.sh), and the
   [P0 experiment record](../tinytapeout/reports/2026-09-14-p0-tool-path.md).
-- [ ] **P0.4 — Establish the physical environment.** Select exact CMOS5L template,
+- [x] **P0.4 — Establish the physical environment.** Select exact CMOS5L template,
   action, support-tool, container, and PDK revisions; validate the requested
   floorplan with that flow. Implement the staging layout described in the
   [flow plan](../tinytapeout/README.md). Keep explicit environment preparation
   separate from elaboration and execution; existing bootstrap/staging scripts
   remain usable during adapter migration. Evidence: a reproducible staged project
   reaches synthesis with the intended libraries and source files. The official
-  `6x4` floorplan and pinned support-tools checkout are validated during staging;
-  mapped CMOS5L synthesis remains to be run. Revisions and staging are recorded in
+  `6x4` floorplan and pinned support-tools checkout are validated during staging.
+  Revisions and initial staging are recorded in
   [`toolchain.lock`](../tinytapeout/toolchain.lock) and the
   [P0 experiment record](../tinytapeout/reports/2026-09-14-p0-tool-path.md).
+  *Done:* the [P0.5c clean-staging record](../tinytapeout/reports/2026-09-20-p0.5c-clean-staging-physical.md)
+  demonstrates committed-source restoration, isolated installation of the locked
+  library, pinned tool/PDK preflight, mapped CMOS5L synthesis and full hardening
+  on the intended `6x4` floorplan. Actual versions and the explicit Python
+  mismatch waiver are preserved in the
+  [run archive](../flow_results/20260920-081325-ccecd9ed/README.md).
 - [x] **P0.5 — Complete the first physical run.** Split at the adoption boundary;
   P0.5 is checked only when both parts are.
   *Done:* both parts have records; see each below.
@@ -232,7 +244,12 @@ with the first pin/timer work in P1/P2.
     directly comparable. The run predates the `Tt_cmos5l` template adoption,
     but re-emitting from the current declaration at `7e29ecd` produces
     byte-identical `config.json`, `top.sdc`, `info.yaml` and RTL, so it still
-    describes what this repository emits today.
+    describes what this repository emits today. The later
+    [P0.5c clean-staging reproduction](../tinytapeout/reports/2026-09-20-p0.5c-clean-staging-physical.md)
+    closes the provenance limitation: committed `8d3ada1`, bundle `85729c18…`,
+    and run `ccecd9ed…` pass the same physical/check acceptance, with the
+    [complete bundle and run archive](../flow_results/20260920-081325-ccecd9ed/README.md)
+    restored and revalidated independently.
 - [x] **P0.6 — Adopt the ASIC project declaration.** Integrate the planned
   `Project`/`Elaboration_context`/`Build` path with the observable circuit and
   emulator-owned wrapper. Declare TT harness plus CMOS5L technology, clocks,
@@ -249,25 +266,42 @@ with the first pin/timer work in P1/P2.
   passes repeatable emission, metadata and configuration conflicts, and the
   existing wrapper regression, Verilator lint, and generic synthesis against
   emitted RTL in the pinned LibreLane image. P0.5b has since recorded the
-  physical rerun.
-- [ ] **P0.7 — Exercise registered program memory.** After P0.6 and library
+  physical rerun; P0.5c has since reproduced it from committed clean staging.
+- [x] **P0.7 — Exercise registered program memory.** After P0.6 and library
   backend conformance, elaborate a small load/readback design using context-
   registered `Single_port_ram` and an explicitly selected flop implementation.
   Evidence: latency-one read, disabled-output hold, whole-word writes, consumer
-  validity/access gating, and independence from unspecified outputs pass model/
+  validity/access gating, and independence from unspecified outputs pass f_model/
   RTL integration checks; the manifest records shape, identity, and selection.
   Consume the emitted bundle with the pinned flow and record mapped synthesis
   cost. This fixture does not complete P3's loader or instruction execution.
-  *Deferred:* follows P0.6. If P3.1a has landed by then, its contract-port
-  consumer can serve as the load/readback design in place of a separate fixture.
+  *Done:* P3.1a's 256x16 consumer is connected to context-registered
+  `Single_port_ram` in [`asic_bundle.ml`](../bin/asic_bundle.ml), with explicit
+  `Flops` policy and stable resource name `program`. Independent consumer,
+  behavioral/flop elaboration, and both emitted-RTL checks cover latency,
+  whole-word load/readback, validity, hold, bounds, rejected accesses, reset,
+  disable, and unspecified-output independence. Bundle `7ce444837068766c...` /
+  run `a538212c80fb407b...` completed mapped CMOS5L synthesis at 16,294 cells
+  and 349,314.9408 um^2 with zero latches, unmapped instances, or synthesis
+  errors. See the
+  [P0.7 record](../tinytapeout/reports/2026-09-20-p0.7-memory-synthesis.md) and
+  [archive](../flow_results/20260920-071538-a538212c/README.md). This is
+  synthesis-only evidence, not SRAM or physical closure. The archive now carries
+  the complete original dirty-tree input bundle. A raw ABC driving-cell lookup
+  diagnostic qualifies only ABC's post-map delay print for this `AREA 0` run;
+  source-backed investigation found that mapping and area were unaffected.
 
-**Exit gate:** P0.1–P0.7 have evidence, including P0.5b. Because P0.6/P0.7 are
-deferred, this gate is expected to close after later phases have started. A small
-observable design from the adopted
-ASIC bundle passes generated-RTL simulation, CMOS5L hardening, required physical
-checks, precheck, and gate-level wrapper testing; the small registered-memory
-design passes integration and mapped synthesis. Tool availability, an emitted
-bundle, or synthesis alone does not establish physical closure.
+**Exit gate met — P0 closed, 2026-09-20:** P0.1–P0.7 have evidence, including
+P0.5b and its [P0.5c clean-staging reproduction](../tinytapeout/reports/2026-09-20-p0.5c-clean-staging-physical.md).
+The observable design from the adopted ASIC bundle passes generated-RTL
+simulation, CMOS5L hardening, three-corner timing, required physical checks,
+all nine TT prechecks, and final-netlist wrapper testing. The registered 256x16
+flop-memory design separately passes [consumer integration and mapped synthesis](../tinytapeout/reports/2026-09-20-p0.7-memory-synthesis.md).
+The clean physical run used consumer `8d3ada1`, build `85729c18…`, and run
+`ccecd9ed…`; its evidence and the memory evidence are committed at `61384c3`.
+This closes the initial tool path. Memory physical feasibility and final-system
+selection remain P5.1/P5.3 work; SRAM capability remains P5.1a and the ASIC
+library's separate S track.
 
 ## 4. P1 — Define execution before committing to an ISA
 
@@ -280,9 +314,9 @@ bundle, or synthesis alone does not establish physical closure.
   assert exact edge behavior, including simultaneous-event cases. Model the
   program store's shared port, latency-one reads, disabled-output hold, and
   fetch validity; unspecified memory results cannot be accepted as instructions.
-  Evidence: [`machine.ml`](../model/machine.ml) holds the whole model state and one
-  rising edge, with [`program_store.ml`](../model/program_store.ml) as the contract
-  model of the 1RW port; [`test_cycle.ml`](../test/model/test_cycle.ml) asserts each
+  Evidence: [`machine.ml`](../f_model/machine.ml) holds the whole model state and one
+  rising edge, with [`program_store.ml`](../f_model/program_store.ml) as the contract
+  model of the 1RW port; [`test_cycle.ml`](../test/f_model/test_cycle.ml) asserts each
   listed behavior edge by edge, including set-with-acknowledge and
   event-with-timeout at the same edge. *Carried forward:* the model has no decoder
   (P1.5 chooses the encoding), so an instruction boundary is modeled as a fetched
@@ -293,12 +327,12 @@ bundle, or synthesis alone does not establish physical closure.
   ownership, blocking/nonblocking behavior, and safe abort results before opcode
   encoding. Evidence: legal examples run and invalid descriptors, conflicts,
   zero delays, and queue boundary cases produce specified outcomes. Evidence:
-  [`operation.ml`](../model/operation.ml) (the vocabulary and structural
-  validation), [`transfer.ml`](../model/transfer.ml) (descriptor and its rules),
-  [`pin_bank.ml`](../model/pin_bank.ml) (masked atomic commits and exclusive drive
-  ownership), [`event.ml`](../model/event.ml), [`fifo.ml`](../model/fifo.ml), and
-  [`fault.ml`](../model/fault.ml), checked by
-  [`test_mechanisms.ml`](../test/model/test_mechanisms.ml), which pins down which
+  [`operation.ml`](../f_model/operation.ml) (the vocabulary and structural
+  validation), [`transfer.ml`](../f_model/transfer.ml) (descriptor and its rules),
+  [`pin_bank.ml`](../f_model/pin_bank.ml) (masked atomic commits and exclusive drive
+  ownership), [`event.ml`](../f_model/event.ml), [`fifo.ml`](../f_model/fifo.ml), and
+  [`fault.ml`](../f_model/fault.ml), checked by
+  [`test_mechanisms.ml`](../test/f_model/test_mechanisms.ml), which pins down which
   reason each refusal reports rather than only that one occurred. *Carried
   forward:* nothing drains a queue until P2.5's engine or P3.4's host port exists,
   so a blocking queue operation ends only through ABORT, reset, or disable, which
@@ -309,19 +343,19 @@ bundle, or synthesis alone does not establish physical closure.
   helpers for UART TX, a mode-0 SPI exchange, and explicit I2C drive/sample/wait
   sequences. Evidence: model traces show the expected transactions and record
   operation counts and response latency. No textual DSL is required.
-  Evidence: [`firmware.ml`](../model/firmware.ml) is the labeled sequence
+  Evidence: [`firmware.ml`](../f_model/firmware.ml) is the labeled sequence
   library: steps, label uniqueness, structural validation of every operation
   against the rule the machine applies at acceptance, a board model for the device
   on the other end, and a runner that records each operation's offer, acceptance,
   and completion edges beside a per-edge log of what the bank drove and what the
-  input front end presented. [`firmware_uart.ml`](../model/firmware_uart.ml)
+  input front end presented. [`firmware_uart.ml`](../f_model/firmware_uart.ml)
   builds the 8N1 frame two ways, as one transfer descriptor and as a bit-banged
-  sequence; [`firmware_spi.ml`](../model/firmware_spi.ml) builds a mode-0 exchange
+  sequence; [`firmware_spi.ml`](../f_model/firmware_spi.ml) builds a mode-0 exchange
   against an independent target that launches on the falling edge; and
-  [`firmware_i2c.ml`](../model/firmware_i2c.ml) builds a single-master write
+  [`firmware_i2c.ml`](../f_model/firmware_i2c.ml) builds a single-master write
   transaction from open-drain writes, acknowledge samples, and clock-stretch level
   waits, against a target that acknowledges by address and can hold the clock
-  down. [`test_firmware.ml`](../test/model/test_firmware.ml) holds the traces and
+  down. [`test_firmware.ml`](../test/f_model/test_firmware.ml) holds the traces and
   the recorded costs, at half and quarter period four:
 
   | Sequence | Operations | Cycles | Max response |
@@ -332,7 +366,7 @@ bundle, or synthesis alone does not establish physical closure.
 
   The same UART frame as one `Configure_transfer` is a single operation, and the
   engine then occupies eighty cycles without the core; the bit-banged sequence and
-  the descriptor run through [`shift_engine.ml`](../model/shift_engine.ml) both
+  the descriptor run through [`shift_engine.ml`](../f_model/shift_engine.ml) both
   decode to the transmitted byte under an independent bit-center receiver. That
   pair of numbers is what P1.4 needs to weigh an instruction stream against a
   transfer engine. An I2C acknowledge slot's clock phase costs 14 cycles against
@@ -357,14 +391,14 @@ bundle, or synthesis alone does not establish physical closure.
   unmeasured until P5 supplies results.
   Evidence: the [P1.4 encoding study](p1.4-encoding-study.md) carries the tables and
   what they recommend; every number in it is an expect-test output from
-  [`test_encoding.ml`](../test/model/test_encoding.ml). One operation set
-  ([`study_isa.ml`](../model/study_isa.ml)) is encoded two ways and stored four ways
-  ([`study_encoding.ml`](../model/study_encoding.ml)): 16-bit instructions with
+  [`test_encoding.ml`](../test/f_model/test_encoding.ml). One operation set
+  ([`study_isa.ml`](../f_model/study_isa.ml)) is encoded two ways and stored four ways
+  ([`study_encoding.ml`](../f_model/study_encoding.ml)): 16-bit instructions with
   extension words and fixed 32-bit instructions, each in a 16-bit and a 32-bit memory
   word. The same UART, SPI and I2C work P1.3 built out of operations is written once
-  as programs ([`study_examples.ml`](../model/study_examples.ml)), assembled by every
-  candidate, and run by a control core ([`study_core.ml`](../model/study_core.ml))
-  that fetches real words from a [`Program_store`](../model/program_store.ml) through
+  as programs ([`study_examples.ml`](../f_model/study_examples.ml)), assembled by every
+  candidate, and run by a control core ([`study_core.ml`](../f_model/study_core.ml))
+  that fetches real words from a [`Program_store`](../f_model/program_store.ml) through
   the 1RW latency-one port and issues their operations into `Machine`; the SPI and
   I2C runs are answered by P1.3's independent peers and receive `0x3c` and
   acknowledge `0x84`/`0xa5` under all four candidates. At equal memory width the
@@ -393,7 +427,7 @@ bundle, or synthesis alone does not establish physical closure.
   decoded meanings, and model execution traces.
   Evidence: the [P1.5 encoding decision](p1.5-encoding-decision.md) records the choice
   and what it gives up. The specification is a library of its own,
-  [`isa/`](../isa/dune), below both `lib/` and `model/` because an installed library
+  [`isa/`](../isa/dune), below both `lib/` and `f_model/` because an installed library
   cannot depend on a private one: [`instruction.ml`](../isa/instruction.ml) is the
   instruction set, [`encoding.ml`](../isa/encoding.ml) the opcodes and field layout,
   [`descriptor.ml`](../isa/descriptor.ml) the descriptor fields firmware writes, and
@@ -404,13 +438,13 @@ bundle, or synthesis alone does not establish physical closure.
   table. [`kinds.ml`](../isa/kinds.ml), [`pins.ml`](../isa/pins.ml) and
   [`event_kind.ml`](../isa/event_kind.ml) moved down into it for the same reason: an
   instruction field names them. Reference execution is
-  [`control_core.ml`](../model/control_core.ml), which shares `Encoding` with the RTL and
+  [`control_core.ml`](../f_model/control_core.ml), which shares `Encoding` with the RTL and
   nothing else and has no Hardcaml dependency.
-  [`test_isa.ml`](../test/model/test_isa.ml) holds the evidence: a 111-instruction
+  [`test_isa.ml`](../test/f_model/test_isa.ml) holds the evidence: a 111-instruction
   boundary corpus that round trips, the published layout table, labeled programs as
   instruction words, memory words and transport bytes in both memory layouts, every
   assembler refusal, and the UART, SPI and I2C transactions executed out of a
-  [`Program_store`](../model/program_store.ml) against the same independent peers P1.3
+  [`Program_store`](../f_model/program_store.ml) against the same independent peers P1.3
   and P1.4 used. Sixteen-bit instructions with extension words were chosen on P1.4's
   evidence; the memory word stays a caller's choice with a 16-bit default until P5
   measures it; and the call P1.4 left open was added and measured — the I2C transaction
@@ -425,7 +459,7 @@ bundle, or synthesis alone does not establish physical closure.
 - [x] **P1.6 — Define the verification harness.** Planning decisions are recorded
   in [verification.md](verification.md), and the harness now exists. Use
   directed expect tests paired with bounded Quickcheck generators and one
-  cycle-exact model/core contract, including P1.5's fetch/execute schedule. The
+  cycle-exact functional-model/core contract, including P1.5's fetch/execute schedule. The
   environment owns drivers, pin-to-item monitors, the independent model, and checker;
   one runner owns simulation time and feeds the same scheduled stimuli to DUT and
   model. Use seed-based replay with recorded configuration, generator settings,
@@ -435,19 +469,20 @@ bundle, or synthesis alone does not establish physical closure.
   boundary/error metadata without implementing stretch engines. Testbench guidance
   is in [formatting_guide.md](formatting_guide.md#101-testbench-architecture).
   Evidence: at least one existing primitive uses the shared harness in both a
-  directed expect test and a Quickcheck model/Hardcaml comparison; a controlled
+  directed expect test and a Quickcheck functional-model/Hardcaml comparison; a controlled
   failing case reproduces the same first mismatch from its recorded seed/settings.
   Link ASIC backend conformance separately from emulator consumer checks; compare
   only defined memory outputs across backends and check held outputs within each
   backend. Simulation poison must not become synthesized logic or a required
   physical output value. Whole-suite migration and full-core implementation are
   not required to close this item.
-  Evidence: the harness is four modules under `test/`, described in
-  [verification.md section 8](verification.md#8-the-implemented-harness).
-  [`observation.ml`](../test/observation.ml) holds the unavailable/unspecified/defined
-  distinction and the checker; [`replay.ml`](../test/replay.ml) the seed, generator
+  Evidence: the harness support is under `test/common/` and its first block testbench
+  is under `test/primitives/pin_bank/`, described in
+  [verification.md current state](verification.md#current-state).
+  [`observation.ml`](../test/common/observation.ml) holds the unavailable/unspecified/defined
+  distinction and the checker; [`replay.ml`](../test/common/replay.ml) the seed, generator
   settings, failing trial, configuration, source/dependency identity and rerun command;
-  [`env.ml`](../test/env.ml) the `Device` a block is described by once, the runner that
+  [`env.ml`](../test/common/env.ml) the `Device` a block is described by once, the runner that
   alone advances time, the pin-to-item monitor conventions, and the Quickcheck driver,
   shrinker and failure report. A block supplies drivers, an independent model, monitors
   and its required observations; the runner drives, settles, samples pre-edge, takes the
@@ -455,22 +490,24 @@ bundle, or synthesis alone does not establish physical closure.
   Section 6's distinctions are reserved in the monitor record — direction, stream
   identity, edge timestamp, stream boundary and error — with no stretch engine
   implemented.
-  P2.1 is the first consumer. [`pin_bank_env.ml`](../test/pin_bank_env.ml) describes it
-  once and [`test_pin_bank_harness.ml`](../test/test_pin_bank_harness.ml) uses that one
+  P2.1 is the first consumer. [`pin_bank_testbench.ml`](../test/primitives/pin_bank/pin_bank_testbench.ml) describes it
+  once and the tests under [`test/primitives/pin_bank/`](../test/primitives/pin_bank) plus
+  generic fixtures under [`test/common/`](../test/common) use that one
   description four ways: the checker's validity rules, a directed expect transcript, a
-  200-trial Quickcheck run against [`model/pin_bank.ml`](../model/pin_bank.ml) from a
+  200-trial Quickcheck run against [`f_model/pin_bank.ml`](../f_model/pin_bank.ml) from a
   recorded seed, and a controlled mismatch that is found, shrunk to two items, reported
   with its reproduction record, and found again at the same trial and edge when the
   recorded seed and settings are rerun. The injected defect lives in the environment's
-  config, so nothing in `lib/`, `model/` or the suite is left intentionally failing.
+  config, so nothing in `lib/`, `f_model/` or the suite is left intentionally failing.
   *Carried forward:* the harness's first run disagreed with the design about the sticky
   ownership conflict on an edge refused for offering two requests at once; the contract
   was ambiguous and [construction-plan.md section 3](construction-plan.md#3-initial-architecture)
   now states that the sticky bit records the attempt. `reject_reason` is declared
   `Unavailable` on the RTL side: the comparison skips it, and the hole is visible rather
   than absent. Waveform capture is not implemented — the bounded trace and the failing
-  scenario are the diagnostics section 4 requires. No other test has been migrated, and
-  ASIC backend conformance stays linked separately as `hardcaml_asic`'s evidence.
+  scenario are the diagnostics section 4 requires. The remaining tests are now
+  structurally block-owned but have not all adopted the shared runner; ASIC backend
+  conformance stays linked separately as `hardcaml_asic`'s evidence.
 
 **Exit gate:** UART/SPI/I2C examples execute in the model, execution contracts are
 testable, and program sizes and path timing are recorded. The chosen encoding is
@@ -487,80 +524,159 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   value/enable, masked commits, ownership, and sticky conflict reporting.
   Evidence: masked writes preserve other pins, overlapping claims are rejected,
   open-drain operations never drive high, and reset/disable/abort release pins
-  according to the contract. Evidence: [`pin_bank.ml`](../lib/pin_bank.ml),
-  [`test_primitives.ml`](../test/test_primitives.ml), and the
+  according to the contract. Evidence: [`pin_bank.ml`](../lib/pluggable_primitives/pin_bank.ml),
+  [`test/primitives/pin_bank/`](../test/primitives/pin_bank), and the
   [P2 implementation record](p2-implementation.md).
-- [ ] **P2.2 — Input and event front end.** Add synchronization, registered
+- [x] **P2.2 — Input and event front end.** Add synchronization, registered
   snapshots, edge detection, latched status, acknowledgement, and overflow
   reporting where applicable. Evidence: asynchronous-phase sweeps, stale-edge
   rejection, set-wins acknowledgement, and reset cases pass. Record the observed
   digital latency range and assumptions about minimum pulse width.
-  *Progress:* [`input_events.ml`](../lib/input_events.ml) and
-  [`observed_transfer.ml`](../lib/observed_transfer.ml) pass digital model/Hardcaml
-  comparisons; time-resolved asynchronous-phase sweeps remain. See the
-  [P2 implementation record](p2-implementation.md).
-  *Scope note:* what remains is evidence, not logic — the blocks already implement
-  every deliverable named above. The obstacle is the simulator. `Cyclesim` can only
-  change an input on a cycle boundary, so it cannot place a pad transition at an
-  arbitrary phase within the period or drive a pulse narrower than one period, and
-  no amount of additional cycle-accurate tests can produce a phase sweep.
-  `hardcaml_event_driven_sim` supplies the missing driver (a real time axis,
-  transport delays, and four-state values for an unresolved sampling window); it is
-  declared `:with-test` in [`dune-project`](../dune-project) and available to
-  [`test/`](../test/dune). Treat the adoption itself as a simulator backend
-  conversion rather than one more test file: a second simulator brings its own
-  process/scheduling model, clock construction, and reset and stimulus conventions,
-  none of which the existing `Cyclesim` tests share, and the two backends must agree
-  on what a "cycle" means before their results can be reported side by side. Expect a
-  separate harness, not an edit to [`test_primitives.ml`](../test/test_primitives.ml),
-  and expect the choice of what stays on `Cyclesim` to be a real decision. This is
-  the same harness P2.6 needs, so size it for both. P1.6 settled the conventions it
-  should follow and shipped them: describe the block as an `Env.Device` and reuse the
-  runner, checker, seed record and failure artifacts rather than restating them for an
-  event-driven engine.
+  *Evidence:* [`input_events.ml`](../lib/pluggable_primitives/input_events.ml) and
+  [`observed_transfer.ml`](../lib/staging/observed_transfer.ml) pass digital functional-model/Hardcaml
+  comparisons. The two-state Evsim pilot under
+  [`test/primitives/input_events/`](../test/primitives/input_events) sweeps all integer
+  phases, captured/missed sub-period pulses, exact-edge reset, and event interactions;
+  it records a 10--19 tick deterministic latency range under its explicit sampling
+  convention. See the [P2 implementation record](p2-implementation.md).
+  *Verification dependency:* the implemented time-resolved pad driver follows the
+  divided cycle/event responsibilities in [verification.md](verification.md#next-state)
+  and the [migration guide](verification_migration.md), reusing reference/checking/replay
+  conventions behind a separate timed runner. P2.6 can consume the same facilities.
+  Four-state properties remain a separate, explicitly modeled obligation; two-state
+  Evsim is sufficient for deterministic phase/pulse sweeps. Neither tier establishes
+  analog metastability reliability.
 - [x] **P2.3 — Timing and waits.** Implement countdown, periodic ticks, level/edge
   waits with timeout, and event-based phase restart. Evidence: exact delay edges,
   zero-delay rejection, immediate level completion, event-over-timeout precedence,
   and waits that leave active engines running match the model.
-  Evidence: [`timing.ml`](../lib/timing.ml) matches the reference machine on
-  waits and periodic ticks; [`primitive_demo.ml`](../lib/primitive_demo.ml)
+  Evidence: [`timing.ml`](../lib/pluggable_primitives/timing.ml) matches the reference machine on
+  waits and periodic ticks; [`primitive_demo.ml`](../lib/staging/primitive_demo.ml)
   shows a transfer progressing during a wait
-  ([`test_primitives.ml`](../test/test_primitives.ml)). See the
+  ([`test/integration/primitive_demo/`](../test/integration/primitive_demo)). See the
   [P2 implementation record](p2-implementation.md).
 - [x] **P2.4 — Data queues.** Implement configurable small TX/RX FIFOs with
   explicit ready/valid, full/empty, validity reset, and fault behavior. Evidence:
   simultaneous push/pop and boundary cases preserve ordering and occupancy with
   no loss or duplication; starvation/overflow follows the specified policy.
-  Evidence: [`byte_fifo.ml`](../lib/byte_fifo.ml),
-  [`test_primitives.ml`](../test/test_primitives.ml), and the
+  Evidence: [`byte_fifo.ml`](../lib/pluggable_primitives/byte_fifo.ml),
+  [`test/primitives/byte_fifo/`](../test/primitives/byte_fifo), and the
   [P2 implementation record](p2-implementation.md).
 - [x] **P2.5 — Internally paced transfers.** Implement the candidate shift lane
   with lengths 1..32, both bit orders, TX-only/RX-only/duplex, initial preload,
   separate launch/sample phases, and latched descriptors. Evidence: first/last
   bit placement, pin conflicts, invalid phase combinations, completion, and
   underrun/overrun safe aborts match the model. Evidence:
-  [`shift_lane.ml`](../lib/shift_lane.ml),
-  [`shift_engine.ml`](../model/shift_engine.ml),
-  [`test_primitives.ml`](../test/test_primitives.ml), and the
+  [`shift_lane.ml`](../lib/pluggable_primitives/shift_lane.ml),
+  [`shift_engine.ml`](../f_model/shift_engine.ml),
+  [`test/primitives/shift_lane/`](../test/primitives/shift_lane), and the
   [P2 implementation record](p2-implementation.md).
-- [ ] **P2.6 — Observed-event transfers.** Add generic preconfigured arming/start
+- [x] **P2.6 — Observed-event transfers.** Add generic preconfigured arming/start
   and external-edge pacing on top of P2.2/P2.5. Align observed clock, select, and
   data paths. Evidence: phase sweeps measure event-to-engine and event-to-core-
   decision-to-pin latency; externally interrupted transfers release ownership.
   Record limits needed for UART RX and SPI target experiments.
-  *Progress:* [`observed_transfer.ml`](../lib/observed_transfer.ml) aligns
-  start, pacing, and data; the [P2 implementation record](p2-implementation.md)
-  measures the event-to-engine path. The control-decision path and external
-  timing envelope remain.
-- [ ] **P2.7 — Close the first UART TX demonstration.** Connect P1.3's sequence
+  - [x] **P2.6a -- Primitive and digital envelope.**
+    [`observed_transfer.ml`](../lib/staging/observed_transfer.ml) aligns and latches start, pacing,
+    optional cancellation/select, and data configuration; falling-edge select withdrawal
+    aborts armed or active work and releases ownership. The
+    [P2 implementation record](p2-implementation.md) records the accepted/live input
+    contract, priority, recovery, measured limits, and UART RX/SPI target implications.
+    The timed suite under
+    [`test/primitives/observed_transfer/`](../test/primitives/observed_transfer) composes
+    independent input and shift-engine models, checks reconstructed pin transactions and
+    RX/fault state for multi-bit directed and generated schedules, and measures 10--19
+    ticks external-to-synchronized-event, 10 ticks event-to-engine, and 20--29 ticks
+    start/launch-to-pin or cancellation-to-release. The audited envelope separates
+    10/10-tick input capture and RX-only operation from TX/duplex wire behavior. An
+    independent external peer verifies every bit of idle-low 8- and 32-bit TX/duplex at
+    all phases when the launch-to-sample half is at least 30 ticks and the opposite half
+    is at least 10 ticks, with one tick of peer setup. At an assumed 48 MHz system clock
+    this is 24 MHz for capture/RX-only, 12 MHz for asymmetric TX/duplex, or 8 MHz for
+    symmetric TX/duplex. The earlier unqualified 24 MHz statement was not TX wire evidence;
+    P2.6a remains complete on the corrected, explicitly restricted digital envelope.
+    *Supplementary preparation:* the peer sweep now also verifies idle-high, both physical
+    preload-first/launch-first mappings, and 1/8/32-bit boundaries. Wire claims use an
+    alternating `Either` clock initialized to the declared idle level; rise-only/fall-only
+    event streams remain functional tests rather than all-mode wire evidence.
+  - [x] **P2.6b -- Real core path.** P3.3 now composes
+    P3.1a's safe load/fetch boundary, P3.2 decode/execution, the shared event front end,
+    mechanism adapter and registered pin bank. The loaded program timestamps the external
+    event, synchronized event, actual core decision, bank request/commit and boundary pin;
+    it is not a sequencer or direct event-to-pin substitute.
+     *Preparation completed:* [`observed_transfer_bank.ml`](../lib/staging/observed_transfer_bank.ml)
+     reserves the output at arm acceptance, commits lane writes through the real bank,
+     clears output enable before release, and explicitly arbitrates software offers.
+     [`test/integration/observed_transfer_bank/`](../test/integration/observed_transfer_bank)
+     measures 20--29 ticks external-to-lane, 10 ticks for ordinary lane-to-bank data
+     commits, and 30--39 ticks
+     external-to-committed-bank output. The bank-boundary peer requires 40 ticks
+     launch-to-sample plus a 10-tick opposite half: 9.6 MHz asymmetric or 6 MHz symmetric
+     at an assumed 48 MHz system clock; 39 ticks fails some phases. Cancellation clears
+     bank output enable in 20--29 ticks and releases ownership in 30--39. The sweep covers
+     idle-low/high, both mappings and orders, TX/RX/duplex, 1/8/32 bits, conflicts,
+     symmetric/asymmetric duty cycles, interruption and rearming. This boundary is the
+     bank's registered outputs, not a chip wrapper or pad.
+     The prepared `wait_start_then_drive` program is assembled and executed now by the
+     independent core/store model: default-memory words `7804 0000 a300 7804 0001 0000`
+     predrive software-owned pin 0 low, wait for pin 3 rising, drive pin 0 high, and halt
+     in 13 model edges. The exact future timestamps, initial state, finite limit, diagnostics
+     and P3 observation points are in the
+     [P2 implementation record](p2-implementation.md#real-core-scenario-and-measurement).
+      The prepared image now runs through [`integrated_core.ml`](../lib/emulator_core/integrated_core.ml).
+      [`core_engine_timing_tests.ml`](../test/integration/core_engine/core_engine_timing_tests.ml)
+      sweeps all ten integer phases and measures 10--19 ticks external-to-synchronized,
+      20 ticks synchronized-to-core-decision, 30 ticks decision-to-bank-request, and 60--69
+      ticks external-to-registered-bank commit. The request commits after the same clock
+      boundary. Compared with the direct 30--39-tick engine/bank path, this loaded program
+      adds exactly 30 ticks. The boundary remains the bank outputs, not wrapper/pad or
+      physical timing. P2.6b and parent P2.6 are complete; see the
+      [P3.3 record](p3.3-implementation.md).
+- [x] **P2.7 — Close the first UART TX demonstration.** Connect P1.3's sequence
   to the pin/timer hardware and the emitted-RTL harness. Evidence: an independent
   monitor checks idle, start, data, stop, bit periods, and reset/disable during
   transmission. Save matching model and RTL traces for the first working slice.
-  *Progress:* [`firmware_uart.ml`](../model/firmware_uart.ml)'s typed TX
-  descriptor matches [`uart_tx.ml`](../lib/uart_tx.ml) in the model/Hardcaml
-  trace and an independent receiver test. [`p2_uart_tb.v`](../tinytapeout/test/p2_uart_tb.v)
-  is wired into `@rtl`; emitted RTL simulation remains. See the
+  *Evidence:* [`uart_slice.ml`](../lib/staging/uart_slice.ml) takes the 8N1 frame through the
+  pin and timer hardware instead of straight out of the lane: the lane is claimed as the
+  engine in [`pin_bank.ml`](../lib/pluggable_primitives/pin_bank.ml), [`timing.ml`](../lib/pluggable_primitives/timing.ml) counts
+  out one bit period of idle before the start edge — the leading idle phase P1.3's
+  sequence spends two operations on — and every bit is committed by a masked engine write,
+  so what leaves the design leaves through an owner. Four producers are then decoded by
+  one independent receiver that is told nothing but the expected bit period: P1.3's
+  bit-banged [`tx_sequence`](../f_model/firmware_uart.ml) on the reference machine, the
+  same frame as one typed descriptor on [`shift_engine.ml`](../f_model/shift_engine.ml),
+  the Hardcaml slice, and the emitted Verilog under
+  [`p2_uart_slice_tb.v`](../tinytapeout/test/p2_uart_slice_tb.v), whose receiver is
+  written a second time in Verilog so that the two monitors cannot share a mistake. All
+  four agree on
+  [`uart_frame.trace`](../test/integration/uart_slice/uart_frame.trace), which is the
+  saved matching model and RTL trace: `@runtest` writes it only after the two model
+  producers and the Hardcaml slice agree and diffs it against the committed copy, and
+  `@rtl` diffs the emitted-RTL copy against the same file. Reset, disable, and abort part
+  way through a frame release the pin and the engine's claim on the next edge, checked in
+  both harnesses; only the selected pin is ever driven; the bank raises no rejection or
+  conflict. The monitor and the tests are in
+  [`test/integration/uart_slice/`](../test/integration/uart_slice). See the
   [P2 implementation record](p2-implementation.md).
+  *Carried forward:* the bank's registered write puts the pin one cycle behind the lane,
+  uniformly, so bit periods are unchanged and only the frame's absolute position moves.
+  The sequencer is the demonstration harness this section allows, issuing the one typed
+  command the slice needs. Fetch, decode, and runtime loading have since landed in
+  P3.1/P3.2; a firmware *program* reaching the same pins remains P3.3 integration and
+  P2.6b timing evidence, not this item's. The receiver
+  measures the bit period as the greatest common divisor of the frame's transition
+  intervals, which equals the bit period only for a byte that puts a bit between two
+  unlike neighbours; `0xa6` is such a byte and the vectors keep it. The bounded generated
+  regression adds 96 fresh-state trials at seed `20260920` across bytes, all eight pins,
+  half-periods 2--12, and normal or interrupted frames. It uses the shared replay/source
+  identity conventions while keeping the established frame monitor and Cyclesim loops.
+  Its producer comparisons are frame-relative after each start edge is detected, not a
+  claim of equal request-to-start latency. The generated period range records coverage,
+  not a change to the supported-input contract: zero encounters primitive refusal and
+  values at or above 32768 overflow the doubled 16-bit leading-idle countdown. Slice-level
+  handling of those requests, half-period 1, and the wider positive non-overflowing range
+  remain unverified. Generated-failure diagnostic and controlled-replay gaps are tracked
+  separately in verification.md.
 - [ ] **P2.8 — Record primitive costs and invariants.** Measure mapped sequential
   and combinational area per block/configuration using P0's flow. Exercise pin
   ownership, open-drain, FIFO, handshake, reset, and wait invariants; apply formal
@@ -588,8 +704,8 @@ Filtering, extra descriptor slots, and extra lanes remain measured decisions.
 P0.6/P0.7's adopted ASIC path; the rest of P3 proceeds against the memory contract
 before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decoupled-from-asic-adoption)).
 
-- [ ] **P3.1 — Program store and load validity.** Split at the adoption boundary.
-  - [ ] **P3.1a — Contract-port consumer logic.** In the core, drive the store's 1RW
+- [x] **P3.1 — Program store and load validity.** Split at the adoption boundary.
+  - [x] **P3.1a — Contract-port consumer logic.** In the core, drive the store's 1RW
     latency-one port without instantiating it. Keep program/loaded-image
     validity and bounds enforcement in the emulator. Gate both host writes and
     readback on halted-and-engines-idle; reject requests during execution without
@@ -597,26 +713,69 @@ before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decouple
     against the testbench contract model: partial loads, reset,
     out-of-image/out-of-range fetches, and attempted live accesses cannot start or
     corrupt execution; post-write and unwritten outputs are never valid
-    instructions; nothing depends on bulk reset or initialization. *Progress:* the
-    [`protocol_core.ml`](../lib/protocol_core.ml) scaffold drives the contract port
-    with halted-only writes and a latency-one fetch
-    ([`test_protocol_core.ml`](../test/test_protocol_core.ml)). Readback, validity,
-    bounds, load-complete, and engine-idle gating remain.
-  - [ ] **P3.1b — Context-registered store at the project top.** After P0.6/P0.7,
+    instructions; nothing depends on bulk reset or initialization.
+    *Done:* [`protocol_core.ml`](../lib/memory_control/protocol_core.ml) implements the 256x16 default
+    P1.5-layout consumer, sequential bounded replacement loads, full-word ordered
+    readback comparison, verified completion, halted-and-idle host gating, explicit
+    fetch ownership/validity, and bounds checks before address narrowing. The independent
+    [`program_access.ml`](../f_model/program_access.ml) model and
+  [`test/core/protocol_core/`](../test/core/protocol_core) cover directed boundary and
+    interruption cases plus 240 generated scenarios at seed `20260920`, against three
+    legal choices for unspecified RAM output. Standalone emitted RTL passes Verilator
+    lint and generic Yosys synthesis under `@rtl`. Contracts, commands, results, and
+    limitations are in the [P3.1a implementation record](p3.1a-implementation.md).
+    P3.1a's original record predates P3.1b; parent P3.1 is now complete.
+  - [x] **P3.1b — Context-registered store at the project top.** After P0.6/P0.7,
     instantiate `hardcaml_asic.Single_port_ram` in the project design constructor
     and connect P3.1a's port. Evidence: P3.1a's checks rerun against the library's
     behavioral model and emitted RTL; selection and any allowed fallback are
     recorded in the build.
-- [ ] **P3.2 — Minimal control execution.** Implement fetch/decode, registers,
+    *Done:* P0.7 provides the exact connection and mapped evidence linked above; the
+    manifest records explicit flops, not fallback or macro selection. The
+    [P3.1b verification closure](p3.1b-verification.md) reruns P3.1a's twelve directed
+    scenarios and 240 fixed-seed generated scenarios against both the context-registered
+    behavioral backend and selected flop circuit. Separate emitted simulation and
+    implementation RTL pass full-interface directed checks for every audited gap. Fresh
+    production RTL and flow inputs are byte-identical to the archived P0.7 inputs, so its
+    mapped-cost evidence remains applicable. P3.1a, P3.1b, and parent P3.1 are complete.
+- [x] **P3.2 — Minimal control execution.** Implement fetch/decode, registers,
   flags, state operations, branches/loops, and halt for the provisional ISA.
   Evidence: independent-model comparisons cover each implemented instruction,
   taken/untaken paths, latency-one fetches, stalled fetch/output hold, pipeline
-  validity, extension-word fetches, invalid instructions, and cycle counts.
-- [ ] **P3.3 — Core-to-engine integration.** Connect pin, time, transfer, event,
+   validity, extension-word fetches, invalid instructions, and cycle counts.
+   *Done:* [`instruction_decoder.ml`](../lib/emulator_core/instruction_decoder.ml) derives legality and
+    fields from the shared encoding specification;
+    [`control_execution.ml`](../lib/emulator_core/control_execution.ml)
+   implements fresh RUN state, every local state/control instruction, exact `m16`
+   fetch/execute/extension timing, wide target checks, observable retirement/fault state,
+   and a retained handshake for every delegated mechanism instruction.
+   [`executable_core.ml`](../lib/legacy/executable_core.ml) composes it with P3.1a while keeping
+   the RAM external. The block suite exhaustively compares all 65,536 base words' legality
+   and extension classification with the procedural decoder, compares directed and 96 fixed-seed generated programs with the
+   independent control model, and covers mechanism and fault paths. Emitted RTL loads and
+   runs a representative image in nine fetch plus seven execute cycles under `@rtl`.
+   Contracts, commands, results, and limitations are in the
+   [P3.2 implementation record](p3.2-implementation.md). P3.3 has since supplied its real
+   mechanism/event/pin-bank consumer and closed P2.6b.
+- [x] **P3.3 — Core-to-engine integration.** Connect pin, time, transfer, event,
   and FIFO instructions. Add boundary STOP, prompt ABORT, and single-step with
   engines idle. Evidence: engines continue through ordinary core waits; completion,
-  faults, ownership, queue pressure, and interruption match reference traces.
-- [ ] **P3.4 — Host API and simulator backend.** Define version/capability
+   faults, ownership, queue pressure, and interruption match reference traces.
+   *Required follow-up:* once P3.2 and this integration provide the executable
+   event-to-core-to-pin path, return immediately to P2.6b as the next slice. Measure
+   event, core decision, pin-bank commit, and boundary pin through a real loaded
+   program, update the boundary timing envelope, and resolve P2.6b/parent P2.6
+   before moving on to P4 protocol acceptance. If the path is still unavailable,
+   record the exact missing prerequisite beside P2.6b rather than dropping the return.
+   *Done:* [`core_mechanisms.ml`](../lib/emulator_core/core_mechanisms.ml) connects all fifteen delegated
+   kinds to the shared event front end, timing block, two byte FIFOs, shift lane and central
+   registered pin bank. [`integrated_core.ml`](../lib/emulator_core/integrated_core.ml) adds boundary
+   STOP, prompt ABORT, idle-only single-step and real engine-idle gating while preserving
+   P3.1a/P3.2 ownership. Seventeen loaded-program/timed tests plus emitted-Verilog simulation
+   cover completion, faults, ownership, pressure, background progress and interruption.
+   P2.6b was immediately measured and closed above. Contracts, timing, commands and limits
+   are in the [P3.3 implementation record](p3.3-implementation.md).
+- [x] **P3.4 — Host API and simulator backend.** Define version/capability
   discovery, program load/readback, pin configuration, data queues, execution
   control, register/engine inspection, and bounded timestamped trace retrieval.
   Add CLI operations over a simulator backend. Evidence: a scripted CLI workflow
@@ -624,19 +783,80 @@ before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decouple
   observable and capability/ISA mismatches have defined errors. Advertise memory
   width/depth and image format; active-execution program-access requests have a
   defined rejection. Keep ordinary status/data-queue operations separate.
-- [ ] **P3.5 — Independent hardware loader.** Specify the dedicated serial link's
+  *Done:* [`host_api.ml`](../host/host_api.ml) defines the versioned discovery, image,
+  structured-error, program, control, queue, pin, inspection and trace boundary;
+  [`simulator_backend.ml`](../host/simulator_backend.ml) drives one live
+  [`Integrated_core`](../lib/emulator_core/integrated_core.ml) and an external contract RAM with explicit
+  cycle advancement. [`sim_cli.ml`](../bin/sim_cli.ml) adds machine-readable `sim info`,
+  image generation and stateful script commands. The checked
+  [`p3.4-workflow.sim`](../examples/p3.4-workflow.sim) loads and independently reads the
+  three-word queue-echo image, uses real RX/core/TX paths, exercises STOP, ABORT and step,
+  observes live-access and full/empty refusals, and proves bounded trace loss/clear state.
+  API/backend tests and actual-executable Dune rules live under
+  [`test/host/`](../test/host) and
+  [`test/integration/host_simulator/`](../test/integration/host_simulator). Contracts,
+  commands, results, limitations and the P3.5/P3.6 handoff are recorded in the
+  [P3.4 implementation and CLI guide](p3.4-host-api.md). This completes P3.4 only; no
+  physical transport, independent hardware loader, P4 protocol acceptance, or P3 exit gate
+  is claimed. *Review follow-up:* the bounded P3.4 cleanup added all-or-error logical-image
+  read bounds with structured unexpected-progress failures, authoritative refusal reasons,
+  distinct transfer timeout codes, explicit capabilities and backend signature conformance,
+  post-edge ABORT completion, current-request pin-conflict reporting, and focused queue,
+  fault/recovery, trace-order/loss and CLI regressions. It also confirmed and enforced the
+  latency-one response invariant and corrected post-RAM settling for concurrent FIFO
+  readiness. The API remains 1.0 because this cleanup precedes the first P3.5 transport and
+  removes unused reviewed-draft reasons rather than preserving an already released backend.
+- [x] **P3.5 — Independent hardware loader.** Specify the dedicated serial link's
   framing, pin allocation, host clock envelope, acknowledgement, length/error
   checks, byte order/word assembly, and flow control before implementation.
   Issue only complete configured memory words; reject incomplete trailing words
   without declaring the image valid. Add fixed loader logic and
   wrapper integration independent of firmware execution. Evidence: malformed or
   interrupted loads are rejected and a halted/broken program remains recoverable.
+  *Repair done:* the 2026-09-21 independent review reproduced
+  acceptance after a sixteen-byte counter wrap, invalidating the previous completion claim.
+  The repaired [`hardware_loader.ml`](../lib/host_link/hardware_loader.ml) derives the eleven-byte
+  maximum, saturates and latches overrun, arms request/response selections, protects
+  dispatch/READ/ABORT context, and implements rising-edge validation followed by explicit
+  replay or final-fall commit. It otherwise retains the fixed
+  synchronized host-clock parser, CRC-8/ATM validation, bounded four-byte command
+  payload, one-shot core dispatch, completion waits, and retained/restartable response.
+  [`loader_core.ml`](../lib/host_link/loader_core.ml) connects it only through the real
+  `Integrated_core` program/control requests. The adopted `loader` project in
+  [`asic_bundle.ml`](../bin/asic_bundle.ml) supplies the context-registered 256x16
+  `program` RAM and maps `ui[0]` select, `ui[1]` clock, `ui[2]` input data,
+  `uo[0]` output data, and `uo[1]` ready while preserving all eight `uio` protocol
+  pads. [`p3_loader_tb.v`](../tinytapeout/test/p3_loader_tb.v) is an independent
+  serial peer run against emitted `Loader_core` plus a contract store, the
+  wrapper/behavioral memory source, and the production synthesis wrapper with explicit-flop
+  RAM. It covers decoded discovery/status; maximum and overlength frames; the reported
+  wrap attacks and multi-wrap prefixes; protected in-flight state; validated response
+  replay of a side-effecting RUN; complete-word load/read/verify/complete; all ten race-free
+  phases at the four-system-clock boundary; asymmetric duties; deterministic malformed
+  seed `20260921`; and ABORT/replacement recovery from loops, blocked queues, driven active
+  transfers, and invalid instructions. Protocol, result/retry/recovery rules,
+  resource bounds, derived 6 MHz digital bit-clock envelope, verification, limitations, and
+  the exact P3.6 handoff are in the [P3.5 record](p3.5-hardware-loader.md). P3.6,
+  board verification, current mapped cost, and the P3 exit gate remain open.
+
+The structural cleanup between P3.5 and the default P3.6 implementation sequence is
+tracked in [host_link_migration.md](host_link_migration.md), with
+[organization_migration.md](organization_migration.md) providing HL1's move procedure.
+HL0 is resolved at `9f6ed2d`; HL1–HL4 remain planned. The migration preserves P3.5's
+protocol and establishes a shared wire library, typed control port, and block-level
+verification. Its completion supports a backend for existing commands; it does not
+supply P3.6's queue transport or close the P3 exit gate.
+
 - [ ] **P3.6 — Device backend and reload demonstration.** Implement the physical
   transport backend and run its transaction sequence against wrapper simulation;
   exercise hardware when available. Use the same CLI/API to load and run two
   different protocol programs without regenerating RTL. Evidence: readback,
   observed pin transactions, data exchange, status, and recovery traces; state
-  explicitly whether the backend has been verified on a board.
+  explicitly whether the backend has been verified on a board. Add queue transport for
+  data exchange; step, pin configuration, and trace remain unsupported in hardware.
+  Reconcile compact wire STATUS with portable inspection, define transport failures for
+  infallible status calls, map simulator cycle budgets to physical time, and settle richer
+  wire-refusal-to-host-error mapping.
 
 **Exit gate:** one generated hardware design can load/read back/run two protocol
 programs, exchange bytes, and report status through the host workflow. Recovery

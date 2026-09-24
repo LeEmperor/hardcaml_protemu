@@ -11,7 +11,7 @@
    and the reference model must agree about all of it, so it is written once, here.
 
    WHAT IS NOT HERE. Validation, and the typed descriptor the machine latches. A
-   descriptor is checked at acceptance by model/transfer.ml, which is where an impossible
+   descriptor is checked at acceptance by f_model/transfer.ml, which is where an impossible
    phase combination or a pin used twice is refused; the control core turns a [Parsed.t]
    into that typed value. Nothing in this module rejects anything, deliberately: an
    unconfigured descriptor reaches acceptance as one with no pins and a zero half period

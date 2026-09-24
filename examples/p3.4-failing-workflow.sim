@@ -1,0 +1,2 @@
+# This intentionally exits nonzero and is used to verify CLI failure propagation.
+check-api 2 0

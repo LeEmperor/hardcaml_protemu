@@ -9,11 +9,11 @@ the hand formatting used within those modules and in the plain OCaml model.
 
 | For | Read |
 | --- | --- |
-| Hardware state, handshakes, a mux, and an `Always.compile` block | [byte_fifo.ml](../lib/byte_fifo.ml) |
-| A small hardware wrapper and an aligned lane descriptor | [uart_tx.ml](../lib/uart_tx.ml) |
-| Plain OCaml state, accessors, and a step algorithm | [fifo.ml](../model/fifo.ml) |
-| A larger circuit with an FSM and memory-port timing | [protocol_core.ml](../lib/protocol_core.ml) |
-| A larger model with edge ordering and lifecycle notes | [machine.ml](../model/machine.ml) |
+| Hardware state, handshakes, a mux, and an `Always.compile` block | [byte_fifo.ml](../lib/pluggable_primitives/byte_fifo.ml) |
+| A small hardware wrapper and an aligned lane descriptor | [uart_tx.ml](../lib/staging/uart_tx.ml) |
+| Plain OCaml state, accessors, and a step algorithm | [fifo.ml](../f_model/fifo.ml) |
+| A larger circuit with an FSM and memory-port timing | [protocol_core.ml](../lib/memory_control/protocol_core.ml) |
+| A larger model with edge ordering and lifecycle notes | [machine.ml](../f_model/machine.ml) |
 
 These examples show different amounts of detail. Give a short wrapper less
 commentary than a state machine. Add a comment when it answers a question that
@@ -38,7 +38,7 @@ quoted filename, and a module description.
 The fourth comment should let a reader understand the module without first
 reading its callers. State what it represents, who owns or calls it, the main
 timing or data contract, and any important exclusion. Include a design reason
-when it affects the whole file. For example, `model/fifo.ml` explains why depth
+when it affects the whole file. For example, `f_model/fifo.ml` explains why depth
 is an argument and why a paired pop makes room for a push.
 
 Keep header facts current. Phase references and cross-module claims are useful
@@ -116,7 +116,7 @@ mechanics in the `.ml`. Document record fields or variant constructors when
 their meanings are not evident from the types.
 
 Start a warning about easy misuse with `Careful:` and give a concrete case.
-For example, `model/program_store.ml` distinguishes an unspecified output from
+For example, `f_model/program_store.ml` distinguishes an unspecified output from
 an out-of-range address: one is a modeled value, while the other raises.
 Explain unreachable branches and the invariant that makes them unreachable.
 

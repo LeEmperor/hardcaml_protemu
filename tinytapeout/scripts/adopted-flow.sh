@@ -76,6 +76,7 @@ Environment:
   PROTEMU_FLOW_RESULTS  kept archives, one per run        (./flow_results)
   PROTEMU_ARCHIVE   exact archive directory for this run
   PROTEMU_STAGE     full | synthesis, how far "run" goes             (full)
+  PROTEMU_DESIGN    observable | memory | loader, bundle design (observable)
   PROTEMU_TT        tt-support-tools checkout
   PROTEMU_PDK_ROOT  PDK root (IHP sg13cmos5l)
   PROTEMU_FLOW_PY   python of the LibreLane venv
@@ -244,7 +245,7 @@ run_step() {
 # Dune goes through with-switch.sh rather than a bare `dune`, so the flow works
 # in a shell that never sourced env.sh. Nothing after "emit" needs OCaml at all.
 dune_() {
-    (cd "$repo_root" && "$repo_root/scripts/with-switch.sh" dune "$@")
+    (cd "$repo_root" && "$repo_root/scripts/with-switch.sh" dune "$@" -j 5)
 }
 
 load_toolchain() {
@@ -296,7 +297,11 @@ step_emit() {
     fi
     mkdir -p "$out"
     dune_ build bin/asic_bundle.exe || return $?
-    "$repo_root/_build/default/bin/asic_bundle.exe" "$bundle" "$repo_root"
+    local design=${PROTEMU_DESIGN:-observable}
+    [[ $design == observable || $design == memory || $design == loader ]] || {
+        echo "flow: PROTEMU_DESIGN must be observable, memory, or loader" >&2; return 2;
+    }
+    "$repo_root/_build/default/bin/asic_bundle.exe" "$design" "$bundle" "$repo_root"
 }
 
 step_preflight() {

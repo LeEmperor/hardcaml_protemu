@@ -1,0 +1,51 @@
+{
+  "archive": "reports.tar.gz",
+  "archive_bytes": 831488,
+  "build_identity": "7ce444837068766c01129de10ab2b2f45688a2103e7edc7e9578c9b23ff97ba3",
+  "created_at": "2026-09-20T07:16:28.995643+00:00",
+  "members": [
+    "execution.log",
+    "project/runs/asic/06-yosys-synthesis/AREA_0.abc",
+    "project/runs/asic/06-yosys-synthesis/COMMANDS",
+    "project/runs/asic/06-yosys-synthesis/config.json",
+    "project/runs/asic/06-yosys-synthesis/extra.json",
+    "project/runs/asic/06-yosys-synthesis/reports/chk.rpt",
+    "project/runs/asic/06-yosys-synthesis/reports/latch.rpt",
+    "project/runs/asic/06-yosys-synthesis/reports/post_dff.json",
+    "project/runs/asic/06-yosys-synthesis/reports/post_dff.rpt",
+    "project/runs/asic/06-yosys-synthesis/reports/pre_synth_chk.rpt",
+    "project/runs/asic/06-yosys-synthesis/reports/pre_techmap.json",
+    "project/runs/asic/06-yosys-synthesis/reports/pre_techmap.rpt",
+    "project/runs/asic/06-yosys-synthesis/reports/stat.json",
+    "project/runs/asic/06-yosys-synthesis/reports/stat.rpt",
+    "project/runs/asic/06-yosys-synthesis/runtime.txt",
+    "project/runs/asic/06-yosys-synthesis/state_in.json",
+    "project/runs/asic/06-yosys-synthesis/state_out.json",
+    "project/runs/asic/06-yosys-synthesis/synthesis.abc.sdc",
+    "project/runs/asic/06-yosys-synthesis/tt_um_leemperor_hardcaml_protemu_memory.nl.v",
+    "project/runs/asic/06-yosys-synthesis/tt_um_leemperor_hardcaml_protemu_memory.nl.v.json",
+    "project/runs/asic/06-yosys-synthesis/yosys-synthesis.log",
+    "project/runs/asic/06-yosys-synthesis/yosys-synthesis.process_stats.json",
+    "project/runs/asic/final/metrics.csv",
+    "project/runs/asic/final/metrics.json",
+    "project/runs/asic/final/nl/tt_um_leemperor_hardcaml_protemu_memory.nl.v",
+    "project/src/config.json"
+  ],
+  "omitted": [
+    "project/runs/asic/55-openroad-stapostpnr",
+    "project/runs/asic/final/gds",
+    "project/runs/asic/final/sdc"
+  ],
+  "records": [
+    "manifest.json",
+    "preflight.json",
+    "results.json",
+    "run.json"
+  ],
+  "run_id": "a538212c80fb407bb01fd904b7081702",
+  "schema_version": 1,
+  "source_run": "/home/wayne/devel/jane/scaf/tinytapeout/build/p0.7-memory-synthesis-20260920-1/runs/a538212c80fb407bb01fd904b7081702",
+  "verified": {
+    "manifest_sha256": "3b72dfe6ac6179ca0081266acebba1b7c9a8093c3461b19d250db2ea6eaff398"
+  }
+}

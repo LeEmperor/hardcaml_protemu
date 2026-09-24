@@ -1,0 +1,20 @@
+; Tests for the reference execution model (phase_plan.md P1.1 to P1.3).
+;
+; A separate library from test/, and with no hardcaml dependency, for the same reason
+; f_model/ is separate from lib/: if the model and the RTL shared a harness they could share
+; a mistake. Model/RTL comparison tests belong in test/, which may depend on both.
+
+(library
+ (name test_protemu_f_model)
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries core protemu_isa protemu_f_model)
+ (flags
+  ; Same as f_model/dune: the instruction specification is opened, so a test names [Kinds]
+  ; or [Encoding] exactly as the module under test does.
+  (:standard -open Protemu_isa))
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))

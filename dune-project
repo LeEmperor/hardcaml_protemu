@@ -15,7 +15,7 @@
  (name hardcaml_protemu)
  (synopsis "Protocol emulator ASIC written in Hardcaml")
  (description
-  "Synthesizable protocol emulator blocks written in Hardcaml. Installs as hardcaml_protemu,\nthe wrapped RTL library, and hardcaml_protemu.isa, the instruction specification and\nassembler it shares with the reference model.")
+   "Synthesizable protocol emulator blocks written in Hardcaml. Installs the wrapped RTL\nand ISA libraries plus a transport-independent host API and integrated-core simulator\nbackend.")
  (depends
   (ocaml
    (>= 5.1))

@@ -1,15 +1,16 @@
 ; The whole synthesizable surface of this repository, as ONE wrapped library.
 ;
-; (include_subdirs qualified) makes each subdirectory a sub-namespace, so a consumer
-; writes `open! Hardcaml_protemu` and reaches blocks as <Subdir>.<Module>. Executables
-; (e.g. the RTL generator) live in bin/, because include_subdirs claims this subtree.
+; (include_subdirs unqualified) groups files into subsystem directories for browsing
+; only. Module names stay flat: a consumer writes `open! Hardcaml_protemu` and reaches
+; blocks as <Module>, whatever directory holds them. Executables (e.g. the RTL
+; generator) live in bin/, because include_subdirs claims this subtree.
 
-(include_subdirs qualified)
+(include_subdirs unqualified)
 
 (library
  (name hardcaml_protemu)
  (public_name hardcaml_protemu)
- (libraries core hardcaml)
+ (libraries core hardcaml protemu_isa protemu_host_link_wire)
  (preprocess
   (pps ppx_hardcaml ppx_jane))
  (lint

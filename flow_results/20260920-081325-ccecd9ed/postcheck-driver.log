@@ -1,0 +1,98 @@
+flow: output directory /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920
+
+== postcheck: TT precheck and gate-level simulation
+/tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac/checks/1851a83d4aa048ad98ef3643989dd197/postcheck.json
+
+== collect
+flow: results /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac/results.json
+
+== report
+run        ccecd9edc8e342b2b28f1a88d5c4e7ac  (/tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac)
+bundle     /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/bundle
+status     completed   stage full of full   source results.json
+
+TIMING
+  goal pass
+  setup_slack      15.589 ns   corner nom_slow_1p08V_125C
+  hold_slack        0.147 ns   corner nom_fast_1p32V_m40C
+  corner                  setup ws  setup vio   hold ws  hold vio
+  nom_fast_1p32V_m40C       16.943          0     0.147         0
+  nom_slow_1p08V_125C       15.589          0     0.698         0
+  nom_typ_1p20V_25C         16.623          0     0.345         0
+
+SIGNOFF CHECKS
+  antenna    pass
+  drc        pass
+  lvs        pass
+  inferred_latches       0
+  synthesis_errors       0
+  unmapped_instances     0
+
+POSTCHECKS
+  gate_level   pass
+  precheck     pass
+    KLayout pin label overlapping drawing        ✅
+    KLayout SG13CMOS5L DRC                       ✅
+    KLayout zero area                            ✅
+    KLayout Checks                               ✅
+    Pin check                                    ✅
+    Boundary check                               ✅
+    Layer check                                  ✅
+    Cell name check                              ✅
+    Analog pin check                             ✅
+
+HOLD REPAIR (post-CTS resizer)
+  [37-openroad-resizertimingpostcts] [INFO RSZ-0098] No setup violations found
+  [37-openroad-resizertimingpostcts] + repair_timing -verbose -hold -setup_margin 0.05000000000000000277555756156289135105907917022705078125 -hold_margin 0.1 -max_buffer_percent 50.0
+
+CONSTRAINTS (project/constraints/top.sdc)
+  create_clock -name clk -period 20.833333333333336 [get_ports {clk}]
+  set_clock_uncertainty 0.25 [get_clocks {clk}]
+  set_clock_transition 0.14999999999999999 [get_clocks {clk}]
+  set_timing_derate -early 0.94999999999999996
+  set_timing_derate -late 1.05
+  set_max_fanout 10 [current_design]
+  set_driving_cell -lib_cell sg13cmos5l_buf_4 -pin X [get_ports {ena rst_n ui_in uio_in}]
+  set_driving_cell -lib_cell sg13cmos5l_buf_4 -pin X [get_ports {clk}]
+  set_load 0.0060000000000000001 [get_ports {uio_oe uio_out uo_out}]
+  set_input_delay -max 1 -clock clk [get_ports {ena}]
+  set_input_delay -min 0 -clock clk [get_ports {ena}]
+  set_input_delay -max 1 -clock clk [get_ports {rst_n}]
+  set_input_delay -min 0 -clock clk [get_ports {rst_n}]
+  set_input_delay -max 1 -clock clk [get_ports {ui_in}]
+  set_input_delay -min 0 -clock clk [get_ports {ui_in}]
+  set_input_delay -max 1 -clock clk [get_ports {uio_in}]
+  set_input_delay -min 0 -clock clk [get_ports {uio_in}]
+  set_output_delay -max 2 -clock clk [get_ports {uio_oe}]
+  set_output_delay -min 0 -clock clk [get_ports {uio_oe}]
+  set_output_delay -max 2 -clock clk [get_ports {uio_out}]
+  set_output_delay -min 0 -clock clk [get_ports {uio_out}]
+  set_output_delay -max 2 -clock clk [get_ports {uo_out}]
+  set_output_delay -min 0 -clock clk [get_ports {uo_out}]
+
+all reported checks passed
+
+== archive into /tmp/opencode/p54-scaf-8d3ada1-20260920/flow_results/20260920-081325-ccecd9ed
+archive: 111 files -> /tmp/opencode/p54-scaf-8d3ada1-20260920/flow_results/20260920-081325-ccecd9ed/reports.tar.gz (0.73 MB)
+flow: archive /tmp/opencode/p54-scaf-8d3ada1-20260920/flow_results/20260920-081325-ccecd9ed
+
+== summary
+  postcheck              8m 24s
+  collect                    0s
+  report                     0s
+  archive                    0s
+  end to end             8m 24s
+
+  output             /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920
+  bundle             /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/bundle
+  preflight          /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/preflight.json
+  run                /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac
+  run record         /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac/run.json
+  execution log      /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac/execution.log
+  results            /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac/results.json
+  flow outputs       /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac/project/runs/asic
+  postcheck          /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac/checks/1851a83d4aa048ad98ef3643989dd197/postcheck.json
+  postcheck log      /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac/checks/1851a83d4aa048ad98ef3643989dd197/postcheck.log
+  precheck reports   /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920/runs/ccecd9edc8e342b2b28f1a88d5c4e7ac/checks/1851a83d4aa048ad98ef3643989dd197/tt/precheck/reports/results.md
+  archive            /tmp/opencode/p54-scaf-8d3ada1-20260920/flow_results/20260920-081325-ccecd9ed
+  exit status 0

@@ -1,9 +1,12 @@
 # Protocol emulator construction plan
 
-Status: architecture and integration plan, updated 2026-09-17 for the implemented
-`hardcaml_asic` slice (its P0–P3, P4.1–P4.4) and the decision to develop emulator
-RTL decoupled from ASIC adoption (section 1). Sizes, rates, and instruction
-names remain study parameters, not implemented capabilities or a frozen ISA.
+Status: architecture and integration plan, updated 2026-09-21 for P3.5's independent
+hardware loader, 2026-09-20 for P3.1a's bounded program load/access/fetch contract,
+P3.2's minimal control execution, and P3.4's host and simulator-session contract, and 2026-09-17
+for the implemented `hardcaml_asic` slice (its P0–P3, P4.1–P4.4) and the decision to
+develop emulator RTL decoupled from
+ASIC adoption (section 1). Sizes and rates remain study parameters; the provisional
+instruction names and `m16` encoding are now implemented but are not a frozen ISA.
 
 ## 1. Direction and scope
 
@@ -67,7 +70,7 @@ the optional library runner is not required. Tool/PDK preparation remains an
 explicit operation outside ordinary elaboration. Migration preserves the current
 P0 path until the replacement passes equivalent checks.
 
-The [Workbench architecture](../../workbench/docs/hardcaml_workbench_architecture.md)
+The [Workbench architecture](../../hardcaml_workbench/docs/hardcaml_workbench_architecture.md)
 keeps this project independently buildable. Workbench integration is optional and
 does not gate emulator hardware, ASIC integration, or tapeout. Sibling links use
 this workspace's `scaf`, `hardcaml_asic`, and `workbench` checkout names; they are
@@ -95,12 +98,12 @@ register file, decoder/control core, and the loader. The rules that keep it so:
   the [program-memory contract](../../hardcaml_asic/docs/program-memory-contract.md),
   not its constructor. `Elaboration_context.t` is not threaded through the hierarchy;
   only the top-level design constructor instantiates the RAM and connects the port.
-  [`protocol_core.ml`](../lib/protocol_core.ml) follows this.
+  [`protocol_core.ml`](../lib/memory_control/protocol_core.ml) follows this.
 - Emulator testbenches use a small contract model of the store: latency-one reads,
   held output while disabled, and poison after a write or for an unwritten word
-  ([`test_protocol_core.ml`](../test/test_protocol_core.ml)). Library backend
-  conformance stays in `hardcaml_asic`; adoption later reruns consumer checks against
-  its behavioral model.
+  ([`protocol_core_testbench.ml`](../test/core/protocol_core/protocol_core_testbench.ml)).
+  Library backend conformance stays in `hardcaml_asic`; adoption later reruns consumer
+  checks against its behavioral model.
 - Do not instantiate Hardcaml `memory`/`Ram` for the program store, and do not rely
   on asynchronous reads or read-during-write behavior the contract leaves unspecified.
 - Keep the Tiny Tapeout wrapper and pin map thin and outside the core, so adoption
@@ -132,23 +135,31 @@ that rework.
 
 ## 2. What exists today
 
-- `lib/protocol_core.ml`: an Idle/Fetch/Decode/Execute scaffold with an 8-bit PC
-  and an output bank tied to zero. It drives an external 256x8 program store through
-  a contract-conforming 1RW port: fetch issues a read and decode consumes it one cycle
-  later, and host writes are accepted only while halted. Decode/execute, readback,
-  and image validity are placeholders. `test/test_protocol_core.ml` checks it against
-  a contract model of the store.
+- `lib/memory_control/protocol_core.ml`: P3.1a's external-store consumer for the default 256x16 `m16`
+  image. It owns sequential load coverage, full-word ordered readback verification,
+  executable-image bounds, halted-and-engine-idle host gating, request rejection,
+  latency-one fetch ownership, and validity independent of memory data. It has no PC,
+  decoder, instruction execution, or engine/pin integration; the first three now live in
+  P3.2's `control_execution.ml`/`executable_core.ml`, while real engines and pins remain P3.3.
+  `test/core/protocol_core/` compares it with an independent control model and a 1RW
+  contract store under varied unspecified outputs.
 - `isa/`: the instruction specification (Dune library `hardcaml_protemu.isa`, no
   Hardcaml dependency and no execution), which P1.5 chose and recorded in
   [the decision](p1.5-encoding-decision.md). `instruction.ml` is the instruction set,
   `encoding.ml` the opcodes and field layout, `descriptor.ml` the descriptor fields
   firmware writes, and `program.ml`/`assembler.ml` the labels, images and refusals;
   `kinds.ml`, `pins.ml` and `event_kind.ml` are the enumerations an instruction field
-  names. It sits below both `lib/` and `model/` because an installed library cannot
+  names. It sits below both `lib/` and `f_model/` because an installed library cannot
   depend on a private one, which is what "shared by assembler and decoder" requires
   here. `Encoding.forms` publishes the field layout as data so P3.2's decoder is built
   from the same values the assembler encodes with.
-- `model/`: the independent reference execution model (Dune library `protemu_model`,
+- `host_link_wire/`: the P3.5 serial wire format (Dune library
+  `hardcaml_protemu.host_link_wire`, no Hardcaml dependency). `wire.ml` defines the
+  codes, frame and INFO/STATUS layouts, and CRC-8/ATM parameters that
+  `lib/host_link/hardware_loader.ml` uses, and a software request encoder and response
+  decoder for host code ([HL2](host_link_hl2_record.md)). The
+  [P3.5 record](p3.5-hardware-loader.md) remains the protocol authority.
+- `f_model/`: the independent reference execution model (Dune library `protemu_f_model`,
   no Hardcaml dependency), covering P1.1 to P1.5. `machine.ml` holds all model state
   and one rising edge; `operation.ml` is the typed mechanism vocabulary with its
   structural validation; `pin_bank.ml`, `input_pins.ml`, `event.ml`, `fifo.ml`, and
@@ -162,20 +173,27 @@ that rework.
   instruction/memory-word combinations, and a reference core that executes them
   ([the report](p1.4-encoding-study.md)). It is kept out of `lib/` so a diagnostic
   model cannot reach a synthesis source set. Transfers are validated and latched but
-  not executed (P2.5), and the RTL core still has no decoder of its own (P3.2).
-  Tests are in `test/model/`.
-- `lib/protemu_types.ml`: candidate pin/configure/transfer instruction variants.
-- `lib/p0_observable.ml` and `bin/generate.ml`: an observable pin/timer circuit
+  not executed (P2.5). P3.2's RTL decoder and local execution are independently compared
+  with this model; delegated mechanisms remain P3.3.
+  Tests are in `test/f_model/`.
+- `lib/emulator_core/instruction_decoder.ml`, `lib/emulator_core/control_execution.ml`, and `lib/legacy/executable_core.ml`:
+  P3.2's shared-spec decoder, architectural execution state, and composition with the
+  P3.1a access controller. Local state/control instructions execute in RTL; all mechanism
+  instructions use one retained P3.3-facing handshake. The implementation and evidence are
+  recorded in [the P3.2 record](p3.2-implementation.md).
+- `lib/legacy/p0_observable.ml` and `bin/generate.ml`: an observable pin/timer circuit
   and working parameterized Verilog emitter, separate from the control scaffold.
 - The P2 primitives in `lib/`: `pin_bank.ml`, `input_events.ml`, `timing.ml`,
   `byte_fifo.ml`, `shift_lane.ml`, `observed_transfer.ml`, `uart_tx.ml`, and
-  `primitive_demo.ml`, each compared against a `model/` reference in
-  `test/test_primitives.ml`, with `bin/generate_p2.ml` emitting standalone Verilog
-  for every block. Their interfaces, contracts, and the latencies measured in
+  `primitive_demo.ml`, each compared against a `f_model/` reference in
+  the block-owned suites under `test/primitives/`, with `bin/generate_p2.ml` emitting
+  standalone Verilog for every block. Their interfaces, contracts, and the latencies measured in
   digital simulation are in the [P2 record](p2-implementation.md). Mapped CMOS5L
-  cost for them is not measured (P2.8), and the lane's claim mask is not yet wired
-  through pin-bank arbitration at a project top.
-- `test/test_hardcaml_protemu.ml` and `tinytapeout/test/tb.v`: focused P0
+  cost for them is not measured (P2.8). `observed_transfer_bank.ml` now exercises one
+  observed lane through real pin-bank reservation, arbitration, masked commits and cleanup;
+  it is an integration block and measured fixture boundary, not yet the project top or
+  core-to-engine arbiter.
+- `test/integration/wrapper/` and `tinytapeout/test/tb.v`: focused P0
   Hardcaml/wrapper tests. They do not establish complete pin-bank or UART support.
 - `tinytapeout/`: wrapper, metadata, pinned flow inputs, staging, local checks,
   and the flow scripts. The observable circuit has hardened to GDS on CMOS5L on
@@ -184,8 +202,9 @@ that rework.
   [P0 record](../tinytapeout/reports/2026-09-14-p0-tool-path.md), the
   [P0.5a legacy record](../tinytapeout/reports/2026-09-19-p0.5a-legacy-physical.md),
   the [P0.5b adopted record](../tinytapeout/reports/2026-09-19-p0.5b-adopted-physical.md),
-  and [flow.md](flow.md) for the flow itself. Registered program memory (P0.7)
-  has not been through it.
+  the [P0.5c clean-staging reproduction](../tinytapeout/reports/2026-09-20-p0.5c-clean-staging-physical.md),
+  and [flow.md](flow.md) for the flow itself. P0.7 has since taken registered program
+  memory through backend integration and mapped synthesis; its record is linked below.
 - `hardcaml_asic` (its [phase plan](../../hardcaml_asic/docs/phase_plan.md), reviewed
   2026-09-17): P0–P3 and P4.1–P4.4 have evidence. Implemented are the
   `Project`/`Elaboration_context`/`Build` lifecycle with resource identity and
@@ -195,9 +214,10 @@ that rework.
   TT metadata, manifest); and run records with structured result collection. Mapped
   CMOS5L synthesis evidence exists for a 4x8 flop-memory example (179 cells, about
   3,480 µm²). Its small physical path (ASIC P4.5) and consumer packaging (ASIC
-  P5.1) have since closed as well. Still open: supporting this repository's P0.6
-  and P0.7 adoption (ASIC P5.2–P5.4), usage documentation (ASIC P5.5), and the
-  SRAM investigation (ASIC S). This repository now depends on the library:
+  P5.1) have since closed as well. This repository's P0.6/P0.7 adoption and
+  clean-staging physical reproduction close ASIC P5.2–P5.4. Still open are usage
+  documentation (ASIC P5.5) and the SRAM investigation (ASIC S). This repository
+  now depends on the library:
   `bin/asic_bundle.ml` declares the adopted design against it and takes its
   wrapper ports, reset idiom, and LibreLane defaults from `Tt_cmos5l`, pinned by
   revision in [`asic-dependencies.lock`](../tinytapeout/asic-dependencies.lock).
@@ -205,9 +225,9 @@ that rework.
   independent of the build path.
 - Dune, Hardcaml dependencies, and `scripts/with-switch.sh` are already present.
 
-Keep developing this scaffold, but do not let the current 8-bit instruction memory
-or fetch/decode sequence determine the final ISA. In particular, byte-addressed
-storage and instruction width are separate decisions.
+Keep developing this scaffold, but do not treat the provisional 16-bit `m16` memory layout
+or fetch/decode sequence as a final physical-memory decision. Transport byte addressing,
+instruction width, and physical memory-word width remain separate concerns.
 
 ## 3. Initial architecture
 
@@ -327,6 +347,17 @@ software round trip. This generic facility is a candidate for UART start-bit
 alignment and externally clocked shifts. Add a second descriptor slot only if
 gap-free traffic measurements show that software cannot refill in time.
 
+For a wire clock, `idle_clock` defines the physical initial level and the first transition
+is the leading edge. An alternating external clock is represented by `Either`; the lane
+then maps physical leading/trailing edges to configured launch/sample phases. A rise-only
+or fall-only source supplies ordinal events and does not by itself represent both halves
+of a wire clock. Tests and firmware must not infer all SPI modes from changing
+`idle_clock` or an internal phase toggle without an independent peer checking the physical
+edges. A transfer-to-bank bridge reserves the output mask when arming, before an observed
+start can activate it, and clears output enable in one bank commit before a separate
+ownership release. Local select cancellation must not use the bank's global abort, which
+would also clear unrelated software ownership.
+
 ## 4. Minimum control ISA and memory study
 
 | Family | Candidate operations | Initial decision |
@@ -342,7 +373,7 @@ Use an OCaml assembler/library with labels and validation before designing a
 textual DSL. Firmware helpers such as `uart_tx` should expand into this ISA.
 Keep the instruction specification shared by assembler and decoder, while the
 reference execution model stays independent of the Hardcaml implementation.
-P1.5 has done this: `isa/` is the shared specification, `model/control_core.ml` the
+P1.5 has done this: `isa/` is the shared specification, `f_model/control_core.ml` the
 independent execution, and [the decision](p1.5-encoding-decision.md) records what was
 chosen. The comparison below is P1.4's and is now settled evidence rather than open
 work; sizes and cycle counts remain in [its report](p1.4-encoding-study.md).
@@ -379,6 +410,176 @@ fetch outside that verified image and reject partial transport words. A write or
 an unwritten location must never supply a valid instruction. Model fetch latency,
 stalls, branches, and extension fetches independently of the RAM implementation.
 Any ROM is a deliberate hardware implementation, not an assumed power-up file load.
+
+### Program load, access, and fetch contract
+
+P3.1a fixes the first consumer configuration at 256 16-bit memory words. Addresses at
+the store port are memory-word addresses; the host and fetch interfaces carry nine-bit
+unsigned addresses or lengths so values at and above 256 are rejected before the
+eight-bit physical address is formed. This configuration directly supports P1.5's
+default `m16` image, one 16-bit instruction slot per memory word. A later packed `m32`
+selection changes the configured word width and slot extraction in P3.2, not the access,
+verification, or 1RW timing contract.
+
+An image always starts at word zero and has a declared length from 1 through 256. The
+small bounded loading protocol is deliberately sequential rather than carrying a
+per-word validity bitmap:
+
+1. An accepted load-start declares the length, invalidates any executable image, clears
+   prior progress and verification failure, and starts a replacement session.
+2. A write is accepted only at the session's next address, beginning at zero, and only
+   below the declared length. An accepted write advances that address. Missing and
+   duplicate writes therefore cannot complete; an out-of-order or out-of-range offer is
+   rejected without touching the store or changing progress. A new accepted load-start
+   interrupts and replaces an incomplete session.
+3. After every declared word has been written, verification reads are accepted only in
+   the same zero-based order. Each request carries the expected complete memory word.
+   The core issues a normal latency-one store read, associates its saved expected word
+   with that response, and advances verification only on equality. A mismatch latches a
+   verification failure; recovery requires a new load-start. Ordinary readback uses the
+   same response timing but does not advance verification.
+4. Load-complete is accepted only after all declared words have produced matching
+   verification responses, with no read outstanding and no verification failure. This
+   is the concrete meaning of "verified": hardware checks accepted write coverage,
+   ordered read coverage, and every full-word comparison. The P3.5 loader supplies the
+   declared length and expected words after assembling complete little-endian transport
+   words; it cannot authorize an image with an unchecked pulse.
+
+Zero and oversized lengths are rejected and preserve the previously valid image. Once a
+valid load-start is accepted, however, the old image is immediately non-executable, so a
+shorter replacement can never expose its tail. Reset halts execution, cancels a load
+session and every outstanding response, clears executable-image metadata, and leaves RAM
+contents untouched. Disable has the same control-pipeline cancellation and halt effect
+but preserves a completed image; it neither reads nor writes the store.
+
+Host writes, readback, load-start, load-complete, and RUN require the core halted and the
+explicit `engines_idle_i` input high. A readback address must be below the accepted-write
+count of an active load or below the completed image length otherwise. Only one host read
+may be outstanding. Every offered request has an accepted or rejected indication; a
+rejection has no store or control-state effect. During execution all host program-memory
+requests are rejected and fetch retains the port, address, and state it would have had
+without them.
+
+An accepted RUN requires a completed image, idle engines, and no outstanding read. It
+enters the running state but does not itself fetch. P3.2 supplies word-addressed fetch
+requests. A legal request while running issues one store read and returns
+`fetch_response_valid_o` with the word exactly one edge later. No response validity is
+inferred from data. A request at or beyond the completed image length, including an
+address at or above physical depth, issues no read, latches a fetch fault, and halts.
+P3.2 supplies `execution_halt_i` when an executed Halt, invalid instruction, STOP, or
+other defined boundary returns control; ordinary absence of a fetch request stalls with
+the port disabled. At most one fetch is outstanding, preserving P1.6's non-overlapped
+fetch schedule.
+
+At one edge the priority is synchronous reset, disable, execution halt or invalid fetch,
+load-start, write, readback, load-complete, RUN, then an otherwise legal fetch. Host
+operations are considered only while halted, and fetch only while running, so the latter
+groups do not contend in a legal state. Higher-priority accepted work rejects simultaneous
+lower-priority offers. Reset, disable, execution halt, accepted load-start, and invalid
+fetch discard outstanding response ownership; held, stale, post-write, and unwritten RAM
+outputs consequently cannot assert either registered response-valid signal. A host response
+that is due is delivered before another host read may be accepted. The execution completion
+turnover used for extension fetches is specified below.
+
+### Minimal control-execution contract
+
+P3.2 keeps the default `m16` layout: one sixteen-bit instruction slot is one
+program-memory word. An accepted RUN starts a fresh execution. It clears the PC to zero,
+all eight registers, the zero/carry/negative flags, the transfer descriptor, retained
+instruction state, execution counters, normal-halt indication, and the preceding execution
+fault. Program-image validity remains P3.1a state and is not changed by RUN. Reset clears
+both access and execution state. Disable cancels outstanding execution work and halts while
+P3.1a preserves a completed image. Normal Halt and an execution fault preserve already
+committed registers, flags, descriptor fields, and counters for inspection; a later RUN
+starts fresh again.
+
+The latency-one RAM value is consumed at the edge after its read was accepted. P3.1a
+therefore exposes an execution completion directly from pending response ownership and the
+current RAM output, in addition to its retained registered response observation. A due
+completion may release the outstanding slot and accept the next read on the same edge. P3.2
+uses that turnover only to acquire an extension word: ordinary instruction fetch and
+execution do not overlap. Under `m16`, an ordinary successful instruction costs one accepted
+fetch edge and one execute edge; an extended instruction costs two accepted fetch edges and
+one execute edge. Halt includes its execute edge. A base or extension word rejected before
+execution has no execute edge. The RUN edge and host loading/readback edges are not program
+cycles.
+
+P3.2 executes Halt, Ldi, Mov, Alu, Alu_imm, Cmp, Cmp_imm, Shift, Jump, Branch,
+Dbnz, Call, Jump_reg, and Config locally. Every other defined P1.5 opcode is decoded and
+offered through one P3.3-facing mechanism port; none is a successful no-op. The request has
+a typed kind and retained operands and remains stable until accepted or refused. Acceptance
+may coincide with completion. After acceptance the request is not reissued, and delayed
+completion stalls the core with fetch disabled. A result is committed only on successful
+completion. Refusal, completion fault, and a completion with no outstanding operation are
+execution faults. Reset or disable wins over acceptance/completion and cancels retained
+mechanism state. STOP, ABORT, single-step, and connection to actual pin, timer, event,
+transfer, and FIFO mechanisms remain P3.3.
+
+Control-flow arithmetic is performed wide enough to retain a negative or large target
+before any request-address narrowing. P3.1a remains the sole owner of physical-depth,
+loaded-image, and executable-image bounds. A target that cannot be represented on its
+nine-bit fetch request is an execution target fault; a representable request outside the
+physical or loaded image is P3.1a's fetch-bounds fault. A taken control instruction commits
+its specified register effect and retires before a later target fetch faults, matching the
+reference core. A required extension commits no architectural state until it is fetched and
+validated.
+
+Normal Halt is not an error. Execution fault reporting distinguishes a malformed base word,
+a malformed extension, a truncated extension/fetch-bounds failure, an unrepresentable
+target, mechanism refusal, mechanism completion fault, and unsolicited completion. It
+retains both the instruction slot and relevant fetched/requested slot. An instruction
+boundary pulse accompanies successful retirement, normal Halt, or a terminating execution
+fault. Retirement is separate: refused, malformed, truncated, and faulting mechanism
+operations reach a boundary but do not retire. P3.3 consumes this boundary for STOP rather
+than redefining it.
+
+### Core-to-mechanism integration contract
+
+P3.3 fixes the first integrated configuration to one pin bank, one timing block, one shift
+lane, and separate eight-entry TX and RX byte FIFOs. The mechanism reason byte is stable at
+this boundary: `0` is no reason, `1` unavailable/busy, `2` invalid parameter, `3` pin
+ownership conflict, `4` FIFO full, `5` FIFO empty, `6` FIFO data out of range, `7`
+cancelled, and `8` primitive/engine failure. The execution core still classifies refusal
+and delayed failure separately; the reason byte only preserves the mechanism detail.
+
+Pin and status reads, pin branches, acknowledgements, accepted pin writes, periodic
+start/stop, and FIFO operations that can transfer immediately accept and complete on the
+same edge. Timing waits accept once and complete from the timing block's later completion
+or timeout pulse; an already-satisfied level wait completes immediately and does not set a
+wait-complete event. A blocking FIFO operation accepts once and remains owned by the
+adapter until its queue transfer occurs. A pressured nonblocking FIFO operation is
+refused. `Issue_transfer` is nonblocking with respect to the wire: a valid descriptor and
+available lane accept and complete the instruction together, after which the lane runs in
+the background. A busy lane is unavailable rather than an implicit command queue.
+
+The descriptor's sixteen-bit TX field is the only transfer source in this configuration.
+It may describe a longer RX transfer, or a longer TX/duplex transfer whose upper transmitted
+bits are zero, but it cannot encode arbitrary nonzero TX bits 16 through 31. The byte FIFOs
+remain explicit firmware/stream queues: P3.3 does not invent byte packing between them and
+the descriptor. TX stream consumption and RX stream production are exposed independently,
+and their arbitration must not starve an active lane. A later queue-fed descriptor mode
+requires an ISA and packing decision. Observed pacing uses the shared synchronized input
+front end; the pacing pin and edge latch with the accepted descriptor. The current
+descriptor has no observed-start selector, so issue starts the lane immediately and
+subsequent selected input edges pace it.
+
+STOP, ABORT, single-step, and host RUN have priority after reset/disable in this order:
+ABORT, STOP, single-step, RUN. STOP records a pending boundary request and suppresses the
+next fetch when P3.2 raises its existing instruction boundary; work already accepted by a
+background engine continues. ABORT suppresses mechanism issue/completion on that edge,
+cancels the core operation and timing/FIFO ownership, releases the lane and all bank claims
+at that edge, and records `Aborted` when work was in flight. Single-step is accepted only
+while program access reports halted, the integrated engine-idle predicate was true before
+the edge, and execution is paused rather than terminally faulted or normally halted. It
+resumes preserved architectural state, executes through extension acquisition and any
+instruction stall, and stops at exactly one P3.2 boundary without using a clock gate. An
+ordinary RUN remains a fresh run and clears architectural state.
+
+The integrated engine-idle predicate requires no timing wait, no accepted blocking FIFO
+operation, no active/armed transfer or bridge cleanup, no engine pin claim, and no pending
+engine bank effect. Periodic timing, FIFO occupancy, and software pin claims do not make an
+engine busy. Consequently a stopped core does not by itself permit program-memory access:
+P3.1a continues to require both halted and this real engine-idle predicate.
 
 Start with an explicitly selected flop implementation. Investigate CMOS5L macro
 availability early, but begin a macro backend only after exact shape/behavior,
@@ -472,18 +673,134 @@ readback and writes initially require halted execution and idle engines, as in
 section 4; inspection of status is not a second memory port. Make protocol
 examples runnable through a simulator backend before real hardware exists.
 
-A proposed first physical loader is a slow clocked serial debug link using
-dedicated Tiny Tapeout inputs and an output. It must operate with the protocol
-core halted so an empty or broken program remains recoverable. Its fixed loader
-logic is infrastructure, separate from the programmable protocol bank. Specify
-framing, maximum host clock, command acknowledgement, length/error checks, and
-flow control before implementation. Start without concurrent program writes.
+The P3.5 physical loader is a slow host-clocked, mode-0-style serial debug link
+using dedicated Tiny Tapeout pins: `ui[0]` active-low select, `ui[1]` host clock,
+`ui[2]` host-to-device data, `uo[0]` device-to-host data, and `uo[1]` response
+ready. The remaining `ui` and `uo` bits are reserved and driven low; all eight
+`uio` pads remain the programmable protocol bank. The host clock is observed in
+the 48 MHz system-clock domain through two-stage synchronizers rather than forming
+a second clock domain. Host high and low phases, select lead/trail, and input-data
+setup/hold are each at least four system-clock periods, giving a specified maximum
+continuous symmetric bit clock of 6 MHz at 48 MHz. Complete request/response time also
+includes selected-frame lead/trail, inter-frame high time, response readiness, and any core
+completion latency. This is a digital capture envelope, not a physical metastability or
+board-timing result.
+
+The bounded version-1 wire protocol is detailed in
+[`p3.5-hardware-loader.md`](p3.5-hardware-loader.md). A selected request carries a
+magic byte, version, transaction tag, command, little-endian payload length, at
+most four payload bytes, and CRC-8/ATM. The eleven-byte derived maximum uses a saturating
+count and sticky overrun, so neither a counter wrap nor a valid-looking suffix can restore
+eligibility. Selection loss terminates the frame; only an exact, complete,
+version-compatible, length-consistent frame with a matching CRC can reach dispatch.
+Commands cover discovery/status, load-start, one complete
+word write, one read or verification read, load-complete, RUN, STOP, and ABORT.
+The loader presents those operations once to `Integrated_core`; it never accesses
+RAM or image-valid state directly. A response is retained until explicitly committed.
+The host samples the final bit on a rising edge and validates the complete CRC while the
+clock remains high. Deselecting before the final fall rejects the received copy and keeps
+the response for replay; supplying the final fall and then deselecting commits consumption.
+While a response is pending, a selected transfer reads that response rather than accepting
+a new command. An early selection during dispatch or completion is not accepted and cannot
+alter retained command context; the host must deselect and begin a later legal transaction.
+There is no inactivity timeout, so a selected host may pause indefinitely.
+
+This per-command framing deliberately avoids a 512-byte image buffer. An accepted
+load-start invalidates the prior image, each write frame can issue only one fully
+assembled 16-bit word, and the host supplies each expected word again for the
+ordered hardware verification pass. A malformed write frame therefore cannot
+issue a partial word. Interruption after load-start may leave earlier writes in RAM
+but cannot make the image executable; a new valid load-start replaces that session.
+STOP acknowledges boundary-request acceptance and may remain pending. ABORT does
+not complete on acceptance: its response waits for the post-edge halted,
+engine-idle, claim-free, output-disabled state. Thus ABORT followed by a replacement
+load is the fixed recovery path for looping, waiting, faulted, or engine-owning
+firmware. Reset clears loader state and image validity; disable cancels parser and
+load-session state while preserving a previously completed image, consistently
+with the existing core contract.
 
 Keep register addresses and binary transport versioned; expose capabilities for
 memory width/depth, pin count, engines, and ISA version. A CLI should load firmware,
 send/receive bytes, and export timestamped traces. Keep these commands usable
 without a UI. A later operator interface can use the same API through a local
 service, with its placement decided after the device workflow works.
+
+P3.6 must add queue transport before the physical workflow can exchange application data.
+The current wire protocol does not support step, pin configuration, or trace, and compact
+STATUS is not the full portable inspection record. The backend must define transport errors
+for currently infallible status methods, map cycle budgets to physical polling/time, and
+decide whether stable wire refusals need richer host errors. These are backend/API handoff
+items; they do not reopen P3.5 framing and are not implemented by the loader repair.
+
+P3.4 settles the software boundary in [`host/host_api.ml`](../host/host_api.ml). API and
+abstract operation-protocol version 1.0 identify this software contract, while ISA identity
+`protemu-p1.5` version 1 and image-format version 1 identify program compatibility.
+Discovery advertises only the implemented `m16` configuration: 256 sixteen-bit memory
+words, word addresses, complete words in a metadata-bearing S-expression, and
+little-endian byte order for the P3.5 serial byte transport. The file representation does not
+accept raw or packed bytes, so an incomplete trailing word is not representable; `m32`
+images are rejected before load-start. Pin configuration at this boundary is the
+architecture's software claim/release operation. Direct pin writes remain firmware
+instructions, while asynchronous pad value and external occupancy are explicitly
+simulator-only facilities. A claim or release that overlaps engine ownership is refused
+without changing either owner or the driven output.
+
+The first backend, [`host/simulator_backend.ml`](../host/simulator_backend.ml), owns one
+`Integrated_core`, one contract-compatible latency-one RAM, and one clock for the lifetime
+of a CLI script. Session creation applies reset, then presents cycle zero with no valid
+image, empty queues, zero external pads/occupancy, an enabled empty trace, and a monotonic
+cycle counter. For an advancing operation the backend drives persistent pad state and the
+host request, settles combinational logic, samples acceptance and the memory request before
+the rising edge, advances the edge, services the external RAM port, and samples registered
+state. A read request takes its acceptance edge plus one response edge. This fixed-latency
+response is a backend invariant, not an ordinary retryable transport timeout. Load uses the
+exact load-start, ordered-write, ordered hardware-verify, load-complete sequence. Discovery,
+status, loaded-image inspection, compatibility checks, trace retrieval/clear, and changing
+the next external-pad stimulus do not advance time. Pin claims, accepted queue transfers,
+control offers, and program operations do.
+
+Explicit `advance` and finite `wait-halted`, STOP, step, and queue waiting budgets are the
+only way idle/background cycles pass. Queue budgets count cycles spent waiting; each
+accepted byte still consumes one deterministic edge. A zero budget is nonblocking and a
+blocked operation advances no edge. Host TX means host-to-device and enters the DUT RX
+FIFO; host RX drains the DUT TX FIFO. Results preserve requested and transferred counts.
+A timeout after an accepted STOP or step reports `accepted = true` and neither aborts nor
+resets the device; the request remains governed by hardware until later clocks or an
+explicit ABORT. RUN returns on acceptance rather than waiting for program termination.
+Ordinary status, trace, and queue operations remain available while execution owns program
+memory. Program requests are still offered once to hardware and a refusal is reported; the
+backend never retries a side effect.
+
+Ordinary completed-image reads use all-or-error range semantics. The simulator validates
+the complete physical and verified-image range before the first read edge, so an
+out-of-image range returns `Image_bounds` with no partial progress and no time advance.
+No image, active execution, and active engines have distinct refusal reasons. An unexpected
+mid-range hardware refusal still reports its failing address, completed count, and prior
+words in `Read_failed`; a missing accepted latency-one response is a backend-invariant
+failure. `verify_image` distinguishes no image, incompatible loaded length, and a data-word
+mismatch without invalidating a valid image.
+
+Queue operations return partial progress as successful `Transfer` values. An exact-transfer
+presentation such as the CLI converts `Would_block` or `Timed_out` to an error only after
+preserving requested/transferred counts and received data. The latter uses the distinct
+stable code `transfer_timeout`; a caller resumes only the remaining count and must not
+repeat already transferred bytes. ABORT completion is sampled from its post-edge halted,
+engine-idle, ownership-released and output-disabled state rather than inferred solely from
+acceptance.
+
+The simulator trace is observation storage, not synthesizable hardware. It samples after
+each rising edge in stable host-operation, instruction, mechanism/engine, pin-transition,
+fault order. Records use the session cycle as timestamp and a monotonic cursor sequence.
+The fixed-capacity ring drops the oldest record, retains a cumulative sticky loss count,
+and never stalls execution. Retrieval and clear do not advance time. Retrieval is a
+snapshot after an optional cursor; clear removes retained records and clears loss state but
+does not rewind sequence numbers. A new session starts with an empty trace and sequence
+zero. Sequence and loss values are nonnegative OCaml `int` values; sessions that would
+exceed `Int.max_value` are outside this in-process backend's supported lifetime, rather than
+having defined wraparound semantics. Physical trace storage and physical-backend transport
+timeouts remain P3.6 rather than being inferred from this backend. P3.5 now fixes serial
+framing, acknowledgement, wire encodings, response replay/commit, and compact INFO/STATUS
+records.
 
 Development integration with Hardcaml Workbench is a separate optional track:
 generic Dune commands first, then a small versioned manifest and a project-side
@@ -515,7 +832,7 @@ a separate product decision; neither is required for hardware acceptance.
 
 Stages 0 and 1 should interleave: a small early physical-flow experiment gives
 useful evidence while the model prevents premature commitment to a large ISA.
-Run two tracks alongside each other: emulator model/RTL work, and the helper
+Run two tracks alongside each other: emulator functional-model/RTL work, and the helper
 library's implementation followed by emulator adoption in P0.6/P0.7. The stages are
 not a strict execution order (section 1, decoupling): P1–P3 RTL, including the
 program-store consumer logic, proceeds against the memory contract, and adoption
@@ -529,35 +846,13 @@ The flow directory and required tools are described in
 
 ## 9. Verification and measurements
 
-Use directed expect tests paired with Quickcheck generators in a small environment
-that owns drivers, monitors, the independent model, and checker. The runner owns
-simulation time and feeds the same scheduled stimuli to model and DUT. Adopt one
-cycle-exact core contract: P1.5's non-overlapped fetch/execute schedule, one buffered
-memory word, and the specified execution/wait edges. Timing changes require an
-explicit architecture revision, not a relaxed comparison. Protocol monitors
-reconstruct items from actual pin activity and check timing as well as data.
-[verification.md](verification.md) records the P1.6 conventions, seed-based replay,
-observation validity, and implementation acceptance evidence.
-
-Use three layers: an independent cycle-level model, Hardcaml simulation, and
-tests of emitted Verilog through the Tiny Tapeout wrapper. Use external protocol
-peer models with assertions on wire timing; self-loopback alone can hide a
-matching encoder/decoder bug. Randomize asynchronous phase, bounded jitter,
-resets, CS interruptions, stretch length, and queue starvation.
-
-`hardcaml_asic` owns memory backend conformance. Its scoreboard compares only
-contract-defined values across backends and checks disabled-output hold within
-each backend, including after an unspecified result. Poison initialization and
-post-write poison belong to the behavioral model, not synthesized storage.
-Emulator integration tests separately assert valid instruction consumption,
-shared-port access rules, whole-word loading, and recovery; vary unspecified
-values where useful. Link library conformance evidence without duplicating its
-backend test implementation here.
-
-Apply formal properties where they add value: no double pin ownership, open-drain
-never drives high, bounded FIFO occupancy, no loss/duplication at handshakes,
-reset releases pins, waits terminate on a qualifying event or configured timeout.
-Write down environmental assumptions, especially minimum external pulse widths.
+[verification.md](verification.md) owns the system verification architecture,
+current evidence, next-state cycle/event split, functional-model and monitor
+boundaries, memory-conformance ownership, and applicable formal/CDC/reset checks.
+Use its evidence map to identify implemented suites and missing obligations; the
+[temporary migration guide](verification_migration.md) sequences the transition.
+The architectural cycle contracts in this construction plan remain authoritative;
+a backend change must not relax them.
 
 Per architecture candidate, record instruction/data storage bits, firmware words
 per protocol, mapped sequential/combinational area, routed utilization, worst

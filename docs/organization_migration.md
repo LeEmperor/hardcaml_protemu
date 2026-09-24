@@ -1,7 +1,7 @@
 # `lib/` organization migration (option A)
 
-Status: implemented and verified in the working tree on 2026-09-21, uncommitted, pending
-the owner's commit and post-commit history check; see
+Status: done. Implemented and verified on 2026-09-21 and committed by the owner as
+`705e197`; post-commit history confirmed. See
 [Implementation record](#implementation-record-2026-09-21). The baseline commit
 prerequisite (HL0) is resolved at `9f6ed2d`, confirmed by the repository owner. This document is the
 procedure for [HL1](host_link_migration.md#hl1--move). No module is renamed, no
@@ -55,7 +55,7 @@ ISA library existed, and nothing references it.
 | `pluggable_primitives/` | The leaf mechanisms instructions drive: pin bank, shift lanes, timers, input edge/snapshot front end, byte FIFOs | nothing in `lib/` |
 | `memory_control/` | The program-memory controller: load sessions, readback/verify, image validity, fetch arbitration, the 1RW RAM port | nothing in `lib/` |
 | `emulator_core/` | The instruction decoder, the execution unit, the dispatcher from the execution unit to the primitives, and the composition of all of it | `pluggable_primitives`, `memory_control` |
-| `host_link/` | The serial host link (framing, CRC, command dispatch, response retention) and its glue onto the emulator core | `emulator_core`, `memory_control` |
+| `host_link/` | The serial host link (framing, CRC, command dispatch, response retention) and its glue onto the emulator core | `emulator_core`, `memory_control`; since HL2 also the separate root-level `host_link_wire/` library (wire definitions, no Hardcaml) |
 | `staging/` | P2 blocks that are built and tested but not wired into any chip top | `pluggable_primitives` |
 | `legacy/` | Superseded compositions and the P0 bring-up circuit | `memory_control`, `emulator_core` |
 
@@ -218,7 +218,8 @@ string in step 4 or a file left behind in step 2, and both fail loudly.
 
 ## Implementation record (2026-09-21)
 
-Implemented by an agent and left uncommitted for the owner's review unit.
+Implemented by an agent, left uncommitted for review, and committed by the owner as
+`705e197`.
 
 **Tested revision.** `HEAD` = `9f6ed2d`. The local diff before the move held only planning
 documents (`docs/README.md`, `organization_migration.md`, `p3.5-hardware-loader.md`,
@@ -265,7 +266,7 @@ move.
 | Old-path search, `lib/` link resolution | 63 of 63 `lib/` links resolve; remaining old paths are only the historical records listed above |
 | `git diff --check` | PASS |
 | `git diff HEAD -M --summary` | 19 renames at 100% similarity, one delete |
-| `git log --follow lib/emulator_core/integrated_core.ml` | Pending: owner checks after committing |
+| `git log --follow lib/emulator_core/integrated_core.ml` | Owner confirmed after committing `705e197`: history continues through `bb8fdb0` and earlier |
 
 ## Later steps
 

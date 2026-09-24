@@ -153,6 +153,12 @@ that rework.
   depend on a private one, which is what "shared by assembler and decoder" requires
   here. `Encoding.forms` publishes the field layout as data so P3.2's decoder is built
   from the same values the assembler encodes with.
+- `host_link_wire/`: the P3.5 serial wire format (Dune library
+  `hardcaml_protemu.host_link_wire`, no Hardcaml dependency). `wire.ml` defines the
+  codes, frame and INFO/STATUS layouts, and CRC-8/ATM parameters that
+  `lib/host_link/hardware_loader.ml` uses, and a software request encoder and response
+  decoder for host code ([HL2](host_link_hl2_record.md)). The
+  [P3.5 record](p3.5-hardware-loader.md) remains the protocol authority.
 - `f_model/`: the independent reference execution model (Dune library `protemu_f_model`,
   no Hardcaml dependency), covering P1.1 to P1.5. `machine.ml` holds all model state
   and one rising edge; `operation.ml` is the typed mechanism vocabulary with its

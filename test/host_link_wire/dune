@@ -1,0 +1,15 @@
+; Pure codec tests for host_link_wire/ (host_link_migration.md HL2a).
+;
+; No hardcaml, for the reason host_link_wire/ has none. Cycle-level tests of the loader
+; through its serial pins are HL4's, and the emitted-RTL peer stays in tinytapeout/test/.
+
+(library
+ (name protemu_host_link_wire_tests)
+ (wrapped false)
+ (modules wire_tests)
+ (inline_tests)
+ (libraries core protemu_host_link_wire)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))

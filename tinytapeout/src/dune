@@ -93,6 +93,8 @@
   ../../hardcaml_protemu.opam
   ../../bin/dune
   ../../bin/asic_bundle.ml
+  ../../host_link_wire/dune
+  (source_tree ../../host_link_wire)
   ../../isa/dune
   (source_tree ../../isa)
   ../../lib/dune

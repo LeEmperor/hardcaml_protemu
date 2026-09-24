@@ -2,9 +2,10 @@
 
 Status: planned, reviewed 2026-09-21. HL0 is resolved: the baseline was committed as
 `9f6ed2d`, and the repository owner confirmed the commit prerequisite is satisfied.
-HL1 implementation and agent-side verification are complete in the working tree,
-pending the owner's commit and `git log --follow` check (see [HL1](#hl1--move)).
-HL2–HL4 implementation is not started; the HL2b independence policy is recorded.
+HL1 is done: committed as `705e197`, with post-commit history confirmed (see
+[HL1](#hl1--move)). HL2 (HL2a, HL2b) is implemented and verified in the working tree on
+top of `705e197`. It is uncommitted, and the owner has not committed it (see
+[HL2](#hl2--wire-definitions)). HL3 and HL4 are not started.
 This plan changes structure and verification
 only. It adds no loader feature and does not change the P3.5 wire protocol.
 
@@ -63,19 +64,21 @@ Planning decisions below are not implementation evidence.
 ### What the host link is today
 
 "Host link" means everything between the three serial pins and the core's program and
-control requests. It lives in two files:
+control requests. Since HL2 its wire definitions live in their own library, and the
+hardware lives in two files:
 
 | Piece | Location | Role |
 | --- | --- | --- |
-| Wire definitions: magic, version, command codes, result codes, capability bits, CRC-8 | `Config`, `Command`, `Result`, `Capability`, `crc8_byte` in [`hardware_loader.ml`](../lib/host_link/hardware_loader.ml) | Protocol |
+| Wire definitions: magic, version, command/result codes, capability bits, INFO/STATUS layouts, fault/phase values, CRC-8 parameters, software codec | `Wire` in [`host_link_wire/wire.ml`](../host_link_wire/wire.ml), library `hardcaml_protemu.host_link_wire` (no Hardcaml) | Protocol |
+| Synthesizable CRC-8 and elaboration-time wire consistency checks | `crc8_byte`, `check_wire_encodings` in [`hardware_loader.ml`](../lib/host_link/hardware_loader.ml) | Protocol, hardware side |
 | Serial PHY: two-stage synchronizers on `LSEL_N`/`LCLK`/`LDI`, edge detection, bit shifting, select-high qualification | `hardware_loader.ml`, inside `create` | Transport |
 | Frame receive: byte count, saturation and sticky overrun, header capture, CRC accumulation, deselect validation | `hardware_loader.ml`, inside `create` | Framing |
 | Command dispatch: one-shot core offers, READ/ABORT completion waits, refusal classification | `hardware_loader.ml`, inside `create` | Adapter onto the core |
 | Response build and transmit: frame construction, retained store, restartable shifter, commit on drain | `hardware_loader.ml`, inside `create` | Framing and transport |
 | Composition with the core | [`loader_core.ml`](../lib/host_link/loader_core.ml) | Glue |
 
-All five roles in `hardware_loader.ml` share one `I_Regs` record and one `compile` block
-of about 680 lines.
+The four roles inside `create` share one `I_Regs` record and one `compile` block. HL2
+changed where their constants come from, not their structure.
 
 ### Who consumes it
 
@@ -85,7 +88,8 @@ of about 680 lines.
 | [`bin/asic_bundle.ml`](../bin/asic_bundle.ml) `Loader_design` | `Loader_core.I`/`O`, pins `ui[2:0]` and `uo[1:0]` |
 | [`bin/generate_core.ml`](../bin/generate_core.ml) | `Loader_core` for the `loader` RTL mode |
 | [`p3_loader_tb.v`](../tinytapeout/test/p3_loader_tb.v) | Emitted `loader_core` top-level ports only. It builds frames and CRC itself. |
-| [`check-adopted-bundle.py`](../tinytapeout/scripts/check-adopted-bundle.py) | Source paths of both files in the loader manifest |
+| [`check-adopted-bundle.py`](../tinytapeout/scripts/check-adopted-bundle.py) | Source paths of both files and of `host_link_wire/` in the loader manifest |
+| [`test/host_link_wire/`](../test/host_link_wire/wire_tests.ml) | The `Wire` codec only, with fixed vectors from the P3.5 record |
 
 [`simulator_backend.ml`](../host/simulator_backend.ml) does not use the host link. It
 drives the same `Integrated_core` request ports directly (`drive_request`), which makes
@@ -113,6 +117,9 @@ The serial link and the simulator are two transports over it, but neither the co
 the documents name the port.
 
 ### W3. The wire format has no OCaml host-side definition
+
+*Addressed by HL2:* `Wire` is now the one OCaml definition, with a software codec. The
+paragraphs below describe the pre-HL2 state. The Cyclesim gap remains until HL4a.
 
 The only encoder and decoder outside the hardware are written by hand in Verilog in
 `p3_loader_tb.v` (its own `crc8_byte`, literal `8'ha5`, fixed response offsets). No
@@ -168,7 +175,7 @@ use the HL2 codec, and its dispatcher speaks the HL3 port.
 
 ### HL1 — Move
 
-- [ ] **HL1 — Carry out the `lib/` reorganization.** Follow
+- [x] **HL1 — Carry out the `lib/` reorganization.** Follow
   [organization_migration.md](organization_migration.md) steps 1–5, which place
   `hardware_loader.ml` and `loader_core.ml` in `lib/host_link/` and switch `lib/dune` to
   `(include_subdirs unqualified)`. No module is renamed and no identifier changes.
@@ -178,15 +185,16 @@ use the HL2 codec, and its dispatcher speaks the HL3 port.
   pending owner commit rather than claiming it passed. The
   bundle identity hashes change because `source_inputs` paths change; the commit message
   says so.
-  *Status 2026-09-21:* implementation and agent-side verification complete, uncommitted
-  on top of `9f6ed2d`; every check in the procedure's verification table passed. See
+  *Done:* `705e197` (parent `9f6ed2d`); every check in the procedure's verification
+  table passed. See
   [the implementation record](organization_migration.md#implementation-record-2026-09-21).
-  *Remaining (owner):* commit the move, then confirm
-  `git log --follow lib/emulator_core/integrated_core.ml` shows pre-move history.
+  The repository owner committed the move on 2026-09-21 and confirmed
+  `git log --follow lib/emulator_core/integrated_core.ml` shows pre-move history
+  (`bb8fdb0`, `a0e47ce`, ...).
 
 ### HL2 — Wire definitions
 
-- [ ] **HL2a — Pure wire module.** Move `Config`, `Command`, `Result`, and `Capability`
+- [x] **HL2a — Pure wire module.** Move `Config`, `Command`, `Result`, and `Capability`
   out of `hardware_loader.ml` into a Hardcaml-free `Wire` module with a software
   `crc8`, a request encoder, and a response decoder. It must be its own Dune library
   at `host_link_wire/` beside `isa/`, separating serial framing from instruction encoding
@@ -208,11 +216,23 @@ use the HL2 codec, and its dispatcher speaks the HL3 port.
   at a named codec or caller boundary. Round trips may supplement these vectors, but
   are not their only oracle. Preserve mismatch responses carrying the actual word.
   The pure library must build without Hardcaml dependencies.
-- [ ] **HL2b — Record and preserve the independence rule.** State in the P3.5 record and in
+  *Done in the working tree, uncommitted; the owner has not committed it.* Tested
+  revision `705e197` plus the local diff. `Hardware_loader` takes its wire constants from
+  `Wire`, and elaboration checks cover the fault/phase mapping and CRC parameters. All 15
+  generator outputs and all six bundle Verilog source roles are byte-identical, and 26
+  fixed-vector codec tests pass. The library's dependency closure contains no Hardcaml.
+  The loader bundle inventory and checker now cover `host_link_wire/`. Decoder policy and
+  one recorded correlation ambiguity are in
+  [the HL2 implementation record](host_link_hl2_record.md), with complete evidence.
+- [x] **HL2b — Record and preserve the independence rule.** State in the P3.5 record and in
   [verification.md](verification.md) that `p3_loader_tb.v` stays independent of `Wire`,
   in the same way `f_model/` stays independent of the RTL. Evidence: the documents say
   so, and `p3_loader_tb.v` is unchanged. The rule is already recorded in those
   authorities; check this item when HL2's implementation preserves it.
+  *Done in the working tree, uncommitted.* `p3_loader_tb.v` has no diff against
+  `705e197` (blob `2ffc20f0`) and shares nothing with `Wire`. A forced
+  `@loader-rtl --force -j 5` run passed all three peer tiers. Both authorities now name the
+  existing library. See [the HL2 record](host_link_hl2_record.md#verification).
 
 ### HL3 — Control port
 

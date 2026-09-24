@@ -81,6 +81,7 @@ def check_bundle(root, bundle, kind):
             assert 'ui[0]: "Loader select, active low"' in info
             assert 'uo[1]: "Loader response ready"' in info
             assert {"lib/host_link/loader_core.ml", "lib/emulator_core/integrated_core.ml"} <= source_paths
+            assert {"host_link_wire/dune", "host_link_wire/wire.ml"} <= source_paths
         request = (
             "((kind single_port_ram)\n (contract\n  ((width 16) (depth 256) "
             "(read_latency 1) (port 1rw) (disabled_output hold)\n   "

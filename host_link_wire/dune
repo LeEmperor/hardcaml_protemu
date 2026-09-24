@@ -1,0 +1,21 @@
+; The P3.5 host-link wire format: one OCaml definition of the serial frame layouts, codes,
+; payloads and CRC, plus the software codec host code uses to build requests and read
+; responses (host_link_migration.md HL2, p3.5-hardware-loader.md).
+;
+; Its own library for the same reason isa/ is: lib/'s Hardware_loader and host software
+; must read the same numbers, and host software must not link Hardcaml to get them. It
+; sits beside isa/, not inside it, because serial framing is not instruction encoding;
+; neither library depends on the other.
+;
+; Note the absence of `hardcaml` and of every protemu library. The wire format is bytes
+; and their meanings. The independent Verilog peer (tinytapeout/test/p3_loader_tb.v) keeps
+; its own copy on purpose and is never generated from this one.
+
+(library
+ (name protemu_host_link_wire)
+ (public_name hardcaml_protemu.host_link_wire)
+ (libraries core)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))

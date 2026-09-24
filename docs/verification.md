@@ -38,8 +38,8 @@ requested, except for index updates inherent in an explicitly planned `git mv`/`
 [host_link_migration.md](host_link_migration.md) owns the planned structural migration
 and [organization_migration.md](organization_migration.md) its initial file move.
 The independent `tinytapeout/test/p3_loader_tb.v` peer must retain its own constants,
-frame construction, CRC, and expected responses. Do not derive them from the planned
-OCaml `Wire` library or RTL helpers. As with `f_model/` independence from RTL, this
+frame construction, CRC, and expected responses. Do not derive them from the OCaml
+`Wire` library ([`host_link_wire/`](../host_link_wire/wire.ml), added by HL2) or RTL helpers. As with `f_model/` independence from RTL, this
 prevents one shared implementation mistake from satisfying both sides of a comparison.
 Shared-wire OCaml tests supplement, rather than replace, all three emitted-RTL peer
 tiers and their existing obligations.
@@ -48,8 +48,9 @@ HL4 establishes cycle-observed serial behavior against the unsplit loader before
 extracting blocks. Each extraction must preserve offer/completion timing, cancellation,
 correlation, replay, and final-fall commit, with focused tests for the new boundary.
 Record exact synthesis tool/configuration identity and cell-count deltas; investigate
-nonzero deltas instead of accepting an unspecified noise allowance. These are planned
-acceptance gates, not claims that the codec, harness, or split blocks already exist.
+nonzero deltas instead of accepting an unspecified noise allowance. The codec exists
+(HL2, with pure fixed-vector tests in `test/host_link_wire/`). The harness and split
+blocks are planned acceptance gates, not claims that they already exist.
 
 ## Current state
 
@@ -123,6 +124,7 @@ integration cases extend them:
 | [`test/core/control_execution/`](../test/core/control_execution) | 25 | P3.2 exhaustive base-word legality/extension classification, directed local-execution/model agreement, all condition/loop/control paths, mechanism handshakes and collisions, faults, lifecycle/bounds, and 96 generated assembled-program comparisons at seed `20260920`. |
 | [`test/integration/core_engine/`](../test/integration/core_engine) | 17 | P3.3 loaded-program, fixed-seed generated and timed integration: all delegated kinds, independent FIFO/ownership projections, internal/observed transfer, control and event collisions, interruption, background progress, cleanup, engine-idle gating, and the real P2.6b path. |
 | [`test/host/`](../test/host) | 5 | P3.4 metadata-bearing image round trips and malformed, image/API/ISA compatibility, bounds, structured refusal/error classification, and distinct control/transfer timeout codes. |
+| [`test/host_link_wire/`](../test/host_link_wire/wire_tests.ml) | 26 | HL2 pure `Wire` codec, with no Hardcaml: the CRC-8/ATM check value, every code table, fixed request vectors for every command, response vectors for every result and payload shape, INFO/STATUS fields, and rejection of malformed, truncated, extra-byte, CRC-failing, unknown, and reserved values. Also tag/command correlation and out-of-range encoder inputs. Expected bytes are written from the P3.5 record and supplement, never replace, the emitted-RTL peer. |
 | [`test/integration/host_simulator/`](../test/integration/host_simulator) | 15 backend tests plus 6 CLI cases | P3.4 real integrated-core load/readback/verify, all-or-error image bounds, missing-image and length-mismatch classification, explicit capabilities/`Device` conformance, live and engine-busy access refusal, engine-owned pin conflicts, queue echo/partial resume/full concurrent-pop pressure, STOP timeout, step, post-edge active-transfer ABORT, malformed-program fault recovery, register/flag inspection, deterministic time/pad ordering, exact bounded-trace cursor/loss/clear/order semantics, generated-image diff, actual stateful CLI workflow, and machine-readable failure/transfer-timeout output. |
 | [`tinytapeout/test/p3_loader_tb.v`](../tinytapeout/test/p3_loader_tb.v) | 3 emitted-RTL tiers | P3.5 independent serial peer against `Loader_core` plus a contract 1RW store, the adopted wrapper/behavioral `program` resource, and the production synthesis wrapper with explicit-flop RAM. Covers decoded wire records, framing/CRC/overrun, complete-word loading and hardware verification, all-phase timing, validated response replay/commit, reset/disable, protected in-flight state, side-effecting RUN replay, recovery, replacement load/readback/RUN, plus 16 deterministic malformed trials at seed `20260921`. |
 | [`test/integration/program_memory_backend/`](../test/integration/program_memory_backend) | 4 | P0.7/P3.1b checks exact resource records and contract-defined responses, then reruns P3.1a's twelve directed and 240 fixed-seed generated scenarios against both `Single_port_ram` Simulation and explicit-Flops Implementation elaborations. |

@@ -368,7 +368,9 @@ let input_paths kind =
   | "observable" -> [ "lib/legacy/p0_observable.ml" ]
   | "memory" -> [ "lib/memory_control/protocol_core.ml" ]
   | "loader" ->
-    [ "isa/dune"
+    [ "host_link_wire/dune"
+    ; "host_link_wire/wire.ml"
+    ; "isa/dune"
     ; "isa/assembler.ml"
     ; "isa/descriptor.ml"
     ; "isa/encoding.ml"

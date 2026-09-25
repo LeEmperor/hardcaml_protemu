@@ -1,6 +1,10 @@
 # System verification
 
-Status: current implementation updated on 2026-09-21 after the P3.5 independent
+Status: verification-overhaul direction agreed on 2026-09-25; VO0–VO7 below are
+planned, not implemented. Architectural migration AM0–AM6 must finish first; see
+[architecture_migration.md](architecture_migration.md). The current-state inventory
+below retains the existing implementation and historical evidence, including subsequent
+HL4 records. Its earlier implementation summary was updated on 2026-09-21 after the P3.5 independent
 hardware loader and wrapper serial peer, the P3.4 host/simulator
 workflow, P3.3 integrated core/mechanisms and loaded core-decision path, P3.2 executable
 control core, P3.1 program-store integration, independent load/access and execution models,
@@ -13,8 +17,9 @@ physical obligations below remain unimplemented.
 
 This is the enduring source of truth for verification architecture, suite ownership,
 current evidence, and the intended next state. It incorporates the former test
-architecture survey and step-testbench backend notes. The temporary
-[verification migration guide](verification_migration.md) sequences the work;
+architecture survey and step-testbench backend notes. The
+[verification overhaul sequence](#verification-overhaul-sequence) owns new work;
+[the previous migration](history/verification_migration.md) is historical reference;
 [phase_plan.md](phase_plan.md) tracks product milestones. The
 [construction plan](construction-plan.md) owns hardware contracts, and
 [flow.md](flow.md) owns physical-flow execution. Those documents link here for
@@ -41,8 +46,11 @@ The independent `tinytapeout/test/p3_loader_tb.v` peer must retain its own const
 frame construction, CRC, and expected responses. Do not derive them from the OCaml
 `Wire` library ([`host_link_wire/`](../host_link_wire/wire.ml), added by HL2) or RTL helpers. As with `f_model/` independence from RTL, this
 prevents one shared implementation mistake from satisfying both sides of a comparison.
-Shared-wire OCaml tests supplement, rather than replace, all three emitted-RTL peer
-tiers and their existing obligations.
+During architectural migration, shared-wire OCaml tests supplement all three emitted-RTL
+peer tiers and their existing obligations. VO6 may narrow or retire duplicated scenarios
+only after an accepted obligation-to-replacement map, independent-oracle review, and fresh
+replacement evidence. Until that gate passes, all three tiers remain required. This is
+an explicit transition rule, not permission to replace full-system tests with stub tests.
 
 HL4 establishes cycle-observed serial behavior against the unsplit loader before
 extracting blocks. Each extraction must preserve offer/completion timing, cancellation,
@@ -675,6 +683,10 @@ and outstanding obligations.
 
 ## Next state
 
+This section describes the agreed target, not an inventory of implemented support.
+Architecture names refer to the targets in [architecture_migration.md](architecture_migration.md).
+VO stages below establish their implementations and evidence incrementally.
+
 Retain the paired expect/property test style. Organize suites by the block or
 integration boundary they verify. Use Cyclesim for the main synchronous functional
 regression, two-state Evsim for explicit time, and narrowly scoped four-state
@@ -747,49 +759,237 @@ separate evidence.
 
 ### Suite hierarchy and ownership
 
-Proposed paths (not yet present):
+Tests own fresh environment instances; reusable components own their implementations;
+fixtures own the standard construction/wiring recipes. A substantial test may own a
+directory whose small entry point selects components, configuration, scenario, and checks.
+It should not need a private serial driver or a new RAM implementation. A useful component
+may be specialized (for example, single-port-memory fault injection) without becoming an
+unconstrained callback framework. Keep scenario intent local; centralize reusable ability.
+
+Proposed paths (create only when implemented; library/module spellings are finalized by VO1):
 
 ```text
-f_model/                           independent reference library
+f_model/                              independent architectural reference
 test/
-  f_model/                         standalone reference tests
-  common/                        cycle/event runners, checks, replay, diagnostics
-  primitives/
-    pin_bank/
-      pin_bank_testbench.ml
-      pin_bank_expect_tests.ml
-      pin_bank_unit_quickcheck_tests.ml
-      dune
-    input_events/
-      input_events_testbench.ml
-      input_events_expect_tests.ml
-      input_events_unit_quickcheck_tests.ml
-      input_events_timing_tests.ml
-      input_events_four_state_tests.ml
-      dune
-  core/
-    protocol_core/               same testbench/expect/property convention
-  integration/
-    wrapper/                     wrapper and later whole-system boundaries
-tinytapeout/test/                 emitted-RTL checks remain separate
+  f_model/                            pure reference tests
+  support/                            project-local reusable verification libraries
+    simulation/                       cycle/event adapters and sampling contracts
+    serial_host/                      transactions, driver, monitor, agent
+    control_port/                     driver/responder, monitor, contract checks
+    memory/                           contract model, fault injection, monitor
+    fixtures/                         endpoint/system/package wiring recipes
+    coverage/                         pure functional coverage collector and reports
+    reporting/                        observation/check/replay support reused from common/
+  primitives/<block>/                 focused block suites
+  core/<block>/                       focused core/controller suites
+  host_link/<block>/                  focused PHY/RX/dispatch/TX suites
+  integration/host_link/
+    endpoint/                         Host_link + controllable core responder
+    system/                           Protemu_top + memory
+    package/                          production Package_top and resource selection
 ```
 
-A module's `*_testbench.ml` owns typed scenarios, adapters, reference wiring,
-monitors, and run entry points. Expect and property files consume these definitions;
-they do not each invent a simulator loop. Larger suites may split backend adapters
-into local helper files. Timing and four-state files exist only for named obligations;
-every primitive does not need all tiers. Directed assertions can live alongside
-Quickcheck properties without manufacturing meaningless golden transcripts.
+Existing `test/common/` facilities migrate by responsibility with a compatibility/use map;
+do not create a second competing implementation of observation validity, replay, or clocks.
+Pure `f_model/`, `isa/`, and protocol codec tests remain outside simulator dependencies.
+Production sources must not acquire test-support dependencies.
 
-Keep production reference state in `f_model/`; testbench-only protocol adaptation
-belongs beside the suite. The shared instruction specification remains in `isa/`.
-Keep reference-only tests free of Hardcaml dependencies and diagnostic code out of
-synthesizable source sets. The naming migration is specified in the temporary guide.
+Within a larger fixture suite, a substantial scenario can own this layout:
+
+```text
+system/ram_corruption/
+  scenario.ml                         intent and parameters, if shared by entry points
+  cycle/                              directed, generated, or expect entry points
+  event/                              only if a sub-cycle obligation exists
+  formal/                             separate symbolic harness for related properties
+  rtl/                                emitted-artifact entry point, if justified
+```
+
+This is a layout convention, not a requirement to duplicate every scenario across engines.
+Small cases may share a file. Dune inline-test registration discovers `let%test_unit` and
+`let%expect_test` in declared modules; no UVM-style runtime test-name factory is required.
+Keep one authoritative implementation of a shared scenario, wherever its reuse boundary
+belongs. Formal properties need not run the imperative scenario. A thin `*_testbench.ml`
+may remain a fixture/compatibility entry point, but is no longer required to contain every
+driver, monitor, model connection, and scenario in one file.
+
+### Scenarios, fixtures, engines, and checks
+
+Keep these choices explicit in each test configuration and failure report:
+
+| Choice | Meaning | Examples |
+| --- | --- | --- |
+| Scenario | What stimulus/actions occur | Load, corrupt a word, VERIFY, attempt RUN |
+| Fixture | Real components and substitutes being connected | Endpoint with stub; real system with controllable RAM; package |
+| Engine/representation | How and what design is executed | Cyclesim, two/four-state Evsim, emitted RTL in an HDL simulator |
+| Checking/stimulus method | How cases are selected and success established | Directed assertions, Quickcheck, expect trace, independent scoreboard |
+| Formal harness | Symbolic assumptions, assertions, and covers | No duplicate offer under the declared handoff contract |
+
+Quickcheck can generate scenarios for either simulation engine; expect is an observation
+style, not a simulator. Emitted RTL identifies the artifact being tested, not a requirement
+to write its driver in Verilog. A formal proof shares obligations with simulation but has
+its own assumptions, state model, and proof result.
+
+### Reusable components and fixture contracts
+
+Use typed OCaml construction rather than a UVM object factory or global configuration
+database. Separate files for transactions, driver, monitor, agent, reference, and scoreboard
+are appropriate when they have substantive independent responsibilities. A passive agent
+need not contain a driver. Every component declares driven ports, observation phase,
+configuration, lifetime/reset behavior, and whether it requires a particular engine.
+
+The test owns creation and cleanup, normally through a fixture's scoped run function.
+Each Quickcheck trial gets fresh simulator/model/coverage state unless a continuing session
+is explicitly the generated scenario. One scheduler owns time; agents participate through
+its API rather than independently stepping the same simulator. Do not retain effect
+handlers beyond the lifetime supported by the installed OCaml/step-testbench API.
+
+| Fixture | DUT and environment | What its checks establish |
+| --- | --- | --- |
+| Endpoint | Real `Host_link`; serial host agent; controllable `Control_port` responder | Framing, exact offers, waits, cancellation, response lifecycle; offer counts are not RAM/pin effects |
+| System | Real `Protemu_top` (`Host_link` + `Emulator_core`); contract RAM or selected resource | Real core decisions, image lifecycle, execution, RAM effects, protocol-pin cleanup/recovery |
+| Package | Same production `Package_top` used by emission; selected memory source role; package-pin adapter | Pin mapping, reset/output adaptation, actual resource wiring and selected implementation |
+
+The serial host agent is reused through logical-port adapters. Expose capabilities honestly:
+testbench RAM may support corruption/inspection; a package fixture need not expose private
+storage. Requesting unsupported capabilities is a setup error, not a silently skipped check.
+Contract-faithful responders and deliberate out-of-contract robustness probes remain labelled.
+
+### Memory verification strategy
+
+Memory storage, its access controller, its contract model, and its scoreboard are distinct.
+Specify edge acceptance, latency, output hold, read/write interaction, enable/reset behavior,
+initial/unwritten contents, widths, and every intentionally unspecified result. Preserve
+the existing one-cycle 1RW contract and the validity rules in section 5 below.
+
+| Layer | Composition | Responsibility |
+| --- | --- | --- |
+| Consumer contract tests | Controller/system + controllable contract RAM | Broad legal/illegal access, image lifecycle, cancellation, fault injection, unspecified-value independence |
+| Backend conformance | Memory implementation + independent contract driver/checker | Generic backend behavior, owned by `hardcaml_asic`; link its evidence rather than clone its suite |
+| Consumer/backend integration | Real consumer/system + selected Simulation or Implementation resource | Correct adoption, configuration, latency/validity consumption, address boundaries |
+| Package/emitted integration | Production package/source set | Resource/module binding, pins, reset, and artifact completeness |
+| Physical/backend signoff | Macro/cell collateral and implementation tools | Timing, mapping, reset/CDC and physical obligations beyond functional simulation |
+
+The existing `test/integration/program_memory_backend/` is a reuse starting point: it runs
+consumer tests against both elaboration modes in OCaml. Explicit-flop Implementation RTL
+is executable before synthesis; it is not a mapped netlist. An SRAM normally remains a
+macro instance, not a synthesized array of its internal transistors.
+
+For a future SRAM, a contract model enables fast consumer tests. A vendor functional model
+may be reused if supported. `hardcaml_of_verilog` converts synthesizable Verilog through
+Yosys; it is not a general interpreter for vendor timing models. Successful conversion is
+not evidence that delays, notifiers, X behavior, initialization, or collision semantics were
+preserved. Record supported semantics, versions, and comparison evidence. Vendor-model
+execution may require an HDL engine even when test orchestration remains OCaml. No SRAM
+import support or binding is claimed by this plan.
+
+Fault injection belongs to a reusable verification memory capability, not production RTL.
+Distinguish stored-word corruption, read-response corruption, and suppressed writes. Check
+expected values independently; a responding memory component is not automatically the
+scoreboard. Compare only defined values and separately assert validity/acceptance.
+
+Do not run the complete serial malformed-frame matrix against every memory/backend pair.
+Use broad model-based regression, focused backend conformance, and selected real integration
+cases, with a matrix explaining which obligations each combination covers.
+
+### Functional coverage
+
+Planned: a project-local library under `test/support/coverage/`, with a pure OCaml collector
+independent of Hardcaml and any simulator. There is no existing collector claimed here.
+It does not belong in `hardcaml`, `hardcaml_asic`, or `hardcaml_verify` merely because those
+tools are used. External shared-library extraction is deferred until another real consumer
+needs the same contract.
+
+The initial collector supports named groups/bins, selected crosses, hit counts, explicitly
+excluded/inapplicable bins with reasons, required-bin checks, and deterministic reports.
+Monitor/checker observations record what happened; driver intent alone is not a hit.
+Reports identify scenario, fixture, engine, memory mode, seed/budget, source/tool identity,
+and coverage-schema version. Merge only compatible schemas/configurations, or retain
+separate groups; a model-memory hit must not imply implementation-memory coverage.
+Keep trial-local collectors and an explicit aggregation step; test order must not affect
+pass/fail. Use negative tests for missing required bins and incompatible aggregation.
+
+Initial candidate bins: command/result class; reset/disable versus receive/dispatch/wait/TX
+phase; response commit/replay/abandon; address boundary versus operation; fixture/memory
+mode for required integration scenarios. Define meaningful crosses and exclusions rather
+than requiring an impossible Cartesian product. Required coverage has bounded deterministic
+regression cases; random trials are not guaranteed to fill bins by chance.
+
+OCaml source coverage (for example, compatible Bisect_ppx instrumentation) can check codec,
+driver, and checker branches, but circuit-constructor execution is not hardware coverage.
+HDL toggle/line coverage is engine-specific and does not replace functional obligations.
+Formal cover proves reachability under assumptions, not a simulation hit percentage. Keep
+all three forms labelled; test counts and successful random trials are not coverage claims.
+
+### Formal properties
+
+Use `hardcaml_verify` for the planned formal tier after checking the installed/pinned API,
+supported constructs, solver availability, and Dune execution path. Formal harnesses are
+separate from imperative simulation drivers. Start with local safety and retention
+properties; compose only with explicit environmental contracts.
+
+Candidate obligations include synchronized edge consistency and qualification saturation;
+RX overrun/field retention; no successful malformed handoff; at most one dispatch offer;
+no repeated offer for a retained request; TX retention/replay/commit; and composition
+preventing request-context overwrite while a command/response is outstanding.
+
+Every proof records assumptions (including legal handoffs, reset and initial state), asserted
+property, covers/reachability, depth if bounded, engine/solver versions, exact DUT identity,
+result, and counterexample or unproven points. Add controlled negatives and cover checks to
+detect overconstraint/vacuity. Bounded success is not an unbounded theorem. Eventual READ or
+ABORT completion requires the appropriate core-completion assumptions; an intentionally
+unbounded wait is not a violated unconditional liveness requirement.
+
+Existing HL4 sequential-equivalence records prove scoped refactor preservation, not these
+new correctness properties. Proofs under transformed reset models retain that qualification.
+Neither formal digital models nor event simulation establishes analog metastability safety.
+
+### Emitted artifacts and execution aliases
+
+The three current `p3_loader_tb.v` configurations are independent test executions:
+
+| Current alias | DUT boundary | Memory provider |
+| --- | --- | --- |
+| `@loader-core-rtl` | `Loader_core` (future `Protemu_top`) | External testbench 1RW model |
+| `@loader-wrapper-rtl` | Production package pins | Internal Simulation-role resource |
+| `@loader-production-rtl` | Same production package pins | Internal Implementation-role explicit-flop resource |
+
+The prerequisite chain in `tinytapeout/test/dune` is orchestration, not a pipeline: no test
+consumes another test's observations. The wrapper modes come from the same project with
+different elaboration roles. `check-adopted-bundle.py --kind loader` repeats the two wrapper
+runs on freshly emitted bundles and additionally checks provenance/metadata and tools.
+
+Target independent leaves (proposed aliases, not current commands):
+
+```text
+@host-link-rtl
+  -> @system-external-memory-rtl
+  -> @package-behavioral-memory-rtl
+  -> @package-implementation-memory-rtl
+```
+
+The aggregate requires the leaves; a leaf does not require unrelated simulations. Keep
+metadata/repeatability checks distinguishable from repeated behavioral execution. VO6
+decides the retained artifact-check matrix after replacement evidence, not by counting runs.
+
+Own scenarios, agents, predictions, and diagnostics in OCaml where practical. Dune may invoke
+HDL tools and solvers: declare source/model/configuration inputs, tool prerequisites, outputs,
+working directories and writable artifact policy. Generated intermediates belong in the
+build/sandbox area; persistent failure artifacts use the established explicit reporting path.
+Do not depend on incidental generated files or mutate vendor/production sources. Pin/record
+external tool versions separately where Dune does not capture their identity automatically.
+
+An OCaml-controlled HDL engine is possible only with an actual supported adapter; no such
+new binding is assumed here. Keep the existing independent HDL peer until replacement is
+accepted. A compact retained peer may be preferable to a new general FFI. No UVM or cocotb
+framework is introduced by this plan. Cyclesim of a source circuit does not execute emitted
+Verilog, so emission/tool/source-set smoke checks remain a distinct obligation.
 
 ### Runner and step-testbench boundary
 
-Keep the existing `Env` behavior as the cycle runner foundation. Introduce an event
-runner for timestamped stimuli and continuous pin monitors; share generators,
+Preserve the existing `Env` observation, replay, and checking contracts while factoring
+reusable support. Its one-item-per-edge API is not mandatory for every agent or fixture.
+Reuse the existing event-runner experience for timestamped stimuli and continuous pin monitors; share generators,
 independent predictions, checker semantics, and replay/reporting where applicable.
 One selected runner owns time in a trial. Do not require the event runner to fit
 one-item-per-edge scheduling or make raw simulator operations leak into every test.
@@ -860,8 +1060,9 @@ The following numbered contracts retain the section identifiers used by source
 comments in the existing harness. They apply across the target architecture with
 the backend-specific boundaries above.
 
-Use directed expect tests paired with Quickcheck generators and properties. Within
-each simulation tier, both use the same environment and runner. Cycle and event
+Use directed assertions, selected expect traces, and Quickcheck properties where each
+adds useful evidence; every scenario need not have all three. Within
+each simulation tier, these use the same component implementations and fixture recipes. Cycle and event
 tiers may have different runners while sharing scenarios, independent predictions,
 checks, and reporting. Expect tests make selected edge sequences,
 transactions, and failures readable; Quickcheck explores bounded variations and
@@ -1022,6 +1223,166 @@ separate obligations rather than requiring a more elaborate functional framework
 No P1.6 planning decision constitutes implementation or physical acceptance evidence.
 
 
+## Verification overhaul sequence
+
+Status: VO0–VO7 are planned. These are implementation handoffs, not completed tests.
+Prerequisite for VO0: accepted AM6 in
+[architecture_migration.md](architecture_migration.md#am6--architecture-acceptance-and-verification-handoff).
+Architectural renames and package extraction precede verification restructuring. The owner
+selects each handoff and reviews its evidence; agents must not commit or stage the work.
+Use `-j 5` on Dune build/test and generation/verification exec commands and run them
+sequentially, as required above.
+
+Every VO handoff records the source/diff, obligation IDs, old/new paths, components and
+dependencies, sampling/reset assumptions, exact commands/results, and deferred work.
+Inventory names may change during AM; start from its accepted API map, not paths copied
+uncritically from the historical inventory. No full-matrix engine/backend duplication is
+required. Do not change hardware behavior as part of factoring verification support.
+
+### VO0 — Obligation map and regression baseline
+
+- [ ] Capture fresh results for existing focused, ordinary, RTL, and relevant bundle checks
+  against the AM6 source. Record cached versus forced execution and unavailable tools.
+- [ ] Assign stable obligation IDs to current block, composed-link, real-core, memory,
+  wrapper, timing, diagnostic, and independent-peer checks. Use the HL4a peer-to-Cyclesim
+  map as input, extending it through Frame_tx and the final architecture.
+- [ ] Map each old assertion/scenario to a target fixture, engine, checker/oracle, and
+  destination. Identify duplicates separately from distinct observation boundaries.
+- [ ] Inventory reusable `test/common/`, backend-conformance, memory-backend, and host-link
+  harness facilities, including failure reporting and known follow-ups.
+
+Exit: an obligation map and baseline, including actual RAM/pin effects that a stub cannot
+replace. No tests are retired in this stage.
+
+### VO1 — Reusable support contracts and one pilot
+
+Prerequisite: VO0.
+
+- [ ] Define project-local test-support libraries and module signatures for typed
+  transactions, scheduling/adapters, driver/monitor ownership, agent assembly, observations,
+  scoreboards, configuration, and scoped environment lifetime.
+- [ ] Factor the serial driver/monitor and core responder from existing code; preserve
+  timing, independent expectations, bounded waits, and robustness labels. Reuse existing
+  reporting/checking logic instead of creating a second framework.
+- [ ] Demonstrate one endpoint scenario and one diagnostic negative using a fresh fixture
+  instance. Confirm old/new observations and exact timing before broad migration.
+- [ ] Provide a runnable example showing how an implementation agent constructs a test
+  from reusable components, and document effect-handler lifetime constraints where relevant.
+
+Exit: actual reusable components and a small executable pilot, with failure sensitivity;
+not merely new directories or a framework API without a product scenario. No global
+factory/configuration database or all-backends universal driver is required.
+
+### VO2 — Endpoint and block suites
+
+Prerequisite: VO1.
+
+- [ ] Move the composed `Host_link` suite to the endpoint integration fixture. Keep focused
+  PHY/RX/dispatch/TX tests block-owned and reuse support where contracts match.
+- [ ] Preserve directed boundary cases and diagnostic negatives. Use individual scenario
+  directories for substantial tests; keep component implementations in support libraries.
+- [ ] Add bounded generated transaction/interruption cases with explicit seeds and
+  prerequisite-preserving shrinkers, plus concise expect traces for selected observations.
+- [ ] Demonstrate fresh-state isolation, deterministic rerun, first mismatch, timeout, and
+  minimized failure reproduction. A copied seeded loop is not automatically Quickcheck.
+
+Exit: endpoint obligations from VO0 covered by the new environment, exact cycles preserved,
+and no claim that responder offer counts prove real memory or execution behavior.
+
+### VO3 — Real system, memory, and package fixtures
+
+Prerequisite: VO2 and the reusable package constructor delivered by AM4.
+
+- [ ] Construct real `Protemu_top` with a controllable memory contract model. Reuse the
+  serial agent; separate memory behavior from independent expected image/access state.
+- [ ] Add reusable, explicitly selected fault capabilities (stored-word corruption versus
+  response corruption/suppressed writes), with no fault logic in production circuits.
+- [ ] Port full-system obligations: writes/readback/verification, image authorization,
+  RUN replay without duplicate effects, actual pin cleanup, blocked/faulting/looping
+  recovery, replacement loading, and reset/disable effects.
+- [ ] Elaborate the real production package through its shared constructor in applicable
+  OCaml engines. Exercise Simulation and current explicit-Flops Implementation modes with
+  a selected integration subset and resource-record checks.
+- [ ] Link upstream memory-backend conformance; preserve this project's consumer acceptance
+  across resource modes without copying `hardcaml_asic` internals or inventing SRAM support.
+
+Exit: the previously RTL-only real-system obligations have actual OCaml evidence where
+claimed; remaining artifact/phase/vendor/physical gaps are explicit. Existing HDL checks
+still run until VO6 acceptance.
+
+### VO4 — Functional coverage and generated-suite closure
+
+Prerequisite: VO1 for design; deliver with the generated/system suites from VO2–VO3.
+
+- [ ] Implement and test the pure project-local collector, selected crosses/exclusions,
+  required-bin failures, schema/configuration-aware aggregation, and deterministic reports.
+- [ ] Connect monitor/checker observations to obligation-aligned bins. Report endpoint,
+  system, package, engine, and memory distinctions honestly.
+- [ ] Establish bounded deterministic cases for required bins; use generated traffic for
+  additional exploration. Verify missing-bin and intent-without-observation negatives.
+
+Exit: reproducible coverage evidence and a missing-obligation report, not a percentage
+inferred from test counts. Broader source/toggle instrumentation remains optional and labelled.
+
+### VO5 — Targeted event and formal verification
+
+Prerequisite: VO1–VO3 fixture/component contracts; may be split into VO5a (event) and
+VO5b (formal) with separate implementation records.
+
+- [ ] Reuse/recheck existing cycle/event sampling conformance. Add serial phase, clock/select
+  coincidence, and package reset scenarios for named timing obligations; retain explicit
+  time units, event ordering, finite budgets, and independent timing expectations.
+- [ ] Add four-state tests only for specified X/Z obligations supported by the engine.
+- [ ] Establish the pinned `hardcaml_verify`/solver execution path with a small real block
+  property, reachability cover, and a controlled negative before expanding properties.
+- [ ] Prove selected local retention/offer/commit invariants with assumptions and proof
+  status recorded. Map simulation scenarios to related proof obligations without forcing
+  a formal harness to execute a simulation driver.
+
+Exit: reported event evidence and bounded/unbounded formal results at their stated scopes.
+Missing tools/proofs stay open. No proof of analog timing or a whole-chip theorem is implied.
+
+### VO6 — Independent emitted checks and alias consolidation
+
+Prerequisite: VO3 and VO5 evidence for every obligation proposed for replacement.
+
+- [ ] Review the VO0 map against new evidence. Retain an independent protocol oracle:
+  shared production codec helpers cannot be the only expected-result source. Fixed vectors,
+  independent monitors, and a retained compact HDL peer must have explicit ownership.
+- [ ] Replace the dependent three-tier alias chain with independent leaves and an aggregate.
+  Document which checks exercise external test RAM, package behavioral memory, and package
+  implementation memory. Update CI and tool prerequisites together.
+- [ ] Separate bundle metadata/repeatability from behavioral execution; reuse checks on the
+  actual artifact/source set without obscuring fresh-bundle provenance.
+- [ ] Reduce duplicated Verilog scenarios only after each replacement's observation scope,
+  sensitivity, and fresh result are reviewed. Retain distinct emitted-source compilation,
+  source-set integration, lint/synthesis, and any remaining independent-peer obligations.
+- [ ] Record any need for an OCaml-to-HDL simulator adapter as a separately scoped capability;
+  do not assume it exists or add UVM/cocotb infrastructure as an incidental migration step.
+
+Exit: a small justified emitted tier, independent oracle preserved, no lost full-system or
+asynchronous evidence, and documented leaves/aggregate. Unreplaced checks remain active.
+
+### VO7 — Closure and next-maintainer handoff
+
+Prerequisite: VO0–VO6 accepted.
+
+- [ ] Run final required regressions and relevant fresh event/formal/artifact checks;
+  publish commands, source identities, coverage report, proof assumptions, and gaps.
+- [ ] Update the current-state inventory and evidence map to actual paths. Remove obsolete
+  support implementations only after all consumers and obligations have replacements.
+- [ ] Publish examples for a directed scenario directory, a generated/shrunk trial, a
+  package fixture, and a formal harness. Document optional tools and artifact locations.
+
+Exit: this document's current state matches implementation; no proposed path or historical
+pass is presented as current evidence. Physical signoff and future feature obligations
+remain tracked in the product/flow plans.
+
+### Overhaul implementation records
+
+None yet under VO0–VO7. Add dated, work-item-specific records as implementation is accepted.
+The historical evidence below remains valuable but does not check off these new stages.
+
 ## Evidence map and completion rules
 
 This table records suite ownership, not a coverage percentage. Update it when work
@@ -1056,25 +1417,25 @@ and separate modeled latency from measured physical latency. Physical measuremen
 and build/execution identities follow construction-plan section 9 and the
 [experiment record format](../tinytapeout/reports/README.md).
 
-The next-state suite is complete only when migrated cases preserve current evidence,
-cycle/event sampling is characterized, P2.2/P2.6 timed obligations have actual results,
-and every claimed four-state property has an explicit contract and test. Missing
-physical or integration evidence stays visible; an architecture document is not
-acceptance evidence. The migration guide can then be removed after its enduring
-facts and resulting paths have been folded into this document.
+The overhaul is complete only at VO7: migrated obligations have identified evidence,
+sampling is characterized, generated/coverage claims are reproducible, and every claimed
+formal or four-state result has explicit assumptions and scope. Missing physical or
+integration evidence stays visible; an architecture document is not acceptance evidence.
+The previous migration record remains archived rather than being deleted.
 
-### Migration retirement and formatting backlog
+### Historical migration and formatting backlog
 
 The recorded UART integration checks on 2026-09-20 passed the focused UART formatting
 and lint aliases, repository-wide lint/build, forced ordinary regression, and
 `@verification` including emitted RTL. These are historical results for the source/diff
-recorded in the migration guide, not fresh checks of subsequent edits.
+recorded in the [historical migration](history/verification_migration.md), not fresh
+checks of subsequent edits.
 
 Repository-wide `@fmt` still reports the pre-existing formatting backlog outside that
 integration. Keep that backlog separate from verification acceptance: formatting checks
 appropriate to changed files must pass, but unrelated formatting cleanup is not by itself
-a blocker to retiring the migration guide. Retirement still requires preserving enduring
-results, assumptions, commands and deferred obligations here, and updating the index and
-inbound links. Benchmark provenance and other historical evidence must retain a durable
-home before their only record is removed. A UART controlled-failure replay check is a
+a blocker to this documentation archival. The previous migration is retained under
+`docs/history/`, preserving results, assumptions, commands, and benchmark provenance.
+Its original incomplete documentation-retirement status is historical, not a new
+implementation pass. A UART controlled-failure replay check is a
 named follow-up, not existing evidence or a requirement to redesign the migrated suite.

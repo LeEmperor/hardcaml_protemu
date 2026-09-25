@@ -871,8 +871,10 @@ The flow directory and required tools are described in
 [verification.md](verification.md) owns the system verification architecture,
 current evidence, next-state cycle/event split, functional-model and monitor
 boundaries, memory-conformance ownership, and applicable formal/CDC/reset checks.
-Use its evidence map to identify implemented suites and missing obligations; the
-[temporary migration guide](verification_migration.md) sequences the transition.
+Use its evidence map to identify implemented suites and missing obligations.
+[architecture_migration.md](architecture_migration.md) sequences the naming/composition
+changes first (AM0–AM6); verification.md then sequences the verification overhaul (VO0–VO7).
+The [previous verification migration](history/verification_migration.md) is historical.
 The architectural cycle contracts in this construction plan remain authoritative;
 a backend change must not relax them.
 

@@ -379,10 +379,11 @@ names. When a port is renamed, update:
 
 [verification.md](verification.md) is the source of truth for current and target
 suite architecture, functional-model independence, simulator responsibilities,
-observations, and reproduction. Follow its per-module testbench/expect/property
-convention and the temporary [migration guide](verification_migration.md) when
-moving existing tests. The current `Env` is the synchronous foundation; timed
-verification may use a separate runner under the shared contracts defined there.
+observations, and reproduction. Follow its reusable-component, fixture, and scenario
+ownership rules and VO handoffs when moving existing tests. Architectural changes first
+follow [architecture_migration.md](architecture_migration.md). Existing `Env` contracts
+remain preservation requirements; cycle and event fixtures may use different runners.
+The [previous migration](history/verification_migration.md) is historical reference.
 
 Functional-model source retains the four-part header and direction-neutral naming
 of section 5. The `_i`/`_o` suffixes apply to hardware ports, not model value records.

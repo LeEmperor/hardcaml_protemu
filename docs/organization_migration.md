@@ -270,7 +270,12 @@ move.
 
 ## Later steps
 
-These are deliberately out of scope. Each is its own commit.
+The following proposals are retained as historical context. The active
+[architecture migration](architecture_migration.md) supersedes their naming and sequencing:
+`Loader_core` becomes `Protemu_top`, and namespace/library enforcement is deferred. Use
+AM0–AM6 for implementation handoffs rather than treating this list as a second plan.
+
+These were deliberately out of scope for HL1; the original proposals follow.
 
 1. **Rename the unclear modules.** Renaming a module changes every reference to it,
    so this is a larger change than the move. Suggested names:

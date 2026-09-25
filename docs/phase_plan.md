@@ -18,6 +18,12 @@ That document remains the source of truth for architecture, contracts, scope,
 and design decisions. Phase numbers here match its construction stages in
 [section 8](construction-plan.md#8-construction-sequence).
 
+The next structural work is sequenced separately: complete AM0–AM6 in
+[architecture_migration.md](architecture_migration.md), then VO0–VO7 in
+[verification.md](verification.md#verification-overhaul-sequence). Those plans own
+architecture/verification migration handoffs; this plan retains product milestones.
+Their planned work does not reopen or supply fresh evidence for completed product items.
+
 Use this plan to select a bounded piece of work, identify its prerequisites, and
 record the evidence that it is complete. If implementation reveals a needed
 architecture change, update the construction plan first, then adjust the affected
@@ -541,7 +547,7 @@ resources. Behavioral implementation can proceed before ASIC adapter availabilit
   convention. See the [P2 implementation record](p2-implementation.md).
   *Verification dependency:* the implemented time-resolved pad driver follows the
   divided cycle/event responsibilities in [verification.md](verification.md#next-state)
-  and the [migration guide](verification_migration.md), reusing reference/checking/replay
+  and the [historical migration record](history/verification_migration.md), reusing reference/checking/replay
   conventions behind a separate timed runner. P2.6 can consume the same facilities.
   Four-state properties remain a separate, explicitly modeled obligation; two-state
   Evsim is sufficient for deterministic phase/pulse sweeps. Neither tier establishes

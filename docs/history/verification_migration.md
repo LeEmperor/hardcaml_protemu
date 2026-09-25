@@ -1,4 +1,14 @@
-# Verification suite migration
+# Verification suite migration — historical record
+
+Archived on 2026-09-25. This is the previous verification refactor's plan and evidence,
+not an active implementation checklist. The original status and unfinished items below
+are preserved as recorded; archival does not claim they were all completed. Use
+[architecture_migration.md](../architecture_migration.md) for the architectural work
+that comes first and [verification.md](../verification.md) for the current verification
+authority and VO handoffs. Historical commands, source names, and results describe their
+recorded revisions. Relative navigation links have been adjusted for this location.
+
+## Original record
 
 Status: in progress on 2026-09-20. Baseline capture, the functional-model rename,
 suite reorganization, cycle/event adapter conformance, the timed `Input_events` pilot,
@@ -6,7 +16,7 @@ one justified four-state property, the implemented portion of the integrated pat
 regression policy, P2.7 suite integration, and recorded implementation checks are complete.
 Documentation retirement remains; the unrelated formatting backlog is not its blocker.
 
-This is a temporary implementation guide. [verification.md](verification.md) owns
+This is a temporary implementation guide. [verification.md](../verification.md) owns
 the current-state inventory, target architecture, model/driver/monitor contracts,
 backend responsibilities, and evidence map. Keep lasting decisions there. Remove
 this guide after its exit checks pass and the actual paths/status are incorporated
@@ -297,7 +307,7 @@ reproducible result and a measured cost. This does not claim timed feature cover
 
 #### Adapter conformance result — 2026-09-19
 
-[`test/common/backend_conformance.ml`](../test/common/backend_conformance.ml) defines
+[`test/common/backend_conformance.ml`](../../test/common/backend_conformance.ml) defines
 one test-only four-bit register and one-entry ready/valid sink. The same five items load
 nonzero state, clear it with synchronous reset, exercise a disabled register edge, accept
 an offer, and refuse a later offer after the sink becomes full. The Cyclesim and two-state
@@ -367,7 +377,7 @@ Exit: actual P2.2 phase/pulse evidence, independently predicted and replayable.
 
 #### Timed `Input_events` result — 2026-09-19
 
-[`input_events_timing_testbench.ml`](../test/primitives/input_events/input_events_timing_testbench.ml)
+[`input_events_timing_testbench.ml`](../../test/primitives/input_events/input_events_timing_testbench.ml)
 owns timestamped pad/reset/event scenarios, the two-state Evsim adapter, a simulator-free
 sampling predictor, continuous activity monitors, bounded generation, temporal shrinking,
 and replay reporting. Each trial constructs a fresh circuit and simulator. The ordinary
@@ -441,8 +451,8 @@ inventing a physical model or claiming four-state coverage.
 
 The property is **bounded unknown-pad recovery and unknown isolation** on P2.2
 `Input_events`, implemented in
-[`input_events_four_state_testbench.ml`](../test/primitives/input_events/input_events_four_state_testbench.ml)
-and [`input_events_four_state_tests.ml`](../test/primitives/input_events/input_events_four_state_tests.ml).
+[`input_events_four_state_testbench.ml`](../../test/primitives/input_events/input_events_four_state_testbench.ml)
+and [`input_events_four_state_tests.ml`](../../test/primitives/input_events/input_events_four_state_tests.ml).
 It was selected because `Input_events` is the only block whose declared contract already
 concerns an external pad that the design does not drive, and because the timed pilot
 established the clock, coincidence and sampling conventions it reuses. Bus resolution was
@@ -503,12 +513,12 @@ and accepting it consumed the whole shrink budget without making the case smalle
 later candidates that shorten the run were never reached. Both temporal shrinkers now
 discard candidates equal to their input — the four-state one and, on request, the Stage 5
 timed one in
-[`input_events_timing_testbench.ml`](../test/primitives/input_events/input_events_timing_testbench.ml).
+[`input_events_timing_testbench.ml`](../../test/primitives/input_events/input_events_timing_testbench.ml).
 The Stage 5 fix changed no expect output: that fixture's controlled failure already
 reached its three-edge shrunk form inside the budget, so the fix removes the wasted-budget
 hazard without altering the recorded result. `dune runtest test/primitives/input_events
 --force` exited 0 with nothing to promote afterwards. The cycle shrinker in
-[`env.ml`](../test/common/env.ml) does not have this defect: it only drops items, so every
+[`env.ml`](../../test/common/env.ml) does not have this defect: it only drops items, so every
 candidate is strictly shorter than its input.
 
 The deferred half of the four-state obligation — resolved external buses and open-drain
@@ -580,7 +590,7 @@ physical/CDC/reset/formal obligations without treating one layer as proof of ano
 #### Integrated path and regression-policy result — 2026-09-20
 
 The implemented P2.6 path now has a two-state Evsim suite under
-[`test/primitives/observed_transfer/`](../test/primitives/observed_transfer). It uses the
+[`test/primitives/observed_transfer/`](../../test/primitives/observed_transfer). It uses the
 P2.2 time unit, clock, exact-edge ordering and finite delta-settle convention. A
 simulator-free predictor composes `Protemu_f_model.Input_pins` with
 `Protemu_f_model.Shift_engine` across their real register boundary, while the DUT-side
@@ -604,7 +614,7 @@ Root aliases now define the policy: `@verification-required` is every bounded in
 suite, `@verification` adds `@rtl`, `@verification-long` runs five recorded seeds through
 the longer functional/timed budgets, and `@verification-four-state` runs five seeds
 through the named four-state property. The bounded four-state property remains inside
-ordinary `@runtest`. [The verification workflow](../.github/workflows/verification.yml)
+ordinary `@runtest`. [The verification workflow](../../.github/workflows/verification.yml)
 checks out the recorded ASIC-library revision and invokes `@verification` on pushes and
 pull requests.
 
@@ -629,7 +639,7 @@ every OCaml file added or changed by Stage 7 was formatted with the pinned forma
 
 #### Concurrent UART-slice reconciliation — 2026-09-20
 
-The P2.7 suite remains in [`test/integration/uart_slice/`](../test/integration/uart_slice)
+The P2.7 suite remains in [`test/integration/uart_slice/`](../../test/integration/uart_slice)
 with all directed assertions and the committed trace diff active. It now also has a
 bounded generated property using the shared replay settings, source/dependency/tool
 identity, and artifact conventions. Seed `20260920` runs 96 fresh-state trials at maximum

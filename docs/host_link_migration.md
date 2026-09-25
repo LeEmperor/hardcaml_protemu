@@ -29,6 +29,12 @@ only. It adds no loader feature and does not change the P3.5 wire protocol.
 
 ## 1. Purpose and use
 
+This completed HL ledger retains its original names, scope, and acceptance evidence.
+Subsequent naming/composition work is owned by
+[architecture_migration.md](architecture_migration.md) (AM0–AM6), followed by the VO
+handoffs in [verification.md](verification.md#verification-overhaul-sequence).
+Use those plans for new implementation requests rather than reopening HL4.
+
 This plan separates the serial host link from the emulator core. Today the link works
 and has P3.5 evidence, but its code is mixed into `lib/` with everything else and its
 contract with the core exists only as matching field names. The goal is a `host_link/`

@@ -82,6 +82,12 @@ def check_bundle(root, bundle, kind):
             assert 'uo[1]: "Loader response ready"' in info
             assert {"lib/host_link/loader_core.ml", "lib/emulator_core/integrated_core.ml"} <= source_paths
             assert {"host_link_wire/dune", "host_link_wire/wire.ml"} <= source_paths
+            assert "lib/emulator_core/control_port.ml" in source_paths
+            assert "lib/host_link/serial_phy.ml" in source_paths
+            assert "lib/host_link/frame_rx.ml" in source_paths
+            assert "lib/host_link/frame_tx.ml" in source_paths
+            assert "lib/host_link/command_dispatch.ml" in source_paths
+            assert {"lib/host_link/wire_crc.ml", "lib/host_link/wire_layout.ml"} <= source_paths
         request = (
             "((kind single_port_ram)\n (contract\n  ((width 16) (depth 256) "
             "(read_latency 1) (port 1rw) (disabled_output hold)\n   "

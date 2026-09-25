@@ -546,7 +546,9 @@ let%test_unit "single-step can start background work but is then gated by real e
   step t Step;
   [%test_result: bool] (bool (outputs t).step_rejected_o) ~expect:true;
   step t (Read 0);
-  [%test_result: bool] (bool (outputs t).readback_rejected_o) ~expect:true;
+  [%test_result: bool]
+    (bool (outputs t).control_decision_o.readback_rejected)
+    ~expect:true;
   let saw_done = ref false in
   let saw_driven = ref false in
   for _ = 1 to 100 do
@@ -564,7 +566,10 @@ let%test_unit "single-step can start background work but is then gated by real e
   [%test_result: int] (int (outputs t).engine_claim_o) ~expect:0;
   [%test_result: bool] (bool (outputs t).engines_idle_o) ~expect:true;
   let readback_accepted = ref false in
-  step ~before:(fun _ o -> readback_accepted := bool o.readback_accepted_o) t (Read 0);
+  step
+    ~before:(fun _ o -> readback_accepted := bool o.control_decision_o.readback_accepted)
+    t
+    (Read 0);
   [%test_result: bool] !readback_accepted ~expect:true
 ;;
 
@@ -672,14 +677,14 @@ let%test_unit "ABORT, STOP, single-step, and RUN obey simultaneous priority" =
       ~before:(fun _ o ->
         result
         := Some
-             ( bool o.abort_accepted_o
-             , bool o.stop_accepted_o
+             ( bool o.control_decision_o.abort_accepted
+             , bool o.control_decision_o.stop_accepted
              , bool o.step_accepted_o
-             , bool o.run_accepted_o
-             , bool o.abort_rejected_o
-             , bool o.stop_rejected_o
+             , bool o.control_decision_o.run_accepted
+             , bool o.control_decision_o.abort_rejected
+             , bool o.control_decision_o.stop_rejected
              , bool o.step_rejected_o
-             , bool o.run_rejected_o ))
+             , bool o.control_decision_o.run_rejected ))
       t
       request;
     Option.value_exn !result

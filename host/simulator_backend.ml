@@ -35,24 +35,11 @@ type request =
   | Host_tx of int
   | Host_rx
 
+(* One sampled set of DUT outputs. [decision] is the shared [Control_port] record; the
+   remaining fields are simulator-specific controls and trace observations.
+*)
 type view =
-  { load_start_accepted : bool
-  ; load_start_rejected : bool
-  ; load_write_accepted : bool
-  ; load_write_rejected : bool
-  ; load_complete_accepted : bool
-  ; load_complete_rejected : bool
-  ; readback_accepted : bool
-  ; readback_rejected : bool
-  ; readback_response_valid : bool
-  ; readback_response_data : int
-  ; readback_response_match : bool
-  ; run_accepted : bool
-  ; run_rejected : bool
-  ; stop_accepted : bool
-  ; stop_rejected : bool
-  ; abort_accepted : bool
-  ; abort_rejected : bool
+  { decision : Bits.t Control_port.Decision.t
   ; step_accepted : bool
   ; step_rejected : bool
   ; software_request_rejected : bool
@@ -105,19 +92,7 @@ let settle t =
 let clear_inputs (i : _ Integrated_core.I.t) =
   set_bool i.reset_i false;
   set_bool i.en_i true;
-  set_bool i.load_start_valid_i false;
-  set_int i.load_length_i 0;
-  set_bool i.load_write_valid_i false;
-  set_int i.load_address_i 0;
-  set_int i.load_data_i 0;
-  set_bool i.load_complete_valid_i false;
-  set_bool i.readback_valid_i false;
-  set_int i.readback_address_i 0;
-  set_bool i.readback_verify_i false;
-  set_int i.readback_expected_i 0;
-  set_bool i.run_valid_i false;
-  set_bool i.stop_valid_i false;
-  set_bool i.abort_valid_i false;
+  Control_port.Request.iter i.control_request_i ~f:(fun port -> set_int port 0);
   set_bool i.step_valid_i false;
   set_int i.pin_async_i 0;
   set_int i.occupied_i 0;
@@ -131,25 +106,27 @@ let clear_inputs (i : _ Integrated_core.I.t) =
   set_bool i.transfer_rx_ready_i true
 ;;
 
-let drive_request (i : _ Integrated_core.I.t) = function
+let drive_request (i : _ Integrated_core.I.t) request =
+  let control = i.control_request_i in
+  match request with
   | Idle -> ()
   | Reset -> set_bool i.reset_i true
   | Load_start length ->
-    set_bool i.load_start_valid_i true;
-    set_int i.load_length_i length
+    set_bool control.load_start_valid true;
+    set_int control.load_length length
   | Load_write (address, data) ->
-    set_bool i.load_write_valid_i true;
-    set_int i.load_address_i address;
-    set_int i.load_data_i data
-  | Load_complete -> set_bool i.load_complete_valid_i true
+    set_bool control.load_write_valid true;
+    set_int control.load_address address;
+    set_int control.load_data data
+  | Load_complete -> set_bool control.load_complete_valid true
   | Readback { address; verify; expected } ->
-    set_bool i.readback_valid_i true;
-    set_int i.readback_address_i address;
-    set_bool i.readback_verify_i verify;
-    set_int i.readback_expected_i expected
-  | Run -> set_bool i.run_valid_i true
-  | Stop -> set_bool i.stop_valid_i true
-  | Abort -> set_bool i.abort_valid_i true
+    set_bool control.readback_valid true;
+    set_int control.readback_address address;
+    set_bool control.readback_verify verify;
+    set_int control.readback_expected expected
+  | Run -> set_bool control.run_valid true
+  | Stop -> set_bool control.stop_valid true
+  | Abort -> set_bool control.abort_valid true
   | Step -> set_bool i.step_valid_i true
   | Pin_claim mask ->
     set_bool i.software_claim_valid_i true;
@@ -164,9 +141,10 @@ let drive_request (i : _ Integrated_core.I.t) = function
 ;;
 
 let fault_of_outputs (o : _ Integrated_core.O.t) =
-  { Api.Fault.fetch_fault = bool o.fetch_fault_o
-  ; execution_fault = bool o.execution_fault_o
-  ; kind = int o.fault_kind_o
+  let status = Integrated_core.control_status o in
+  { Api.Fault.fetch_fault = bool status.fetch_fault
+  ; execution_fault = bool status.execution_fault
+  ; kind = int status.fault_kind
   ; instruction_slot = int o.fault_instruction_slot_o
   ; address = int o.fault_address_o
   ; reason = int o.fault_reason_o
@@ -174,23 +152,8 @@ let fault_of_outputs (o : _ Integrated_core.O.t) =
 ;;
 
 let view (o : _ Integrated_core.O.t) =
-  { load_start_accepted = bool o.load_start_accepted_o
-  ; load_start_rejected = bool o.load_start_rejected_o
-  ; load_write_accepted = bool o.load_write_accepted_o
-  ; load_write_rejected = bool o.load_write_rejected_o
-  ; load_complete_accepted = bool o.load_complete_accepted_o
-  ; load_complete_rejected = bool o.load_complete_rejected_o
-  ; readback_accepted = bool o.readback_accepted_o
-  ; readback_rejected = bool o.readback_rejected_o
-  ; readback_response_valid = bool o.readback_response_valid_o
-  ; readback_response_data = int o.readback_response_data_o
-  ; readback_response_match = bool o.readback_response_match_o
-  ; run_accepted = bool o.run_accepted_o
-  ; run_rejected = bool o.run_rejected_o
-  ; stop_accepted = bool o.stop_accepted_o
-  ; stop_rejected = bool o.stop_rejected_o
-  ; abort_accepted = bool o.abort_accepted_o
-  ; abort_rejected = bool o.abort_rejected_o
+  let status = Integrated_core.control_status o in
+  { decision = Control_port.Decision.map o.control_decision_o ~f:( ! )
   ; step_accepted = bool o.step_accepted_o
   ; step_rejected = bool o.step_rejected_o
   ; software_request_rejected = bool o.software_request_rejected_o
@@ -208,9 +171,9 @@ let view (o : _ Integrated_core.O.t) =
   ; transfer_rx_valid = bool o.transfer_rx_valid_o
   ; transfer_rx_data = int o.transfer_rx_data_o
   ; pins = int o.pins_o
-  ; pin_output_enable = int o.pin_oe_o
+  ; pin_output_enable = int status.pin_oe
   ; fault = fault_of_outputs o
-  ; pc = int o.pc_o
+  ; pc = int status.pc
   }
 ;;
 
@@ -273,15 +236,17 @@ let capture_trace t ~timestamp ~operation before after =
 ;;
 
 let request_outcome request before =
+  let d = before.decision in
+  let decided accepted rejected = Bits.to_bool accepted, Bits.to_bool rejected in
   let accepted, rejected =
     match request with
-    | Load_start _ -> before.load_start_accepted, before.load_start_rejected
-    | Load_write _ -> before.load_write_accepted, before.load_write_rejected
-    | Load_complete -> before.load_complete_accepted, before.load_complete_rejected
-    | Readback _ -> before.readback_accepted, before.readback_rejected
-    | Run -> before.run_accepted, before.run_rejected
-    | Stop -> before.stop_accepted, before.stop_rejected
-    | Abort -> before.abort_accepted, before.abort_rejected
+    | Load_start _ -> decided d.load_start_accepted d.load_start_rejected
+    | Load_write _ -> decided d.load_write_accepted d.load_write_rejected
+    | Load_complete -> decided d.load_complete_accepted d.load_complete_rejected
+    | Readback _ -> decided d.readback_accepted d.readback_rejected
+    | Run -> decided d.run_accepted d.run_rejected
+    | Stop -> decided d.stop_accepted d.stop_rejected
+    | Abort -> decided d.abort_accepted d.abort_rejected
     | Step -> before.step_accepted, before.step_rejected
     | Pin_claim _ | Pin_release _ ->
       not before.software_request_rejected, before.software_request_rejected
@@ -402,18 +367,19 @@ let discover t =
 ;;
 
 let loaded_image t =
-  let o = outputs t in
-  { Api.Loaded_image.valid = bool o.image_valid_o
-  ; load_active = bool o.load_active_o
-  ; length_words = int o.image_length_o
-  ; words_written = int o.words_written_o
-  ; words_verified = int o.words_verified_o
-  ; verification_failed = bool o.verification_failed_o
+  let status = Integrated_core.control_status (outputs t) in
+  { Api.Loaded_image.valid = bool status.image_valid
+  ; load_active = bool status.load_active
+  ; length_words = int status.image_length
+  ; words_written = int status.words_written
+  ; words_verified = int status.words_verified
+  ; verification_failed = bool status.verification_failed
   }
 ;;
 
 let status t =
   let o = outputs t in
+  let shared = Integrated_core.control_status o in
   let registers = !(o.registers_o) in
   let descriptor = !(o.descriptor_o) in
   let chunks bits count =
@@ -421,11 +387,11 @@ let status t =
       Bits.select bits ~high:((index * 16) + 15) ~low:(index * 16) |> Bits.to_int_trunc)
   in
   { Api.Status.cycle = t.cycle
-  ; halted = bool o.halted_o
-  ; execution_active = bool o.execution_active_o
-  ; normal_halt = bool o.normal_halt_o
-  ; pc = int o.pc_o
-  ; phase = int o.phase_o
+  ; halted = bool shared.halted
+  ; execution_active = bool shared.execution_active
+  ; normal_halt = bool shared.normal_halt
+  ; pc = int shared.pc
+  ; phase = int shared.phase
   ; registers = chunks registers 8
   ; zero = bool o.zero_o
   ; carry = bool o.carry_o
@@ -434,7 +400,7 @@ let status t =
   ; events = int o.status_o
   ; event_overflow = int o.status_overflow_o
   ; pins = int o.pins_o
-  ; pin_output_enable = int o.pin_oe_o
+  ; pin_output_enable = int shared.pin_oe
   ; pin_snapshot = int o.snapshot_o
   ; tx_count = int o.tx_count_o
   ; rx_count = int o.rx_count_o
@@ -446,13 +412,13 @@ let status t =
   ; total_cycles = int o.total_cycles_o
   ; image = loaded_image t
   ; engine =
-      { Api.Engine_status.idle = bool o.engines_idle_o
+      { Api.Engine_status.idle = bool shared.engines_idle
       ; timing_busy = bool o.timing_busy_o
       ; transfer_busy = bool o.transfer_busy_o
       ; transfer_done = bool o.transfer_done_o
       ; transfer_fault = bool o.transfer_fault_o
-      ; software_claims = int o.software_claim_o
-      ; engine_claims = int o.engine_claim_o
+      ; software_claims = int shared.software_claim
+      ; engine_claims = int shared.engine_claim
       }
   ; fault = fault_of_outputs o
   }
@@ -481,6 +447,9 @@ let refusal (s : Api.Status.t) operation =
   Error (Api.Error.Refused { operation; reason })
 ;;
 
+(* A shared [Control_port] acceptance, read from a sampled view. *)
+let accepted field view = Bits.to_bool (field view.decision)
+
 let offer t ~operation request accepted =
   let prior = status t in
   let before, _ = cycle ~operation t request in
@@ -493,19 +462,22 @@ let read_word t ~operation ~verify ~address ~expected =
       t
       ~operation
       (Readback { address; verify; expected })
-      (fun v -> v.readback_accepted)
+      (accepted (fun d -> d.readback_accepted))
   with
   | Error _ as error -> error
   | Ok () ->
     let _, after = cycle t Idle in
-    if not after.readback_response_valid
+    if not (Bits.to_bool after.decision.readback_response_valid)
     then
       Error
         (Api.Error.Backend_invariant
            { operation
            ; detail = "accepted program read produced no latency-one response"
            })
-    else Ok (after.readback_response_data, after.readback_response_match)
+    else
+      Ok
+        ( Bits.to_int_trunc after.decision.readback_response_data
+        , Bits.to_bool after.decision.readback_response_match )
 ;;
 
 let load_image t image =
@@ -519,7 +491,7 @@ let load_image t image =
          t
          ~operation:"load-start"
          (Load_start (Array.length words))
-         (fun v -> v.load_start_accepted)
+         (accepted (fun d -> d.load_start_accepted))
      with
      | Error _ as error -> error
      | Ok () ->
@@ -532,7 +504,7 @@ let load_image t image =
                t
                ~operation:"load-write"
                (Load_write (address, words.(address)))
-               (fun v -> v.load_write_accepted)
+               (accepted (fun d -> d.load_write_accepted))
            with
            | Error _ as error -> error
            | Ok () -> writes (address + 1))
@@ -565,8 +537,11 @@ let load_image t image =
            | Error _ as error -> error
            | Ok () ->
              (match
-                offer t ~operation:"load-complete" Load_complete (fun v ->
-                  v.load_complete_accepted)
+                offer
+                  t
+                  ~operation:"load-complete"
+                  Load_complete
+                  (accepted (fun d -> d.load_complete_accepted))
               with
               | Error _ as error -> error
               | Ok () ->
@@ -675,7 +650,7 @@ let verify_image t image =
 
 let run t =
   let accepted_cycle = t.cycle + 1 in
-  match offer t ~operation:"run" Run (fun v -> v.run_accepted) with
+  match offer t ~operation:"run" Run (accepted (fun d -> d.run_accepted)) with
   | Error _ as error -> error
   | Ok () ->
     Ok
@@ -714,7 +689,7 @@ let stop t ~budget_cycles =
          { operation = "stop"; detail = "cycle budget must be nonnegative" })
   else (
     let accepted_cycle = t.cycle + 1 in
-    match offer t ~operation:"stop" Stop (fun v -> v.stop_accepted) with
+    match offer t ~operation:"stop" Stop (accepted (fun d -> d.stop_accepted)) with
     | Error _ as error -> error
     | Ok () ->
       (match
@@ -733,7 +708,7 @@ let stop t ~budget_cycles =
 
 let abort t =
   let accepted_cycle = t.cycle + 1 in
-  match offer t ~operation:"abort" Abort (fun v -> v.abort_accepted) with
+  match offer t ~operation:"abort" Abort (accepted (fun d -> d.abort_accepted)) with
   | Error _ as error -> error
   | Ok () ->
     let state = status t in

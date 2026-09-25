@@ -6,8 +6,8 @@
    responses.
 
    docs/p3.5-hardware-loader.md is the authority and this module transcribes it. A change
-   here that the record does not make first is a protocol change, not a refactor.
-   [Hardware_loader] takes its wire constants from here. Host software (the codec tests
+   here that the record does not make first is a protocol change, not a refactor. The
+   host-link hardware takes its wire constants from here. Host software (the codec tests
    now, the P3.6 device backend later) encodes requests with [Request.encode] and reads
    responses with [Response.decode]. Nothing here depends on Hardcaml.
 
@@ -186,7 +186,7 @@ module Capability = struct
 end
 
 (* STATUS fault kind. These are stable wire values. They equal [Control_execution.Fault]
-   today, which [Hardware_loader] checks at elaboration; this library does not depend on
+   today, which [Command_dispatch] checks at elaboration; this library does not depend on
    execution-unit code. Values 10 to 255 are undefined in version 1.
 *)
 module Fault_kind = struct

@@ -410,6 +410,37 @@ let%test_unit "trace clear preserves sequence and same-timestamp categories are 
       ]
 ;;
 
+let%test_unit "control offer trace outcomes follow the pre-edge decision" =
+  let t = Backend.create () in
+  ignore (error (Backend.run t) : Api.Error.t);
+  ignore (ok (Backend.load_image t echo_image) : Api.Load_result.t);
+  ignore (ok (Backend.run t) : Api.Control_ack.t);
+  ignore (error (Backend.stop t ~budget_cycles:0) : Api.Error.t);
+  ignore (ok (Backend.abort t) : Api.Control_ack.t);
+  let operations =
+    List.filter_map (ok (Backend.trace_retrieve t ~after:None)).records ~f:(fun record ->
+      match record.event with
+      | Host_operation { operation; outcome } -> Some (operation, outcome)
+      | _ -> None)
+  in
+  [%test_result: (string * string) list]
+    operations
+    ~expect:
+      [ "run", "rejected"
+      ; "load-start", "accepted"
+      ; "load-write", "accepted"
+      ; "load-write", "accepted"
+      ; "load-write", "accepted"
+      ; "load-verify", "accepted"
+      ; "load-verify", "accepted"
+      ; "load-verify", "accepted"
+      ; "load-complete", "accepted"
+      ; "run", "accepted"
+      ; "stop", "accepted"
+      ; "abort", "accepted"
+      ]
+;;
+
 let%test_unit "defined execution fault is inspectable and recoverable" =
   let t = Backend.create ~trace_capacity:64 () in
   let invalid_word = List.hd_exn Encoding.reserved_opcodes lsl Encoding.payload_bits in

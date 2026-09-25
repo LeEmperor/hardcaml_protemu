@@ -6,6 +6,11 @@
    Program RAM remains an external latency-one port. STOP pauses only at P3.2's existing
    instruction boundary, ABORT cancels immediately, and a step resumes preserved state for
    one instruction. Program access receives the adapter's real engine-idle indication.
+
+   Host control crosses [Control_port], which this module owns: requests arrive as
+   [control_request_i], decisions leave as [control_decision_o], and [control_status]
+   gathers the status observations. Step, pin claims, queues, and pads remain separate
+   ports.
 *)
 
 open! Core
@@ -17,19 +22,9 @@ module I = struct
     { clock_i : 'a
     ; reset_i : 'a
     ; en_i : 'a
-    ; load_start_valid_i : 'a
-    ; load_length_i : 'a [@bits Protocol_core.Config.request_address_bits]
-    ; load_write_valid_i : 'a
-    ; load_address_i : 'a [@bits Protocol_core.Config.request_address_bits]
-    ; load_data_i : 'a [@bits Protocol_core.Config.program_width]
-    ; load_complete_valid_i : 'a
-    ; readback_valid_i : 'a
-    ; readback_address_i : 'a [@bits Protocol_core.Config.request_address_bits]
-    ; readback_verify_i : 'a
-    ; readback_expected_i : 'a [@bits Protocol_core.Config.program_width]
-    ; run_valid_i : 'a
-    ; stop_valid_i : 'a
-    ; abort_valid_i : 'a
+    ; (* Shared control requests; see [Control_port] for the temporal contract. Each field
+         keeps its flat port name, such as [load_start_valid_i]. *)
+      control_request_i : 'a Control_port.Request.t [@rtlsuffix "_i"]
     ; step_valid_i : 'a
     ; prog_mem_read_data_i : 'a [@bits Protocol_core.Config.program_width]
     ; pin_async_i : 'a [@bits Protemu_isa.Pins.count]
@@ -43,7 +38,7 @@ module I = struct
     ; rx_data_i : 'a [@bits 8]
     ; transfer_rx_ready_i : 'a
     }
-  [@@deriving hardcaml]
+  [@@deriving hardcaml ~rtlmangle:false]
 end
 
 module O = struct
@@ -52,23 +47,9 @@ module O = struct
     ; prog_mem_write_enable_o : 'a
     ; prog_mem_address_o : 'a [@bits Protocol_core.Config.program_address_bits]
     ; prog_mem_write_data_o : 'a [@bits Protocol_core.Config.program_width]
-    ; load_start_accepted_o : 'a
-    ; load_start_rejected_o : 'a
-    ; load_write_accepted_o : 'a
-    ; load_write_rejected_o : 'a
-    ; load_complete_accepted_o : 'a
-    ; load_complete_rejected_o : 'a
-    ; readback_accepted_o : 'a
-    ; readback_rejected_o : 'a
-    ; readback_response_valid_o : 'a
-    ; readback_response_data_o : 'a [@bits Protocol_core.Config.program_width]
-    ; readback_response_match_o : 'a
-    ; run_accepted_o : 'a
-    ; run_rejected_o : 'a
-    ; stop_accepted_o : 'a
-    ; stop_rejected_o : 'a
-    ; abort_accepted_o : 'a
-    ; abort_rejected_o : 'a
+    ; (* Shared control decisions; see [Control_port]. Flat names, such as
+         [load_start_accepted_o]. [control_status] gathers the shared status below. *)
+      control_decision_o : 'a Control_port.Decision.t [@rtlsuffix "_o"]
     ; step_accepted_o : 'a
     ; step_rejected_o : 'a
     ; halted_o : 'a
@@ -130,8 +111,34 @@ module O = struct
     ; tx_count_o : 'a [@bits 5]
     ; rx_count_o : 'a [@bits 5]
     }
-  [@@deriving hardcaml]
+  [@@deriving hardcaml ~rtlmangle:false]
 end
+
+(* The shared [Control_port.Status] observations, gathered from their [O] ports. They stay
+   flat ports rather than one embedded record because they are not contiguous in [O], and
+   embedding them would reorder the emitted module's ports.
+*)
+let control_status (o : 'a O.t) : 'a Control_port.Status.t =
+  { halted = o.halted_o
+  ; engines_idle = o.engines_idle_o
+  ; image_valid = o.image_valid_o
+  ; load_active = o.load_active_o
+  ; image_length = o.image_length_o
+  ; words_written = o.words_written_o
+  ; words_verified = o.words_verified_o
+  ; verification_failed = o.verification_failed_o
+  ; fetch_fault = o.fetch_fault_o
+  ; execution_active = o.execution_active_o
+  ; normal_halt = o.normal_halt_o
+  ; execution_fault = o.execution_fault_o
+  ; fault_kind = o.fault_kind_o
+  ; pc = o.pc_o
+  ; phase = o.phase_o
+  ; pin_oe = o.pin_oe_o
+  ; software_claim = o.software_claim_o
+  ; engine_claim = o.engine_claim_o
+  }
+;;
 
 [@@@ocamlformat "disable"]
 
@@ -146,6 +153,7 @@ end
 let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   let open Always in
   let spec = Reg_spec.create ~clock:i.clock_i ~clear:i.reset_i () in
+  let request = i.control_request_i in
   let r = I_Regs.Of_always.reg spec in
   I_Regs.Of_always.apply_names ~prefix:"reg_" ~naming_op:(Scope.naming scope) r;
 
@@ -173,8 +181,8 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   let mechanism_completion_fault = wire 1 in
   let mechanism_completion_reason = wire Control_execution.Config.mechanism_reason_bits in
 
-  let abort_offer = i.abort_valid_i &: i.en_i &: ~:(i.reset_i) in
-  let stop_offer = i.stop_valid_i &: i.en_i &: ~:(i.reset_i) &: ~:abort_offer in
+  let abort_offer = request.abort_valid &: i.en_i &: ~:(i.reset_i) in
+  let stop_offer = request.stop_valid &: i.en_i &: ~:(i.reset_i) &: ~:abort_offer in
   let step_offer =
     i.step_valid_i
     &: i.en_i
@@ -183,7 +191,7 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
     &: ~:stop_offer
   in
   let run_offer =
-    i.run_valid_i
+    request.run_valid
     &: ~:abort_offer
     &: ~:stop_offer
     &: ~:(i.step_valid_i)
@@ -196,16 +204,16 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
       ; reset_i = i.reset_i
       ; en_i = i.en_i
       ; engines_idle_i = engine_idle
-      ; load_start_valid_i = i.load_start_valid_i
-      ; load_length_i = i.load_length_i
-      ; load_write_valid_i = i.load_write_valid_i
-      ; load_address_i = i.load_address_i
-      ; load_data_i = i.load_data_i
-      ; load_complete_valid_i = i.load_complete_valid_i
-      ; readback_valid_i = i.readback_valid_i
-      ; readback_address_i = i.readback_address_i
-      ; readback_verify_i = i.readback_verify_i
-      ; readback_expected_i = i.readback_expected_i
+      ; load_start_valid_i = request.load_start_valid
+      ; load_length_i = request.load_length
+      ; load_write_valid_i = request.load_write_valid
+      ; load_address_i = request.load_address
+      ; load_data_i = request.load_data
+      ; load_complete_valid_i = request.load_complete_valid
+      ; readback_valid_i = request.readback_valid
+      ; readback_address_i = request.readback_address
+      ; readback_verify_i = request.readback_verify
+      ; readback_expected_i = request.readback_expected
       ; run_valid_i = access_run
       ; execution_halt_i = execution_halt
       ; fetch_valid_i = fetch_valid
@@ -321,23 +329,25 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   ; prog_mem_write_enable_o = access.prog_mem_write_enable_o
   ; prog_mem_address_o = access.prog_mem_address_o
   ; prog_mem_write_data_o = access.prog_mem_write_data_o
-  ; load_start_accepted_o = access.load_start_accepted_o
-  ; load_start_rejected_o = access.load_start_rejected_o
-  ; load_write_accepted_o = access.load_write_accepted_o
-  ; load_write_rejected_o = access.load_write_rejected_o
-  ; load_complete_accepted_o = access.load_complete_accepted_o
-  ; load_complete_rejected_o = access.load_complete_rejected_o
-  ; readback_accepted_o = access.readback_accepted_o
-  ; readback_rejected_o = access.readback_rejected_o
-  ; readback_response_valid_o = access.readback_response_valid_o
-  ; readback_response_data_o = access.readback_response_data_o
-  ; readback_response_match_o = access.readback_response_match_o
-  ; run_accepted_o = run_accepted
-  ; run_rejected_o = i.run_valid_i &: ~:run_accepted
-  ; stop_accepted_o = stop_accepted
-  ; stop_rejected_o = i.stop_valid_i &: ~:stop_accepted
-  ; abort_accepted_o = abort_accepted
-  ; abort_rejected_o = i.abort_valid_i &: ~:abort_accepted
+  ; control_decision_o =
+      { Control_port.Decision.load_start_accepted = access.load_start_accepted_o
+      ; load_start_rejected     = access.load_start_rejected_o
+      ; load_write_accepted     = access.load_write_accepted_o
+      ; load_write_rejected     = access.load_write_rejected_o
+      ; load_complete_accepted  = access.load_complete_accepted_o
+      ; load_complete_rejected  = access.load_complete_rejected_o
+      ; readback_accepted       = access.readback_accepted_o
+      ; readback_rejected       = access.readback_rejected_o
+      ; readback_response_valid = access.readback_response_valid_o
+      ; readback_response_data  = access.readback_response_data_o
+      ; readback_response_match = access.readback_response_match_o
+      ; run_accepted            = run_accepted
+      ; run_rejected            = request.run_valid &: ~:run_accepted
+      ; stop_accepted           = stop_accepted
+      ; stop_rejected           = request.stop_valid &: ~:stop_accepted
+      ; abort_accepted          = abort_accepted
+      ; abort_rejected          = request.abort_valid &: ~:abort_accepted
+      }
   ; step_accepted_o = step_accepted
   ; step_rejected_o = i.step_valid_i &: ~:step_accepted
   ; halted_o = access.halted_o

@@ -181,6 +181,28 @@ that rework.
   P3.1a access controller. Local state/control instructions execute in RTL; all mechanism
   instructions use one retained P3.3-facing handshake. The implementation and evidence are
   recorded in [the P3.2 record](p3.2-implementation.md).
+- `lib/emulator_core/control_port.ml`: the core control port (HL3), with direction-neutral
+  request, decision, and status records and their temporal contract. `Integrated_core`
+  owns it; `Hardware_loader` and `host/simulator_backend.ml` are its two transports
+  ([HL3](host_link_hl3_record.md)).
+- `lib/host_link/serial_phy.ml`: the serial loader PHY (HL4b1), with pin synchronizers,
+  one-cycle edge events, and deselect qualification ([HL4b1](host_link_hl4b1_record.md)).
+- `lib/host_link/frame_rx.ml`: the serial loader request receiver (HL4b2), with byte
+  assembly, the saturating byte count and sticky overrun, header/payload capture, CRC
+  accumulation, deselect validation, and the retained request fields
+  ([HL4b2](host_link_hl4b2_record.md)).
+- `lib/host_link/command_dispatch.ml`: the serial loader command dispatcher (HL4b3), with
+  command legality, fixed lengths and device bounds, one-shot core offers, refusal
+  classification, READ/ABORT completion waits, and response frame selection
+  ([HL4b3](host_link_hl4b3_record.md)).
+- `lib/host_link/frame_tx.ml`: the serial loader response transmitter (HL4b4), with the
+  retained response store, response arming, the restartable shifter, replay, and commit
+  ([HL4b4](host_link_hl4b4_record.md)). `Hardware_loader` composes all four blocks,
+  supplies request eligibility, and holds no state of its own.
+- `lib/host_link/wire_crc.ml` and `lib/host_link/wire_layout.ml`: the synthesizable
+  CRC-8 step shared by `Frame_rx` and `Command_dispatch`, and the shared elaboration-time
+  layout check; each block checks its own `Wire` assumptions when it is elaborated
+  ([HL4b4](host_link_hl4b4_record.md)).
 - `lib/legacy/p0_observable.ml` and `bin/generate.ml`: an observable pin/timer circuit
   and working parameterized Verilog emitter, separate from the control scaffold.
 - The P2 primitives in `lib/`: `pin_bank.ml`, `input_events.ml`, `timing.ml`,
@@ -747,9 +769,9 @@ without changing either owner or the driven output.
 
 The first backend, [`host/simulator_backend.ml`](../host/simulator_backend.ml), owns one
 `Integrated_core`, one contract-compatible latency-one RAM, and one clock for the lifetime
-of a CLI script. Session creation applies reset, then presents cycle zero with no valid
-image, empty queues, zero external pads/occupancy, an enabled empty trace, and a monotonic
-cycle counter. For an advancing operation the backend drives persistent pad state and the
+of a CLI script, and drives the core's shared `Control_port` requests directly. Session
+creation applies reset, then presents cycle zero with no valid image, empty queues, zero
+external pads/occupancy, an enabled empty trace, and a monotonic cycle counter. For an advancing operation the backend drives persistent pad state and the
 host request, settles combinational logic, samples acceptance and the memory request before
 the rising edge, advances the edge, services the external RAM port, and samples registered
 state. A read request takes its acceptance edge plus one response edge. This fixed-latency

@@ -31,6 +31,7 @@ type request =
       }
   | Claim of int
   | Release of int
+  | Together of request list (* Offered in the same cycle. *)
 
 type t =
   { sim : Sim.t
@@ -56,19 +57,19 @@ let outputs_before t = Cyclesim.outputs ~clock_edge:Before t.sim
 let clear_inputs (i : _ Integrated_core.I.t) =
   set_bool i.reset_i false;
   set_bool i.en_i true;
-  set_bool i.load_start_valid_i false;
-  set_int i.load_length_i 0;
-  set_bool i.load_write_valid_i false;
-  set_int i.load_address_i 0;
-  set_int i.load_data_i 0;
-  set_bool i.load_complete_valid_i false;
-  set_bool i.readback_valid_i false;
-  set_int i.readback_address_i 0;
-  set_bool i.readback_verify_i false;
-  set_int i.readback_expected_i 0;
-  set_bool i.run_valid_i false;
-  set_bool i.stop_valid_i false;
-  set_bool i.abort_valid_i false;
+  set_bool i.control_request_i.load_start_valid false;
+  set_int i.control_request_i.load_length 0;
+  set_bool i.control_request_i.load_write_valid false;
+  set_int i.control_request_i.load_address 0;
+  set_int i.control_request_i.load_data 0;
+  set_bool i.control_request_i.load_complete_valid false;
+  set_bool i.control_request_i.readback_valid false;
+  set_int i.control_request_i.readback_address 0;
+  set_bool i.control_request_i.readback_verify false;
+  set_int i.control_request_i.readback_expected 0;
+  set_bool i.control_request_i.run_valid false;
+  set_bool i.control_request_i.stop_valid false;
+  set_bool i.control_request_i.abort_valid false;
   set_bool i.step_valid_i false;
   set_int i.pin_async_i 0;
   set_int i.occupied_i 0;
@@ -82,34 +83,34 @@ let clear_inputs (i : _ Integrated_core.I.t) =
   set_bool i.transfer_rx_ready_i true
 ;;
 
-let drive_request (i : _ Integrated_core.I.t) = function
+let rec drive_request (i : _ Integrated_core.I.t) = function
   | Idle -> ()
   | Reset -> set_bool i.reset_i true
   | Enable value -> set_bool i.en_i value
   | Start length ->
-    set_bool i.load_start_valid_i true;
-    set_int i.load_length_i length
+    set_bool i.control_request_i.load_start_valid true;
+    set_int i.control_request_i.load_length length
   | Write (address, data) ->
-    set_bool i.load_write_valid_i true;
-    set_int i.load_address_i address;
-    set_int i.load_data_i data
+    set_bool i.control_request_i.load_write_valid true;
+    set_int i.control_request_i.load_address address;
+    set_int i.control_request_i.load_data data
   | Read address ->
-    set_bool i.readback_valid_i true;
-    set_int i.readback_address_i address
+    set_bool i.control_request_i.readback_valid true;
+    set_int i.control_request_i.readback_address address
   | Verify (address, expected) ->
-    set_bool i.readback_valid_i true;
-    set_int i.readback_address_i address;
-    set_bool i.readback_verify_i true;
-    set_int i.readback_expected_i expected
-  | Complete -> set_bool i.load_complete_valid_i true
-  | Run -> set_bool i.run_valid_i true
-  | Stop -> set_bool i.stop_valid_i true
-  | Abort -> set_bool i.abort_valid_i true
+    set_bool i.control_request_i.readback_valid true;
+    set_int i.control_request_i.readback_address address;
+    set_bool i.control_request_i.readback_verify true;
+    set_int i.control_request_i.readback_expected expected
+  | Complete -> set_bool i.control_request_i.load_complete_valid true
+  | Run -> set_bool i.control_request_i.run_valid true
+  | Stop -> set_bool i.control_request_i.stop_valid true
+  | Abort -> set_bool i.control_request_i.abort_valid true
   | Step -> set_bool i.step_valid_i true
   | Controls { run; stop; abort; step } ->
-    set_bool i.run_valid_i run;
-    set_bool i.stop_valid_i stop;
-    set_bool i.abort_valid_i abort;
+    set_bool i.control_request_i.run_valid run;
+    set_bool i.control_request_i.stop_valid stop;
+    set_bool i.control_request_i.abort_valid abort;
     set_bool i.step_valid_i step
   | Claim mask ->
     set_bool i.software_claim_valid_i true;
@@ -117,6 +118,7 @@ let drive_request (i : _ Integrated_core.I.t) = function
   | Release mask ->
     set_bool i.software_release_valid_i true;
     set_int i.software_release_mask_i mask
+  | Together requests -> List.iter requests ~f:(drive_request i)
 ;;
 
 let settle sim =

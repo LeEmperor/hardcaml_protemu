@@ -63,29 +63,30 @@ let run external_time =
   schedule 6 (fun () -> set inputs.reset_i.signal Bits.gnd);
   pulse inputs.software_claim_valid_i.signal ~edge:1 Bits.vdd;
   schedule 8 (fun () -> set inputs.software_claim_mask_i.signal (bits 8 1));
-  pulse inputs.load_start_valid_i.signal ~edge:2 Bits.vdd;
-  schedule 18 (fun () -> set inputs.load_length_i.signal (bits 9 6));
+  pulse inputs.control_request_i.load_start_valid.signal ~edge:2 Bits.vdd;
+  schedule 18 (fun () -> set inputs.control_request_i.load_length.signal (bits 9 6));
   Array.iteri words ~f:(fun address data ->
     let edge = 3 + address in
     let time = first_rising + (edge * period) in
     schedule (time - 2) (fun () ->
-      set inputs.load_address_i.signal (bits 9 address);
-      set inputs.load_data_i.signal (bits 16 data);
-      set inputs.load_write_valid_i.signal Bits.vdd);
-    schedule (time + 1) (fun () -> set inputs.load_write_valid_i.signal Bits.gnd));
+      set inputs.control_request_i.load_address.signal (bits 9 address);
+      set inputs.control_request_i.load_data.signal (bits 16 data);
+      set inputs.control_request_i.load_write_valid.signal Bits.vdd);
+    schedule (time + 1) (fun () ->
+      set inputs.control_request_i.load_write_valid.signal Bits.gnd));
   Array.iteri words ~f:(fun address expected ->
     let edge = 9 + (address * 2) in
     let time = first_rising + (edge * period) in
     schedule (time - 2) (fun () ->
-      set inputs.readback_address_i.signal (bits 9 address);
-      set inputs.readback_expected_i.signal (bits 16 expected);
-      set inputs.readback_verify_i.signal Bits.vdd;
-      set inputs.readback_valid_i.signal Bits.vdd);
+      set inputs.control_request_i.readback_address.signal (bits 9 address);
+      set inputs.control_request_i.readback_expected.signal (bits 16 expected);
+      set inputs.control_request_i.readback_verify.signal Bits.vdd;
+      set inputs.control_request_i.readback_valid.signal Bits.vdd);
     schedule (time + 1) (fun () ->
-      set inputs.readback_valid_i.signal Bits.gnd;
-      set inputs.readback_verify_i.signal Bits.gnd));
-  pulse inputs.load_complete_valid_i.signal ~edge:21 Bits.vdd;
-  pulse inputs.run_valid_i.signal ~edge:22 Bits.vdd;
+      set inputs.control_request_i.readback_valid.signal Bits.gnd;
+      set inputs.control_request_i.readback_verify.signal Bits.gnd));
+  pulse inputs.control_request_i.load_complete_valid.signal ~edge:21 Bits.vdd;
+  pulse inputs.control_request_i.run_valid.signal ~edge:22 Bits.vdd;
   Option.iter external_time ~f:(fun time ->
     schedule time (fun () -> set inputs.pin_async_i.signal (bits 8 0x08)));
   let edges = 48 in

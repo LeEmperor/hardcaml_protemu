@@ -1,0 +1,21 @@
+; HL4c focused Cyclesim tests for Serial_phy (host_link_migration.md, HL4b1).
+;
+; The PHY is driven through its public ports and checked against hand-written cycle
+; expectations. The HL4a loader harness in the parent directory stays the acceptance
+; baseline for the composed loader; this suite does not replace it.
+
+(library
+ (name protemu_serial_phy_tests)
+ (wrapped false)
+ (modules serial_phy_testbench serial_phy_tests serial_phy_diagnostics_tests)
+ ; Keep the ppx_expect source-tree workaround described in test/common/dune.
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries core hardcaml hardcaml_protemu)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

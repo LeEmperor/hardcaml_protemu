@@ -1,0 +1,27 @@
+; HL4a serial Cyclesim harness for the unsplit Hardware_loader (host_link_migration.md).
+;
+; The real loader is driven through its serial pins with the host_link_wire codec, and a
+; test-only core stub answers its Control_port. This is the acceptance baseline for the
+; HL4b extractions. It supplements, and never replaces, the independent emitted-RTL peer
+; in tinytapeout/test/p3_loader_tb.v.
+
+(library
+ (name protemu_host_link_tests)
+ (wrapped false)
+ (modules
+  hardware_loader_testbench
+  hardware_loader_transaction_tests
+  hardware_loader_framing_tests
+  hardware_loader_cancellation_tests
+  hardware_loader_diagnostics_tests)
+ ; Keep the ppx_expect source-tree workaround described in test/common/dune.
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries core hardcaml hardcaml_protemu protemu_host_link_wire)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

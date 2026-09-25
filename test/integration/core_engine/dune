@@ -1,7 +1,11 @@
 (library
  (name protemu_core_engine_tests)
  (wrapped false)
- (modules core_engine_testbench core_engine_tests core_engine_timing_tests)
+ (modules
+  core_engine_testbench
+  core_engine_tests
+  core_engine_control_port_tests
+  core_engine_timing_tests)
  (inline_tests
   (flags
    (:standard -source-tree-root .)))

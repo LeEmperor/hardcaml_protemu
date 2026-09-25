@@ -842,7 +842,8 @@ before adoption (see [non-linear sequencing](#non-linear-sequencing-rtl-decouple
 The structural cleanup between P3.5 and the default P3.6 implementation sequence is
 tracked in [host_link_migration.md](host_link_migration.md), with
 [organization_migration.md](organization_migration.md) providing HL1's move procedure.
-HL0 is resolved at `9f6ed2d`; HL1–HL4 remain planned. The migration preserves P3.5's
+HL0–HL4 and the migration exit gate are accepted as of 2026-09-25. HL1 and HL2 are
+committed; HL3–HL4 are complete in the working tree, pending owner commit. The migration preserves P3.5's
 protocol and establishes a shared wire library, typed control port, and block-level
 verification. Its completion supports a backend for existing commands; it does not
 supply P3.6's queue transport or close the P3 exit gate.

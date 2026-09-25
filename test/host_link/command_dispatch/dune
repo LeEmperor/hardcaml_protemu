@@ -1,0 +1,29 @@
+; HL4c focused Cyclesim tests for Command_dispatch (host_link_migration.md, HL4b3).
+;
+; The dispatcher is driven through its public ports with explicit Frame_rx handoffs and
+; a test-only core stub behind its Control_port records, and checked against
+; hand-written offers, responses, and cycles. The HL4a loader harness in the parent
+; directory stays the acceptance baseline for the composed loader; this suite does not
+; replace it.
+
+(library
+ (name protemu_command_dispatch_tests)
+ (wrapped false)
+ (modules
+  command_dispatch_testbench
+  command_dispatch_command_tests
+  command_dispatch_response_tests
+  command_dispatch_wait_tests
+  command_dispatch_lifecycle_tests
+  command_dispatch_diagnostics_tests)
+ ; Keep the ppx_expect source-tree workaround described in test/common/dune.
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries core hardcaml hardcaml_protemu protemu_host_link_wire)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

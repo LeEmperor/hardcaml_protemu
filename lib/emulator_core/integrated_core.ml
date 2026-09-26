@@ -26,7 +26,7 @@ module I = struct
          keeps its flat port name, such as [load_start_valid_i]. *)
       control_request_i : 'a Control_port.Request.t [@rtlsuffix "_i"]
     ; step_valid_i : 'a
-    ; prog_mem_read_data_i : 'a [@bits Protocol_core.Config.program_width]
+    ; prog_mem_read_data_i : 'a [@bits Program_memory_controller.Config.program_width]
     ; pin_async_i : 'a [@bits Protemu_isa.Pins.count]
     ; occupied_i : 'a [@bits Protemu_isa.Pins.count]
     ; software_claim_valid_i : 'a
@@ -45,8 +45,8 @@ module O = struct
   type 'a t =
     { prog_mem_enable_o : 'a
     ; prog_mem_write_enable_o : 'a
-    ; prog_mem_address_o : 'a [@bits Protocol_core.Config.program_address_bits]
-    ; prog_mem_write_data_o : 'a [@bits Protocol_core.Config.program_width]
+    ; prog_mem_address_o : 'a [@bits Program_memory_controller.Config.program_address_bits]
+    ; prog_mem_write_data_o : 'a [@bits Program_memory_controller.Config.program_width]
     ; (* Shared control decisions; see [Control_port]. Flat names, such as
          [load_start_accepted_o]. [control_status] gathers the shared status below. *)
       control_decision_o : 'a Control_port.Decision.t [@rtlsuffix "_o"]
@@ -56,35 +56,35 @@ module O = struct
     ; engines_idle_o : 'a
     ; image_valid_o : 'a
     ; load_active_o : 'a
-    ; image_length_o : 'a [@bits Protocol_core.Config.request_address_bits]
-    ; words_written_o : 'a [@bits Protocol_core.Config.request_address_bits]
-    ; words_verified_o : 'a [@bits Protocol_core.Config.request_address_bits]
+    ; image_length_o : 'a [@bits Program_memory_controller.Config.request_address_bits]
+    ; words_written_o : 'a [@bits Program_memory_controller.Config.request_address_bits]
+    ; words_verified_o : 'a [@bits Program_memory_controller.Config.request_address_bits]
     ; verification_failed_o : 'a
     ; fetch_fault_o : 'a
     ; execution_active_o : 'a
     ; normal_halt_o : 'a
     ; execution_fault_o : 'a
-    ; fault_kind_o : 'a [@bits Control_execution.Fault.width]
-    ; fault_instruction_slot_o : 'a [@bits Control_execution.Config.pc_bits]
-    ; fault_address_o : 'a [@bits Control_execution.Config.pc_bits]
-    ; fault_reason_o : 'a [@bits Control_execution.Config.mechanism_reason_bits]
+    ; fault_kind_o : 'a [@bits Execution_unit.Fault.width]
+    ; fault_instruction_slot_o : 'a [@bits Execution_unit.Config.pc_bits]
+    ; fault_address_o : 'a [@bits Execution_unit.Config.pc_bits]
+    ; fault_reason_o : 'a [@bits Execution_unit.Config.mechanism_reason_bits]
     ; instruction_boundary_o : 'a
     ; retired_o : 'a
-    ; pc_o : 'a [@bits Control_execution.Config.pc_bits]
+    ; pc_o : 'a [@bits Execution_unit.Config.pc_bits]
     ; registers_o : 'a [@bits 128]
     ; zero_o : 'a
     ; carry_o : 'a
     ; negative_o : 'a
-    ; descriptor_o : 'a [@bits Control_execution.Config.descriptor_bits]
-    ; phase_o : 'a [@bits Control_execution.Phase.width]
-    ; fetch_cycles_o : 'a [@bits Control_execution.Config.count_bits]
-    ; execute_cycles_o : 'a [@bits Control_execution.Config.count_bits]
-    ; stall_cycles_o : 'a [@bits Control_execution.Config.count_bits]
-    ; instruction_count_o : 'a [@bits Control_execution.Config.count_bits]
-    ; extension_fetches_o : 'a [@bits Control_execution.Config.count_bits]
-    ; total_cycles_o : 'a [@bits Control_execution.Config.count_bits]
+    ; descriptor_o : 'a [@bits Execution_unit.Config.descriptor_bits]
+    ; phase_o : 'a [@bits Execution_unit.Phase.width]
+    ; fetch_cycles_o : 'a [@bits Execution_unit.Config.count_bits]
+    ; execute_cycles_o : 'a [@bits Execution_unit.Config.count_bits]
+    ; stall_cycles_o : 'a [@bits Execution_unit.Config.count_bits]
+    ; instruction_count_o : 'a [@bits Execution_unit.Config.count_bits]
+    ; extension_fetches_o : 'a [@bits Execution_unit.Config.count_bits]
+    ; total_cycles_o : 'a [@bits Execution_unit.Config.count_bits]
     ; mechanism_request_valid_o : 'a
-    ; mechanism_kind_o : 'a [@bits Control_execution.Config.mechanism_kind_bits]
+    ; mechanism_kind_o : 'a [@bits Execution_unit.Config.mechanism_kind_bits]
     ; mechanism_accepted_o : 'a
     ; mechanism_refused_o : 'a
     ; mechanism_completion_valid_o : 'a
@@ -158,7 +158,7 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   I_Regs.Of_always.apply_names ~prefix:"reg_" ~naming_op:(Scope.naming scope) r;
 
   let fetch_valid = wire 1 in
-  let fetch_address = wire Protocol_core.Config.request_address_bits in
+  let fetch_address = wire Program_memory_controller.Config.request_address_bits in
   let core_execution_halt = wire 1 in
   let execution_halt = wire 1 in
   let engine_idle = wire 1 in
@@ -167,19 +167,19 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   let execution_fault = wire 1 in
   let normal_halt = wire 1 in
   let mechanism_request = wire 1 in
-  let mechanism_kind = wire Control_execution.Config.mechanism_kind_bits in
+  let mechanism_kind = wire Execution_unit.Config.mechanism_kind_bits in
   let mechanism_arg0 = wire 16 in
   let mechanism_arg1 = wire 16 in
   let mechanism_arg2 = wire 16 in
   let mechanism_timeout = wire 1 in
-  let mechanism_descriptor = wire Control_execution.Config.descriptor_bits in
+  let mechanism_descriptor = wire Execution_unit.Config.descriptor_bits in
   let mechanism_accepted = wire 1 in
   let mechanism_refused = wire 1 in
-  let mechanism_refusal_reason = wire Control_execution.Config.mechanism_reason_bits in
+  let mechanism_refusal_reason = wire Execution_unit.Config.mechanism_reason_bits in
   let mechanism_completion = wire 1 in
   let mechanism_result = wire 16 in
   let mechanism_completion_fault = wire 1 in
-  let mechanism_completion_reason = wire Control_execution.Config.mechanism_reason_bits in
+  let mechanism_completion_reason = wire Execution_unit.Config.mechanism_reason_bits in
 
   let abort_offer = request.abort_valid &: i.en_i &: ~:(i.reset_i) in
   let stop_offer = request.stop_valid &: i.en_i &: ~:(i.reset_i) &: ~:abort_offer in
@@ -198,9 +198,9 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   in
   let access_run = wire 1 in
   let access =
-    Protocol_core.create
+    Program_memory_controller.create
       (Scope.sub_scope scope "access")
-      { Protocol_core.I.clock_i = i.clock_i
+      { Program_memory_controller.I.clock_i = i.clock_i
       ; reset_i = i.reset_i
       ; en_i = i.en_i
       ; engines_idle_i = engine_idle
@@ -240,9 +240,9 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   assign execution_halt (core_execution_halt |: abort_accepted |: pause);
 
   let execution =
-    Control_execution.create
+    Execution_unit.create
       (Scope.sub_scope scope "execution")
-      { Control_execution.I.clock_i = i.clock_i
+      { Execution_unit.I.clock_i = i.clock_i
       ; reset_i = i.reset_i
       ; en_i = i.en_i
       ; run_accepted_i = run_accepted

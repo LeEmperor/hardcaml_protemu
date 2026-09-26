@@ -1,6 +1,6 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
-(* Module: "protocol_core.ml" *)
+(* Module: "program_memory_controller.ml" *)
 (* Program-store consumer and the P3.2 fetch boundary.
 
    The memory remains outside this module. This block drives one synchronous 1RW port,

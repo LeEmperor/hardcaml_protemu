@@ -8,14 +8,14 @@
    [Simulator_backend] (directly in Cyclesim) are two transports over it. The records are
    direction-neutral; a module embeds them with its own [_i] or [_o] suffix, so the fields
    keep the port names they had before the records existed. This module depends only on
-   the width definitions of [Protocol_core], [Control_execution], and [Protemu_isa], never
+   the width definitions of [Program_memory_controller], [Control_execution], and [Protemu_isa], never
    on a consumer.
 
    Step, pin claim/release, queues, pads, and program RAM are not part of this port. They
    remain separate ports of [Integrated_core], and a transport that does not use them ties
    them off.
 
-   Temporal contract. Every statement is derived from [Integrated_core], [Protocol_core],
+   Temporal contract. Every statement is derived from [Integrated_core], [Program_memory_controller],
    and both producers as they exist, not from a cleaner handshake.
 
    1. Offers. Each rising edge of the core clock with a [*_valid] field high is one offer
@@ -94,21 +94,21 @@ open! Hardcaml
 open! Signal
 
 (* The shared request subset. A field is a valid bit or an operand of the request named by
-   its prefix. Addresses and lengths keep [Protocol_core]'s request width, one bit wider
+   its prefix. Addresses and lengths keep [Program_memory_controller]'s request width, one bit wider
    than the physical port, so the core checks bounds before narrowing.
 *)
 module Request = struct
   type 'a t =
     { load_start_valid : 'a
-    ; load_length : 'a [@bits Protocol_core.Config.request_address_bits]
+    ; load_length : 'a [@bits Program_memory_controller.Config.request_address_bits]
     ; load_write_valid : 'a
-    ; load_address : 'a [@bits Protocol_core.Config.request_address_bits]
-    ; load_data : 'a [@bits Protocol_core.Config.program_width]
+    ; load_address : 'a [@bits Program_memory_controller.Config.request_address_bits]
+    ; load_data : 'a [@bits Program_memory_controller.Config.program_width]
     ; load_complete_valid : 'a
     ; readback_valid : 'a
-    ; readback_address : 'a [@bits Protocol_core.Config.request_address_bits]
+    ; readback_address : 'a [@bits Program_memory_controller.Config.request_address_bits]
     ; readback_verify : 'a
-    ; readback_expected : 'a [@bits Protocol_core.Config.program_width]
+    ; readback_expected : 'a [@bits Program_memory_controller.Config.program_width]
     ; run_valid : 'a
     ; stop_valid : 'a
     ; abort_valid : 'a
@@ -130,7 +130,7 @@ module Decision = struct
     ; readback_accepted : 'a
     ; readback_rejected : 'a
     ; readback_response_valid : 'a
-    ; readback_response_data : 'a [@bits Protocol_core.Config.program_width]
+    ; readback_response_data : 'a [@bits Program_memory_controller.Config.program_width]
     ; readback_response_match : 'a
     ; run_accepted : 'a
     ; run_rejected : 'a
@@ -152,17 +152,17 @@ module Status = struct
     ; engines_idle : 'a
     ; image_valid : 'a
     ; load_active : 'a
-    ; image_length : 'a [@bits Protocol_core.Config.request_address_bits]
-    ; words_written : 'a [@bits Protocol_core.Config.request_address_bits]
-    ; words_verified : 'a [@bits Protocol_core.Config.request_address_bits]
+    ; image_length : 'a [@bits Program_memory_controller.Config.request_address_bits]
+    ; words_written : 'a [@bits Program_memory_controller.Config.request_address_bits]
+    ; words_verified : 'a [@bits Program_memory_controller.Config.request_address_bits]
     ; verification_failed : 'a
     ; fetch_fault : 'a
     ; execution_active : 'a
     ; normal_halt : 'a
     ; execution_fault : 'a
-    ; fault_kind : 'a [@bits Control_execution.Fault.width]
-    ; pc : 'a [@bits Control_execution.Config.pc_bits]
-    ; phase : 'a [@bits Control_execution.Phase.width]
+    ; fault_kind : 'a [@bits Execution_unit.Fault.width]
+    ; pc : 'a [@bits Execution_unit.Config.pc_bits]
+    ; phase : 'a [@bits Execution_unit.Phase.width]
     ; pin_oe : 'a [@bits Protemu_isa.Pins.count]
     ; software_claim : 'a [@bits Protemu_isa.Pins.count]
     ; engine_claim : 'a [@bits Protemu_isa.Pins.count]

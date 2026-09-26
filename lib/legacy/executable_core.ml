@@ -19,26 +19,26 @@ module I = struct
     ; en_i : 'a
     ; engines_idle_i : 'a
     ; load_start_valid_i : 'a
-    ; load_length_i : 'a [@bits Protocol_core.Config.request_address_bits]
+    ; load_length_i : 'a [@bits Program_memory_controller.Config.request_address_bits]
     ; load_write_valid_i : 'a
-    ; load_address_i : 'a [@bits Protocol_core.Config.request_address_bits]
-    ; load_data_i : 'a [@bits Protocol_core.Config.program_width]
+    ; load_address_i : 'a [@bits Program_memory_controller.Config.request_address_bits]
+    ; load_data_i : 'a [@bits Program_memory_controller.Config.program_width]
     ; load_complete_valid_i : 'a
     ; readback_valid_i : 'a
-    ; readback_address_i : 'a [@bits Protocol_core.Config.request_address_bits]
+    ; readback_address_i : 'a [@bits Program_memory_controller.Config.request_address_bits]
     ; readback_verify_i : 'a
-    ; readback_expected_i : 'a [@bits Protocol_core.Config.program_width]
+    ; readback_expected_i : 'a [@bits Program_memory_controller.Config.program_width]
     ; run_valid_i : 'a
-    ; prog_mem_read_data_i : 'a [@bits Protocol_core.Config.program_width]
+    ; prog_mem_read_data_i : 'a [@bits Program_memory_controller.Config.program_width]
     ; mechanism_accepted_i : 'a
     ; mechanism_refused_i : 'a
     ; mechanism_refusal_reason_i : 'a
-         [@bits Control_execution.Config.mechanism_reason_bits]
+         [@bits Execution_unit.Config.mechanism_reason_bits]
     ; mechanism_completion_valid_i : 'a
     ; mechanism_completion_result_i : 'a [@bits 16]
     ; mechanism_completion_fault_i : 'a
     ; mechanism_completion_reason_i : 'a
-         [@bits Control_execution.Config.mechanism_reason_bits]
+         [@bits Execution_unit.Config.mechanism_reason_bits]
     }
   [@@deriving hardcaml]
 end
@@ -47,8 +47,8 @@ module O = struct
   type 'a t =
     { prog_mem_enable_o : 'a
     ; prog_mem_write_enable_o : 'a
-    ; prog_mem_address_o : 'a [@bits Protocol_core.Config.program_address_bits]
-    ; prog_mem_write_data_o : 'a [@bits Protocol_core.Config.program_width]
+    ; prog_mem_address_o : 'a [@bits Program_memory_controller.Config.program_address_bits]
+    ; prog_mem_write_data_o : 'a [@bits Program_memory_controller.Config.program_width]
     ; load_start_accepted_o : 'a
     ; load_start_rejected_o : 'a
     ; load_write_accepted_o : 'a
@@ -60,62 +60,62 @@ module O = struct
     ; run_accepted_o : 'a
     ; run_rejected_o : 'a
     ; readback_response_valid_o : 'a
-    ; readback_response_data_o : 'a [@bits Protocol_core.Config.program_width]
+    ; readback_response_data_o : 'a [@bits Program_memory_controller.Config.program_width]
     ; readback_response_match_o : 'a
     ; fetch_completion_valid_o : 'a
-    ; fetch_completion_data_o : 'a [@bits Protocol_core.Config.program_width]
+    ; fetch_completion_data_o : 'a [@bits Program_memory_controller.Config.program_width]
     ; fetch_response_valid_o : 'a
-    ; fetch_response_data_o : 'a [@bits Protocol_core.Config.program_width]
+    ; fetch_response_data_o : 'a [@bits Program_memory_controller.Config.program_width]
     ; halted_o : 'a
     ; image_valid_o : 'a
     ; load_active_o : 'a
-    ; image_length_o : 'a [@bits Protocol_core.Config.request_address_bits]
-    ; words_written_o : 'a [@bits Protocol_core.Config.request_address_bits]
-    ; words_verified_o : 'a [@bits Protocol_core.Config.request_address_bits]
+    ; image_length_o : 'a [@bits Program_memory_controller.Config.request_address_bits]
+    ; words_written_o : 'a [@bits Program_memory_controller.Config.request_address_bits]
+    ; words_verified_o : 'a [@bits Program_memory_controller.Config.request_address_bits]
     ; verification_failed_o : 'a
     ; fetch_fault_event_o : 'a
     ; fetch_fault_o : 'a
     ; mechanism_request_valid_o : 'a
-    ; mechanism_kind_o : 'a [@bits Control_execution.Config.mechanism_kind_bits]
+    ; mechanism_kind_o : 'a [@bits Execution_unit.Config.mechanism_kind_bits]
     ; mechanism_arg0_o : 'a [@bits 16]
     ; mechanism_arg1_o : 'a [@bits 16]
     ; mechanism_arg2_o : 'a [@bits 16]
     ; mechanism_timeout_enable_o : 'a
-    ; mechanism_descriptor_o : 'a [@bits Control_execution.Config.descriptor_bits]
+    ; mechanism_descriptor_o : 'a [@bits Execution_unit.Config.descriptor_bits]
     ; execution_active_o : 'a
     ; normal_halt_o : 'a
     ; execution_fault_o : 'a
-    ; fault_kind_o : 'a [@bits Control_execution.Fault.width]
-    ; fault_instruction_slot_o : 'a [@bits Control_execution.Config.pc_bits]
-    ; fault_address_o : 'a [@bits Control_execution.Config.pc_bits]
-    ; fault_reason_o : 'a [@bits Control_execution.Config.mechanism_reason_bits]
+    ; fault_kind_o : 'a [@bits Execution_unit.Fault.width]
+    ; fault_instruction_slot_o : 'a [@bits Execution_unit.Config.pc_bits]
+    ; fault_address_o : 'a [@bits Execution_unit.Config.pc_bits]
+    ; fault_reason_o : 'a [@bits Execution_unit.Config.mechanism_reason_bits]
     ; instruction_boundary_o : 'a
     ; retired_o : 'a
-    ; pc_o : 'a [@bits Control_execution.Config.pc_bits]
+    ; pc_o : 'a [@bits Execution_unit.Config.pc_bits]
     ; registers_o : 'a [@bits 128]
     ; zero_o : 'a
     ; carry_o : 'a
     ; negative_o : 'a
-    ; descriptor_o : 'a [@bits Control_execution.Config.descriptor_bits]
-    ; phase_o : 'a [@bits Control_execution.Phase.width]
-    ; fetch_cycles_o : 'a [@bits Control_execution.Config.count_bits]
-    ; execute_cycles_o : 'a [@bits Control_execution.Config.count_bits]
-    ; stall_cycles_o : 'a [@bits Control_execution.Config.count_bits]
-    ; instruction_count_o : 'a [@bits Control_execution.Config.count_bits]
-    ; extension_fetches_o : 'a [@bits Control_execution.Config.count_bits]
-    ; total_cycles_o : 'a [@bits Control_execution.Config.count_bits]
+    ; descriptor_o : 'a [@bits Execution_unit.Config.descriptor_bits]
+    ; phase_o : 'a [@bits Execution_unit.Phase.width]
+    ; fetch_cycles_o : 'a [@bits Execution_unit.Config.count_bits]
+    ; execute_cycles_o : 'a [@bits Execution_unit.Config.count_bits]
+    ; stall_cycles_o : 'a [@bits Execution_unit.Config.count_bits]
+    ; instruction_count_o : 'a [@bits Execution_unit.Config.count_bits]
+    ; extension_fetches_o : 'a [@bits Execution_unit.Config.count_bits]
+    ; total_cycles_o : 'a [@bits Execution_unit.Config.count_bits]
     }
   [@@deriving hardcaml]
 end
 
 let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   let fetch_valid = wire 1 in
-  let fetch_address = wire Protocol_core.Config.request_address_bits in
+  let fetch_address = wire Program_memory_controller.Config.request_address_bits in
   let execution_halt = wire 1 in
   let access =
-    Protocol_core.create
+    Program_memory_controller.create
       (Scope.sub_scope scope "access")
-      { Protocol_core.I.clock_i = i.clock_i
+      { Program_memory_controller.I.clock_i = i.clock_i
       ; reset_i = i.reset_i
       ; en_i = i.en_i
       ; engines_idle_i = i.engines_idle_i
@@ -137,9 +137,9 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
       }
   in
   let execution =
-    Control_execution.create
+    Execution_unit.create
       (Scope.sub_scope scope "execution")
-      { Control_execution.I.clock_i = i.clock_i
+      { Execution_unit.I.clock_i = i.clock_i
       ; reset_i = i.reset_i
       ; en_i = i.en_i
       ; run_accepted_i = access.run_accepted_o

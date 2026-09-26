@@ -51,31 +51,31 @@ end
    mapping, and [check_wire_encodings] refuses to elaborate if the two diverge; a
    divergence needs an explicit translation here, never a renumbered wire value.
 
-   Careful: [Control_execution.Fault] and [Phase] are plain integers with no enumeration,
+   Careful: [Execution_unit.Fault] and [Phase] are plain integers with no enumeration,
    so the check covers every wire value but cannot see a new internal value. Adding one
    there is a P3 protocol change that must add its [Wire] value first.
 *)
 let execution_fault : Wire.Fault_kind.t -> int = function
-  | No_fault -> Control_execution.Fault.none
-  | Invalid_base -> Control_execution.Fault.invalid_base
-  | Invalid_extension -> Control_execution.Fault.invalid_extension
-  | Fetch_bounds -> Control_execution.Fault.fetch_bounds
-  | Truncated_extension -> Control_execution.Fault.truncated_extension
-  | Target_unrepresentable -> Control_execution.Fault.target_unrepresentable
-  | Mechanism_refused -> Control_execution.Fault.mechanism_refused
-  | Mechanism_completion -> Control_execution.Fault.mechanism_completion
-  | Unsolicited_completion -> Control_execution.Fault.unsolicited_completion
-  | Mechanism_protocol -> Control_execution.Fault.mechanism_protocol
+  | No_fault -> Execution_unit.Fault.none
+  | Invalid_base -> Execution_unit.Fault.invalid_base
+  | Invalid_extension -> Execution_unit.Fault.invalid_extension
+  | Fetch_bounds -> Execution_unit.Fault.fetch_bounds
+  | Truncated_extension -> Execution_unit.Fault.truncated_extension
+  | Target_unrepresentable -> Execution_unit.Fault.target_unrepresentable
+  | Mechanism_refused -> Execution_unit.Fault.mechanism_refused
+  | Mechanism_completion -> Execution_unit.Fault.mechanism_completion
+  | Unsolicited_completion -> Execution_unit.Fault.unsolicited_completion
+  | Mechanism_protocol -> Execution_unit.Fault.mechanism_protocol
 ;;
 
 let execution_phase : Wire.Phase.t -> int = function
-  | Halted -> Control_execution.Phase.halted
-  | Fetch -> Control_execution.Phase.fetch
-  | Base_wait -> Control_execution.Phase.base_wait
-  | Extension_wait -> Control_execution.Phase.extension_wait
-  | Mechanism_offer -> Control_execution.Phase.mechanism_offer
-  | Mechanism_wait -> Control_execution.Phase.mechanism_wait
-  | Fault -> Control_execution.Phase.fault
+  | Halted -> Execution_unit.Phase.halted
+  | Fetch -> Execution_unit.Phase.fetch
+  | Base_wait -> Execution_unit.Phase.base_wait
+  | Extension_wait -> Execution_unit.Phase.extension_wait
+  | Mechanism_offer -> Execution_unit.Phase.mechanism_offer
+  | Mechanism_wait -> Execution_unit.Phase.mechanism_wait
+  | Fault -> Execution_unit.Phase.fault
 ;;
 
 (* Elaboration-time consistency between [Wire] and the fixed choices in [create]: the
@@ -101,8 +101,8 @@ let check_wire_encodings () =
       (sprintf "phase %d differs from the execution unit" (Wire.Phase.to_int phase)));
   List.iteri Wire.Status.Flag.all ~f:(fun index flag ->
     require (Wire.Status.Flag.bit flag = index) "STATUS flags are not listed in bit order");
-  require (Control_execution.Fault.width <= 8) "fault kind is wider than its STATUS byte";
-  require (Control_execution.Phase.width <= 8) "phase is wider than its STATUS byte";
+  require (Execution_unit.Fault.width <= 8) "fault kind is wider than its STATUS byte";
+  require (Execution_unit.Phase.width <= 8) "phase is wider than its STATUS byte";
   require (Config.max_response_bytes < 1 lsl 5) "response length output too narrow";
   Wire_layout.check_request_payload ~owner:"Command_dispatch";
   check_layout
@@ -277,9 +277,9 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   let payload_word    = payload_u16 Wire.Request.Payload_offset.word in
   let address_in_range = select payload_address ~high:15 ~low:8 ==:. 0 in
   let length_in_range =
-    (payload_address >:. 0) &: (payload_address <=:. Protocol_core.Config.program_depth)
+    (payload_address >:. 0) &: (payload_address <=:. Program_memory_controller.Config.program_depth)
   in
-  let request_address = sel_bottom payload_address ~width:Protocol_core.Config.request_address_bits in
+  let request_address = sel_bottom payload_address ~width:Program_memory_controller.Config.request_address_bits in
 
   let command_is command = request_command ==:. Wire.Command.to_int command in
   let payload_length_is value = payload_length ==:. value in
@@ -336,10 +336,10 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
     ; byte Config.memory_layout
     ; byte (low_byte (Wire.Capability.mask Config.capabilities))
     ; byte (high_byte (Wire.Capability.mask Config.capabilities))
-    ; byte (low_byte Protocol_core.Config.program_width)
-    ; byte (high_byte Protocol_core.Config.program_width)
-    ; byte (low_byte Protocol_core.Config.program_depth)
-    ; byte (high_byte Protocol_core.Config.program_depth)
+    ; byte (low_byte Program_memory_controller.Config.program_width)
+    ; byte (high_byte Program_memory_controller.Config.program_width)
+    ; byte (low_byte Program_memory_controller.Config.program_depth)
+    ; byte (high_byte Program_memory_controller.Config.program_depth)
     ; byte (low_byte Wire.Request.max_payload_length)
     ; byte (high_byte Wire.Request.max_payload_length)
     ; byte Protemu_isa.Pins.count

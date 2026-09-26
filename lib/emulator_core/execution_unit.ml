@@ -1,6 +1,6 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
-(* Module: "control_execution.ml" *)
+(* Module: "execution_unit.ml" *)
 (* Minimal P3.2 execution client for the P1.5 ISA.
 
    This block owns architectural state but not program-memory validity or bounds. It uses
@@ -94,7 +94,7 @@ end
 module O = struct
   type 'a t =
     { fetch_valid_o : 'a
-    ; fetch_address_o : 'a [@bits Protocol_core.Config.request_address_bits]
+    ; fetch_address_o : 'a [@bits Program_memory_controller.Config.request_address_bits]
     ; execution_halt_o : 'a
     ; mechanism_request_valid_o : 'a
     ; mechanism_kind_o : 'a [@bits Config.mechanism_kind_bits]
@@ -563,6 +563,8 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
             cmp_carry
             (mux2 (opcode_is Cmp_imm.opcode) cmp_imm_carry shift_carry)))
   in
+
+  (* absolutely gnarly and unreadable mux chain holy *)
   let local_next_pc =
     mux2
       (opcode_is Jump.opcode)

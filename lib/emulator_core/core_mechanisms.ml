@@ -14,7 +14,7 @@ open! Signal
 open! Protemu_isa
 
 module Reason = struct
-  let width = Control_execution.Config.mechanism_reason_bits
+  let width = Execution_unit.Config.mechanism_reason_bits
   let none = 0
   let unavailable = 1
   let invalid_parameter = 2
@@ -43,12 +43,12 @@ module I = struct
     ; pin_async_i : 'a [@bits Pins.count]
     ; occupied_i : 'a [@bits Pins.count]
     ; mechanism_request_valid_i : 'a
-    ; mechanism_kind_i : 'a [@bits Control_execution.Config.mechanism_kind_bits]
+    ; mechanism_kind_i : 'a [@bits Execution_unit.Config.mechanism_kind_bits]
     ; mechanism_arg0_i : 'a [@bits Instruction.Register.width]
     ; mechanism_arg1_i : 'a [@bits Instruction.Register.width]
     ; mechanism_arg2_i : 'a [@bits Instruction.Register.width]
     ; mechanism_timeout_enable_i : 'a
-    ; mechanism_descriptor_i : 'a [@bits Control_execution.Config.descriptor_bits]
+    ; mechanism_descriptor_i : 'a [@bits Execution_unit.Config.descriptor_bits]
     ; software_claim_valid_i : 'a
     ; software_claim_mask_i : 'a [@bits Pins.count]
     ; software_release_valid_i : 'a
@@ -145,25 +145,25 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
 
   let request = i.mechanism_request_valid_i &: i.en_i &: ~:(i.reset_i) &: ~:(i.abort_i) in
   let kind value = request &: is_kind i.mechanism_kind_i value in
-  let read_pins = kind Control_execution.Mechanism_kind.read_pins in
-  let read_status = kind Control_execution.Mechanism_kind.read_status in
-  let ack_status = kind Control_execution.Mechanism_kind.ack_status in
-  let branch_pin = kind Control_execution.Mechanism_kind.branch_pin in
+  let read_pins = kind Execution_unit.Mechanism_kind.read_pins in
+  let read_status = kind Execution_unit.Mechanism_kind.read_status in
+  let ack_status = kind Execution_unit.Mechanism_kind.ack_status in
+  let branch_pin = kind Execution_unit.Mechanism_kind.branch_pin in
   let write_pins =
-    kind Control_execution.Mechanism_kind.write_pins_imm
-    |: kind Control_execution.Mechanism_kind.write_pins_reg
+    kind Execution_unit.Mechanism_kind.write_pins_imm
+    |: kind Execution_unit.Mechanism_kind.write_pins_reg
   in
   let wait_cycles =
-    kind Control_execution.Mechanism_kind.wait_cycles_imm
-    |: kind Control_execution.Mechanism_kind.wait_cycles_reg
+    kind Execution_unit.Mechanism_kind.wait_cycles_imm
+    |: kind Execution_unit.Mechanism_kind.wait_cycles_reg
   in
-  let wait_level = kind Control_execution.Mechanism_kind.wait_level in
-  let wait_edge = kind Control_execution.Mechanism_kind.wait_edge in
-  let start_periodic = kind Control_execution.Mechanism_kind.start_periodic in
-  let stop_periodic = kind Control_execution.Mechanism_kind.stop_periodic in
-  let issue_transfer = kind Control_execution.Mechanism_kind.issue_transfer in
-  let fifo_push_request = kind Control_execution.Mechanism_kind.fifo_push in
-  let fifo_pop_request = kind Control_execution.Mechanism_kind.fifo_pop in
+  let wait_level = kind Execution_unit.Mechanism_kind.wait_level in
+  let wait_edge = kind Execution_unit.Mechanism_kind.wait_edge in
+  let start_periodic = kind Execution_unit.Mechanism_kind.start_periodic in
+  let stop_periodic = kind Execution_unit.Mechanism_kind.stop_periodic in
+  let issue_transfer = kind Execution_unit.Mechanism_kind.issue_transfer in
+  let fifo_push_request = kind Execution_unit.Mechanism_kind.fifo_push in
+  let fifo_pop_request = kind Execution_unit.Mechanism_kind.fifo_pop in
 
   let wait_parameter_valid =
     (~:wait_cycles |: (i.mechanism_arg0_i <>:. 0))

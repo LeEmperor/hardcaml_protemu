@@ -131,12 +131,12 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
      [response_pending] after a coincident publication sets it, and disable is last.
   *)
   compile
-    [ r.response_pending <-- r.response_pending.value
-    ; r.response_active <-- r.response_active.value
-    ; r.response_store <-- r.response_store.value
-    ; r.response_shift <-- r.response_shift.value
-    ; r.response_length <-- r.response_length.value
-    ; r.response_bits <-- r.response_bits.value
+    [ r.response_pending  <-- r.response_pending.value
+    ; r.response_active   <-- r.response_active.value
+    ; r.response_store    <-- r.response_store.value
+    ; r.response_shift    <-- r.response_shift.value
+    ; r.response_length   <-- r.response_length.value
+    ; r.response_bits     <-- r.response_bits.value
 
     ; (* A handoff error, an immediate response, or a completion, in the cycle
          [Command_dispatch] decides it. Not gated by enable: disable below still wins for

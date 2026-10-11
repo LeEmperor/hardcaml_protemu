@@ -1,6 +1,6 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
-(* Module: "core_mechanisms.ml" *)
+(* Module: "primitive_dispatch.ml" *)
 (* P3.3 adapter from the retained execution command to the P2 mechanisms.
 
    One shared input front end supplies every snapshot and observed edge. Timing waits and

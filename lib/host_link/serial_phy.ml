@@ -16,7 +16,7 @@
 
    This block interprets no frame. [Frame_rx] owns request arming and framing,
    [Command_dispatch] dispatch, and [Frame_tx] response arming, the retained response, and
-   commit; [Hardware_loader] composes them. docs/host_link_hl4b1_record.md records the
+   commit; [Host_link] composes them. docs/host_link_hl4b1_record.md records the
    timing contract.
 *)
 

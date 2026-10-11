@@ -1,8 +1,28 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
-(* Module: "Protemu_top.ml" *)
+(* Module: "protemu_top.ml" *)
 (*
-  Owning toplevel of the protocol emulator system with teh emulator core; Has an external program-memory port that the owning chip_top instantiates connected to this item.
+  Owning toplevel of the protocol emulator system with the emulator core; Has an external program-memory port that the owning chip_top instantiates connected to this item.
+
+  Composition only; it holds no state, decodes no frames, and owns no RAM.
+
+  Logical interfaces:
+  - Serial host link: [serial_select_n_i], [serial_clock_i], [serial_data_i] in;
+    [serial_data_o], [serial_ready_o] out. Passed straight to [Host_link].
+  - Program memory: the external latency-one 1RW port, [prog_mem_*]. [Emulator_core]
+    drives the request side and consumes [prog_mem_read_data_i]; the package top
+    supplies the storage resource at this boundary.
+  - Protocol pins: [pin_async_i], [occupied_i] in; [pins_o], [pin_oe_o] out, owned by
+    [Emulator_core]'s mechanisms.
+  - Internal only: [Host_link] and [Emulator_core] connect through the three
+    [Control_port] records (request, decision, status).
+
+  Unused tie-offs on [Emulator_core]: single-step, software pin claim/release, and the
+  TX/RX byte queues are inactive (valid low, masks and data zero, [tx_ready_i] low);
+  [transfer_rx_ready_i] is held high (always ready).
+
+  Emitted instance names stay "core" and "loader" (pre-rename compatibility surface; see
+  docs/architecture_migration.md).
 *)
 
 open! Core
@@ -39,16 +59,21 @@ module O = struct
   [@@deriving hardcaml]
 end
 
-let create (scope : Scope.t) (i : _ I.t) : _ O.t =
+let create 
+  (scope : Scope.t) 
+  (i : _ I.t) 
+  : _ O.t 
+  =
 
-  (* The loader's requests are wired back into the core that decides them. *)
+  (* Forward-declare request items in a named bundle for use *)
+  (* Create a named Signal.wire bundle out of the shape of Control_port.Request *)
   let request = Control_port.Request.Of_signal.wires () in
 
   (* this might need renaming as well? *)
   let core =
-    Integrated_core.create
+    Emulator_core.create
       (Scope.sub_scope scope "core")
-      { Integrated_core.I.clock_i = i.clock_i
+      { Emulator_core.I.clock_i = i.clock_i
       ; reset_i = i.reset_i
       ; en_i = i.enable_i
       ; control_request_i = request
@@ -67,25 +92,26 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
       }
   in
 
-  let loader =
-    Hardware_loader.create
+  let host_link =
+    Host_link.create
       (Scope.sub_scope scope "loader")
-      { Hardware_loader.I.clock_i = i.clock_i
+      { Host_link.I.clock_i = i.clock_i
       ; reset_i = i.reset_i
       ; enable_i = i.enable_i
       ; serial_select_n_i = i.serial_select_n_i
       ; serial_clock_i = i.serial_clock_i
       ; serial_data_i = i.serial_data_i
       ; control_decision_i = core.control_decision_o
-      ; control_status_i = Integrated_core.control_status core
+      ; control_status_i = Emulator_core.control_status core
       }
   in
 
-  Control_port.Request.Of_signal.assign request loader.control_request_o;
+  (* Knot-tying for forward declares *)
+  Control_port.Request.Of_signal.assign request host_link.control_request_o;
 
   { O.
-    serial_data_o           = loader.serial_data_o
-  ; serial_ready_o          = loader.serial_ready_o
+    serial_data_o           = host_link.serial_data_o
+  ; serial_ready_o          = host_link.serial_ready_o
   ; prog_mem_enable_o       = core.prog_mem_enable_o
   ; prog_mem_write_enable_o = core.prog_mem_write_enable_o
   ; prog_mem_address_o      = core.prog_mem_address_o

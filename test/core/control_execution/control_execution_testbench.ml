@@ -182,7 +182,7 @@ let create () =
   let sim = Sim.create (Executable_core.create (Scope.create ~flatten_design:true ())) in
   let t =
     { sim
-    ; words = Array.create ~len:Protocol_core.Config.program_depth None
+    ; words = Array.create ~len:Program_memory_controller.Config.program_depth None
     ; read_data = 0xa5a5
     ; enabled = true
     ; edge = 0

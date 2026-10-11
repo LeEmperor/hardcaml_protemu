@@ -28,7 +28,7 @@ module I = struct
 
     (* This is our status bus; In theory we include a pin that does some sort of scan chain thing for DFT? *)
     ; control_status_i : 'a Control_port.Status.t [@rtlsuffix "_i"]
-  } [@@deriving hardcaml]
+  } [@@deriving hardcaml ~rtlmangle:false]
 end
 
 module O = struct
@@ -45,8 +45,10 @@ module O = struct
 
     (* Main busy designator. A proper CSR block might be in order; we'll see. *)
     ; busy_o              : 'a
-    } [@@deriving hardcaml]
+    } [@@deriving hardcaml ~rtlmangle:false]
 end
+
+[@@@ocamlformat "disable"]
 
 let create 
   (scope : Scope.t) 
@@ -95,9 +97,9 @@ let create
       }
   in
 
-  let dispatch_response_publish = Signal.wire 1 in
-  let dispatch_response_frame   = Signal.wire 1 in 
-  let dispatch_response_length  = Signal.wire 1 in 
+  let dispatch_response_publish = Signal.wire Frame_tx.I.port_widths.response_publish_i in
+  let dispatch_response_frame   = Signal.wire Frame_tx.I.port_widths.response_frame_i in
+  let dispatch_response_length  = Signal.wire Frame_tx.I.port_widths.response_length_i in
 
   (* The published response, retained until a read of it is committed. *)
   let tx =

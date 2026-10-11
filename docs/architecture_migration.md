@@ -1,7 +1,8 @@
 # Architecture migration
 
-Status: agreed direction, documented 2026-09-25; implementation not started under
-this plan. All AM work items below are open. The repository owner selects and prompts
+Status: agreed direction, documented 2026-09-25. AM1/AM2 renames delivered unstaged
+2026-09-26 and awaiting owner review (see Implementation records); all AM work items below
+remain open until accepted. The repository owner selects and prompts
 implementation agents; this document is their handoff, not evidence that source names,
 interfaces, or layouts have changed.
 
@@ -30,9 +31,20 @@ Record the starting revision and all relevant dirty/untracked inputs. Preserve u
 working-tree changes. Only the repository owner commits; implementation agents return
 unstaged changes and evidence unless the owner explicitly requests otherwise.
 
-Every `dune build`, `dune runtest`, and generation/verification `dune exec` invocation
+Every `dune build`, `dune runtest`, and `dune exec` invocation
 must include `-j 5`. Run them sequentially; concurrent heavy builds have caused server
 failures. A tool that could not run is recorded as unavailable/not run, never as passing.
+
+Every implementation-agent handoff must include an end-of-task documentation step. After
+implementation and verification, update this document's Implementation records with a dated
+entry for the assigned AM item: starting source/diff, delivered changes, exact commands and
+results, evidence locations, deviations, and remaining work. Update the entry even when the
+work is partial or blocked, labelling that status accurately. The final response must point
+to the entry. Record implementation completion separately from owner/planning acceptance;
+do not check acceptance boxes merely because implementation was delivered. This per-item
+record is required at the end of each handoff, not deferred to AM6's broader active-doc sweep.
+Future agent prompts must repeat this requirement alongside the no-commits and sequential
+`-j 5` execution rules. No AI agent may create or amend git commits.
 
 ## Accepted decisions
 
@@ -218,6 +230,18 @@ are initially unchecked. Do not mark an item complete on documentation or intend
 Exit: a reproducible baseline and explicit old-to-new map. Existing failures are identified
 before renames, not silently attributed to them.
 
+Retrospective closeout (owner direction, 2026-09-26): AM1/AM2 implementation has already
+proceeded without a separate AM0 capture. Recover available historical evidence from
+identified revisions and retained artifacts, distinguishing original results from later
+reconstructions. Record the scope of `37c85e5` as a comparison baseline, including any
+architectural edits already present. Do not represent a reconstructed committed tree as
+the exact original dirty working tree. Identify unrecoverable pre-change inputs/results
+explicitly; the owner accepts that a complete original baseline may no longer be available.
+Complete the consumer/compatibility inventory and establish an identified, reproducible
+post-AM1/AM2 source-and-artifact baseline for subsequent stages. Closeout must list the
+historical gaps and their consequences for comparison; this accommodation does not turn
+missing evidence into a pass or mark AM0 complete by itself.
+
 ### AM1 — Core and memory-controller naming
 
 Prerequisite: AM0.
@@ -338,6 +362,51 @@ checks. No checks in this section have been run merely by creating this plan.
 
 ## Implementation records
 
-None yet under AM0–AM6. Add dated records naming the work item, source/diff, delivered
-changes, exact checks, assumptions, deviations, and remaining work. Historical HL evidence
-is baseline context, not a fresh result for this migration.
+Add dated records naming the work item, source/diff, delivered changes, exact checks,
+assumptions, deviations, and remaining work. Historical HL evidence is baseline context,
+not a fresh result for this migration.
+
+### 2026-09-26 — AM1/AM2 rename completion (unstaged, awaiting owner review)
+
+Source: `08496b7` plus the owner's uncommitted AM1/AM2 edits; RTL baseline from `37c85e5`
+(last revision before renamed modules were consumed; `host_link.ml` existed but was unused).
+AM0 was not run as a separate item; only the generated-RTL baseline below was recorded.
+
+Delivered:
+
+- AM1: `Core_mechanisms` → `Primitive_dispatch` (`lib/emulator_core/primitive_dispatch.ml`).
+  Remaining `Protocol_core`, `Control_execution`, `Integrated_core` consumers updated in
+  `bin/`, `host/`, tests, and source comments.
+- AM2: `lib/host_link/hardware_loader.ml` removed; `Host_link` (owner's rewrite) is the
+  endpoint. In it, the forward-declared response wires take their widths from
+  `Frame_tx.I.port_widths` (they were 1 bit), and `~rtlmangle:false` is restored on `I`/`O`.
+  `Protemu_top` instantiates `Host_link` and documents its logical interfaces, tie-offs, and
+  external memory boundary.
+- Bundle source-input lists (`bin/asic_bundle.ml`) and `check-adopted-bundle.py` expected
+  paths now name the new files.
+
+Recorded compatibility surfaces, intentionally unchanged: emitted circuit names
+(`protocol_core`, `integrated_core`, `loader_core`), `generate_core` selectors, Dune RTL
+target file names, instance scopes (`"core"`, `"loader"`, `"access"`, `"execution"`,
+`"mechanisms"`), and test suite file/directory/library names (`test/core/protocol_core/`,
+`test/core/control_execution/`, `test/host_link/hardware_loader_*`), whose reorganization
+belongs to VO. The root `loader_core.v` snapshot is untouched.
+
+Checks (sequential, `-j 5`, via `scripts/with-switch.sh`): `dune build @install`,
+`dune build @lint`, `dune build`, `dune runtest`, `dune build @rtl` all exit 0; the
+independent serial peer reports PASS on `loader_core`, the wrapper simulation source, and
+the production synthesis source.
+
+Generated-output comparison against `37c85e5`, same options: `protocol_core`,
+`executable_core`, `integrated_core`, and both `program_memory_backend` roles are
+byte-identical. `loader_core` and both `loader_wrapper` sources differ: identical port list,
+module list, and reg/always counts; internal names/order changed by `Host_link`'s
+construction order (TX before dispatch through forward wires, reordered `busy_o` OR).
+Same-tool `yosys synth` of baseline vs new `loader_core`: identical per-type cell counts
+(13752 cells); only +3 public wires / +174 bits, the three forward-declared
+`dispatch_response_*` wires (1 + 168 + 5). This is generic synthesis, not mapped or
+physical evidence. A yosys `equiv_simple`/`equiv_induct` run did not finish within
+15 minutes; formal equivalence of the loader is unproven.
+
+Remaining: owner review of the loader RTL delta and AM1/AM2 acceptance; active docs outside
+this record still use the old names (AM6).

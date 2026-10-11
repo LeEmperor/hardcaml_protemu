@@ -16,17 +16,19 @@ let () =
   let circuit =
     match args.(1) with
     | "access" ->
-      let module C = Circuit.With_interface (Protocol_core.I) (Protocol_core.O) in
-      C.create_exn ~name:"protocol_core" (Protocol_core.create scope)
+      let module C =
+        Circuit.With_interface (Program_memory_controller.I) (Program_memory_controller.O)
+      in
+      C.create_exn ~name:"protocol_core" (Program_memory_controller.create scope)
     | "executable" ->
       let module C = Circuit.With_interface (Executable_core.I) (Executable_core.O) in
       C.create_exn ~name:"executable_core" (Executable_core.create scope)
     | "integrated" ->
-      let module C = Circuit.With_interface (Integrated_core.I) (Integrated_core.O) in
-      C.create_exn ~name:"integrated_core" (Integrated_core.create scope)
+      let module C = Circuit.With_interface (Emulator_core.I) (Emulator_core.O) in
+      C.create_exn ~name:"integrated_core" (Emulator_core.create scope)
     | "loader" ->
-      let module C = Circuit.With_interface (Loader_core.I) (Loader_core.O) in
-      C.create_exn ~name:"loader_core" (Loader_core.create scope)
+      let module C = Circuit.With_interface (Protemu_top.I) (Protemu_top.O) in
+      C.create_exn ~name:"loader_core" (Protemu_top.create scope)
     | mode -> failwithf "unknown core mode %S" mode ()
   in
   let rtl = Rtl.create Verilog [ circuit ] |> Rtl.full_hierarchy |> Rope.to_string in

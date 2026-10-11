@@ -9,22 +9,22 @@ open! Hardcaml_asic
 open! Hardcaml_protemu
 
 module Design = struct
-  module I = Protocol_core.I
-  module O = Protocol_core.O
+  module I = Program_memory_controller.I
+  module O = Program_memory_controller.O
 
   let name = "protemu_program_memory_backend"
 
   let create context (i : _ I.t) =
-    let read_data = Signal.wire Protocol_core.Config.program_width in
+    let read_data = Signal.wire Program_memory_controller.Config.program_width in
     let core =
-      Protocol_core.create
+      Program_memory_controller.create
         (Elaboration_context.scope context)
         { i with prog_mem_read_data_i = read_data }
     in
     let config =
       Single_port_ram.Config.create_exn
-        ~width:Protocol_core.Config.program_width
-        ~depth:Protocol_core.Config.program_depth
+        ~width:Program_memory_controller.Config.program_width
+        ~depth:Program_memory_controller.Config.program_depth
         ~read_latency:1
     in
     let ram_read_data =

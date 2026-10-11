@@ -1,7 +1,7 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
 (* Module: "hardware_loader_testbench.ml" *)
-(* HL4a serial Cyclesim harness for the unsplit [Hardware_loader].
+(* HL4a serial Cyclesim harness for the composed [Host_link].
 
    The real loader is driven only through its three serial pins. Legal requests are built
    with [Wire.Request.encode] and responses are read with
@@ -46,7 +46,7 @@ open! Core
 open! Hardcaml
 open! Hardcaml_protemu
 module Wire = Protemu_host_link_wire.Wire
-module Sim = Cyclesim.With_interface (Hardware_loader.I) (Hardware_loader.O)
+module Sim = Cyclesim.With_interface (Host_link.I) (Host_link.O)
 
 let hex bytes =
   String.to_list bytes
@@ -247,7 +247,7 @@ module Status = struct
   ;;
 end
 
-(* Test-only stand-in for [Integrated_core] behind the [Control_port]. It is not a RAM or
+(* Test-only stand-in for [Emulator_core] behind the [Control_port]. It is not a RAM or
    execution model: acceptance comes from [accept], READBACK data from [memory], and
    status from [status], all set by the test. It never inspects the loader's refusal or
    dispatch logic.
@@ -266,7 +266,7 @@ end
      is driven low for READ, where it is meaningless and the loader must ignore it.
 
    [Completion.Delayed] and [Never] are robustness probes of the loader's waits, not
-   behavior of the current [Integrated_core]; tests using them say so. So is
+   behavior of the current [Emulator_core]; tests using them say so. So is
    [inject_readback_response], which raises an unsolicited response pulse.
 *)
 module Core_stub = struct
@@ -312,7 +312,7 @@ module Core_stub = struct
     { status = Status.halted_idle
     ; accept = (fun _ -> true)
     ; memory =
-        Array.init Protocol_core.Config.program_depth ~f:(fun address ->
+        Array.init Program_memory_controller.Config.program_depth ~f:(fun address ->
           address * 0x0101 lxor 0xa55a)
     ; readback_completion = Contract
     ; abort_completion = Contract
@@ -632,7 +632,7 @@ let set_status t status = t.stub.status <- status
 *)
 let create ?(timing = Timing.envelope) ?(transcript_limit = 48) scenario =
   Timing.validate timing;
-  let sim = Sim.create (Hardware_loader.create (Scope.create ~flatten_design:true ())) in
+  let sim = Sim.create (Host_link.create (Scope.create ~flatten_design:true ())) in
   let stub = Core_stub.create () in
   let t =
     { scenario

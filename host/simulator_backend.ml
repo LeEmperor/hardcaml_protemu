@@ -1,7 +1,7 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
 (* Module: "simulator_backend.ml" *)
-(* Deterministic host backend for one live Cyclesim instance of [Integrated_core].
+(* Deterministic host backend for one live Cyclesim instance of [Emulator_core].
 
    This module owns the external latency-one program RAM, clock, persistent pad state,
    queue handshakes, and bounded observation trace. All device mutations cross real DUT
@@ -13,7 +13,7 @@ open! Core
 open! Hardcaml
 open! Hardcaml_protemu
 module Api = Protemu_host.Host_api
-module Sim = Cyclesim.With_interface (Integrated_core.I) (Integrated_core.O)
+module Sim = Cyclesim.With_interface (Emulator_core.I) (Emulator_core.O)
 
 type request =
   | Idle
@@ -89,7 +89,7 @@ let settle t =
   Cyclesim.cycle_before_clock_edge t.sim
 ;;
 
-let clear_inputs (i : _ Integrated_core.I.t) =
+let clear_inputs (i : _ Emulator_core.I.t) =
   set_bool i.reset_i false;
   set_bool i.en_i true;
   Control_port.Request.iter i.control_request_i ~f:(fun port -> set_int port 0);
@@ -106,7 +106,7 @@ let clear_inputs (i : _ Integrated_core.I.t) =
   set_bool i.transfer_rx_ready_i true
 ;;
 
-let drive_request (i : _ Integrated_core.I.t) request =
+let drive_request (i : _ Emulator_core.I.t) request =
   let control = i.control_request_i in
   match request with
   | Idle -> ()
@@ -140,8 +140,8 @@ let drive_request (i : _ Integrated_core.I.t) request =
   | Host_rx -> set_bool i.tx_ready_i true
 ;;
 
-let fault_of_outputs (o : _ Integrated_core.O.t) =
-  let status = Integrated_core.control_status o in
+let fault_of_outputs (o : _ Emulator_core.O.t) =
+  let status = Emulator_core.control_status o in
   { Api.Fault.fetch_fault = bool status.fetch_fault
   ; execution_fault = bool status.execution_fault
   ; kind = int status.fault_kind
@@ -151,8 +151,8 @@ let fault_of_outputs (o : _ Integrated_core.O.t) =
   }
 ;;
 
-let view (o : _ Integrated_core.O.t) =
-  let status = Integrated_core.control_status o in
+let view (o : _ Emulator_core.O.t) =
+  let status = Emulator_core.control_status o in
   { decision = Control_port.Decision.map o.control_decision_o ~f:( ! )
   ; step_accepted = bool o.step_accepted_o
   ; step_rejected = bool o.step_rejected_o
@@ -295,10 +295,10 @@ let cycle ?operation t request =
 
 let create ?(trace_capacity = 256) () =
   if trace_capacity <= 0 then invalid_arg "trace_capacity must be positive";
-  let sim = Sim.create (Integrated_core.create (Scope.create ~flatten_design:true ())) in
+  let sim = Sim.create (Emulator_core.create (Scope.create ~flatten_design:true ())) in
   let t =
     { sim
-    ; words = Array.create ~len:Protocol_core.Config.program_depth None
+    ; words = Array.create ~len:Program_memory_controller.Config.program_depth None
     ; read_data = 0xa5a5
     ; pin_async = 0
     ; occupied = 0
@@ -343,8 +343,8 @@ let discover t =
       { Api.Image_format.name = Api.Constants.image_format
       ; version = Api.Constants.image_format_version
       ; layout = Protemu_isa.Assembler.Memory.word16.name
-      ; word_bits = Protocol_core.Config.program_width
-      ; depth_words = Protocol_core.Config.program_depth
+      ; word_bits = Program_memory_controller.Config.program_width
+      ; depth_words = Program_memory_controller.Config.program_depth
       ; address_unit = Memory_word
       ; byte_order = Little_endian
       }
@@ -367,7 +367,7 @@ let discover t =
 ;;
 
 let loaded_image t =
-  let status = Integrated_core.control_status (outputs t) in
+  let status = Emulator_core.control_status (outputs t) in
   { Api.Loaded_image.valid = bool status.image_valid
   ; load_active = bool status.load_active
   ; length_words = int status.image_length
@@ -379,7 +379,7 @@ let loaded_image t =
 
 let status t =
   let o = outputs t in
-  let shared = Integrated_core.control_status o in
+  let shared = Emulator_core.control_status o in
   let registers = !(o.registers_o) in
   let descriptor = !(o.descriptor_o) in
   let chunks bits count =
@@ -553,7 +553,7 @@ let load_image t image =
 ;;
 
 let read_program t ~address ~count =
-  let depth = Protocol_core.Config.program_depth in
+  let depth = Program_memory_controller.Config.program_depth in
   if address < 0 || count < 0 || address > depth || count > depth - address
   then
     Error

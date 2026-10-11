@@ -8,7 +8,7 @@ open! Core
 open! Hardcaml
 open! Hardcaml_protemu
 open! Protemu_isa
-module Sim = Cyclesim.With_interface (Integrated_core.I) (Integrated_core.O)
+module Sim = Cyclesim.With_interface (Emulator_core.I) (Emulator_core.O)
 
 type request =
   | Idle
@@ -54,7 +54,7 @@ let set_int signal value = signal := Bits.of_int_trunc ~width:(Bits.width !signa
 let outputs t = Cyclesim.outputs t.sim
 let outputs_before t = Cyclesim.outputs ~clock_edge:Before t.sim
 
-let clear_inputs (i : _ Integrated_core.I.t) =
+let clear_inputs (i : _ Emulator_core.I.t) =
   set_bool i.reset_i false;
   set_bool i.en_i true;
   set_bool i.control_request_i.load_start_valid false;
@@ -83,7 +83,7 @@ let clear_inputs (i : _ Integrated_core.I.t) =
   set_bool i.transfer_rx_ready_i true
 ;;
 
-let rec drive_request (i : _ Integrated_core.I.t) = function
+let rec drive_request (i : _ Emulator_core.I.t) = function
   | Idle -> ()
   | Reset -> set_bool i.reset_i true
   | Enable value -> set_bool i.en_i value
@@ -161,10 +161,10 @@ let step ?before t request =
 ;;
 
 let create () =
-  let sim = Sim.create (Integrated_core.create (Scope.create ~flatten_design:true ())) in
+  let sim = Sim.create (Emulator_core.create (Scope.create ~flatten_design:true ())) in
   let t =
     { sim
-    ; words = Array.create ~len:Protocol_core.Config.program_depth None
+    ; words = Array.create ~len:Program_memory_controller.Config.program_depth None
     ; read_data = 0xa5a5
     ; enabled = true
     ; pin_async = 0

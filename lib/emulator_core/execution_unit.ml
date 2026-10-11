@@ -4,8 +4,9 @@
 (* Minimal P3.2 execution client for the P1.5 ISA.
 
    This block owns architectural state but not program-memory validity or bounds. It uses
-   Protocol_core's accepted RUN and latency-one fetch completion, executes core-local
-   instructions, and presents all mechanism instructions on one retained command port.
+   Program_memory_controller's accepted RUN and latency-one fetch completion, executes
+   core-local instructions, and presents all mechanism instructions on one retained
+   command port.
 *)
 
 open! Core

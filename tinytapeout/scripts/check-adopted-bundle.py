@@ -64,8 +64,8 @@ def check_bundle(root, bundle, kind):
     source_paths = {item["path"] for item in manifest["source_inputs"]}
     expected_source = {
         "observable": "lib/legacy/p0_observable.ml",
-        "memory": "lib/memory_control/protocol_core.ml",
-        "loader": "lib/host_link/hardware_loader.ml",
+        "memory": "lib/memory/program_memory_controller.ml",
+        "loader": "lib/host_link/host_link.ml",
     }[kind]
     assert {
         "bin/asic_bundle.ml", expected_source, "tinytapeout/asic-dependencies.lock"
@@ -80,7 +80,7 @@ def check_bundle(root, bundle, kind):
         else:
             assert 'ui[0]: "Loader select, active low"' in info
             assert 'uo[1]: "Loader response ready"' in info
-            assert {"lib/host_link/loader_core.ml", "lib/emulator_core/integrated_core.ml"} <= source_paths
+            assert {"lib/system/protemu_top.ml", "lib/emulator_core/emulator_core.ml"} <= source_paths
             assert {"host_link_wire/dune", "host_link_wire/wire.ml"} <= source_paths
             assert "lib/emulator_core/control_port.ml" in source_paths
             assert "lib/host_link/serial_phy.ml" in source_paths

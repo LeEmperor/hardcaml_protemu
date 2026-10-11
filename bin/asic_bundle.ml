@@ -17,6 +17,7 @@ module Observable_design = struct
   module I = Tt_cmos5l.I
   module O = Tt_cmos5l.O
 
+  (* We have about a square um of space. *)
   let name = "tt_um_leemperor_hardcaml_protemu"
 
   let create context (i : _ I.t) =
@@ -71,11 +72,11 @@ module Memory_design = struct
     let staged_high = reg adapter_spec ~enable:(request_is 7) i.ui_in in
     let staged_low = reg adapter_spec ~enable:(request_is 6) i.ui_in in
     let request_word = concat_msb [ staged_high; staged_low ] in
-    let memory_read_data = wire Protocol_core.Config.program_width in
+    let memory_read_data = wire Program_memory_controller.Config.program_width in
     let core =
-      Protocol_core.create
+      Program_memory_controller.create
         (Elaboration_context.scope context)
-        { Protocol_core.I.clock_i = i.clk
+        { Program_memory_controller.I.clock_i = i.clk
         ; reset_i = core_reset
         ; en_i = i.ena
         ; engines_idle_i = vdd
@@ -98,8 +99,8 @@ module Memory_design = struct
     in
     let memory_config =
       Single_port_ram.Config.create_exn
-        ~width:Protocol_core.Config.program_width
-        ~depth:Protocol_core.Config.program_depth
+        ~width:Program_memory_controller.Config.program_width
+        ~depth:Program_memory_controller.Config.program_depth
         ~read_latency:1
     in
     let ram_read_data =
@@ -172,11 +173,11 @@ module Loader_design = struct
   let create context (i : _ I.t) =
     let open Signal in
     let core_reset = Tt_cmos5l.synchronised_reset ~clock:i.clk ~rst_n:i.rst_n () in
-    let memory_read_data = wire Protocol_core.Config.program_width in
+    let memory_read_data = wire Program_memory_controller.Config.program_width in
     let system =
-      Loader_core.create
+      Protemu_top.create
         (Elaboration_context.scope context)
-        { Loader_core.I.clock_i = i.clk
+        { Protemu_top.I.clock_i = i.clk
         ; reset_i = core_reset
         ; enable_i = i.ena
         ; serial_select_n_i = bit i.ui_in ~pos:0
@@ -189,8 +190,8 @@ module Loader_design = struct
     in
     let memory_config =
       Single_port_ram.Config.create_exn
-        ~width:Protocol_core.Config.program_width
-        ~depth:Protocol_core.Config.program_depth
+        ~width:Program_memory_controller.Config.program_width
+        ~depth:Program_memory_controller.Config.program_depth
         ~read_latency:1
     in
     let ram_read_data =
@@ -366,7 +367,7 @@ let input_paths kind =
   @
   match kind with
   | "observable" -> [ "lib/legacy/p0_observable.ml" ]
-  | "memory" -> [ "lib/memory_control/protocol_core.ml" ]
+  | "memory" -> [ "lib/memory/program_memory_controller.ml" ]
   | "loader" ->
     [ "host_link_wire/dune"
     ; "host_link_wire/wire.ml"
@@ -383,19 +384,19 @@ let input_paths kind =
     ; "isa/program.ml"
     ; "lib/pluggable_primitives/byte_fifo.ml"
     ; "lib/host_link/command_dispatch.ml"
-    ; "lib/emulator_core/control_execution.ml"
     ; "lib/emulator_core/control_port.ml"
-    ; "lib/emulator_core/core_mechanisms.ml"
+    ; "lib/emulator_core/emulator_core.ml"
+    ; "lib/emulator_core/execution_unit.ml"
     ; "lib/host_link/frame_rx.ml"
     ; "lib/host_link/frame_tx.ml"
-    ; "lib/host_link/hardware_loader.ml"
+    ; "lib/host_link/host_link.ml"
     ; "lib/pluggable_primitives/input_events.ml"
     ; "lib/emulator_core/instruction_decoder.ml"
-    ; "lib/emulator_core/integrated_core.ml"
-    ; "lib/host_link/loader_core.ml"
     ; "lib/staging/observed_transfer.ml"
     ; "lib/pluggable_primitives/pin_bank.ml"
-    ; "lib/memory_control/protocol_core.ml"
+    ; "lib/emulator_core/primitive_dispatch.ml"
+    ; "lib/memory/program_memory_controller.ml"
+    ; "lib/system/protemu_top.ml"
     ; "lib/host_link/serial_phy.ml"
     ; "lib/pluggable_primitives/shift_lane.ml"
     ; "lib/pluggable_primitives/timing.ml"

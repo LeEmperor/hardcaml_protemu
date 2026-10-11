@@ -1,7 +1,7 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
 (* Module: "core_engine_control_port_tests.ml" *)
-(* Focused checks of the [Control_port] temporal contract at the real [Integrated_core]
+(* Focused checks of the [Control_port] temporal contract at the real [Emulator_core]
    boundary.
 
    These cover obligations that no earlier suite checks at this boundary: idle decisions,

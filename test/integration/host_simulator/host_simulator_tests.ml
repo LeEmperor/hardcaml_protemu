@@ -1,7 +1,7 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
 (* Module: "host_simulator_tests.ml" *)
-(* Layered P3.4 coverage over one real [Integrated_core] Cyclesim session. *)
+(* Layered P3.4 coverage over one real [Emulator_core] Cyclesim session. *)
 
 open! Core
 open! Protemu_isa
@@ -451,7 +451,7 @@ let%test_unit "defined execution fault is inspectable and recoverable" =
   [%test_result: bool] faulted.fault.execution_fault ~expect:true;
   [%test_result: int]
     faulted.fault.kind
-    ~expect:Hardcaml_protemu.Control_execution.Fault.invalid_base;
+    ~expect:Hardcaml_protemu.Execution_unit.Fault.invalid_base;
   [%test_result: int] faulted.fault.instruction_slot ~expect:0;
   [%test_result: Api.Error.t]
     (error (Backend.step t ~budget_cycles:0))

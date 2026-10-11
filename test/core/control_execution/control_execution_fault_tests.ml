@@ -34,7 +34,7 @@ let check_fault t kind ~instruction_slot ~address =
 let%test_unit "reserved opcode, spare bits, and invalid enum fault as base words" =
   List.iter [ 0xf800; 0x0001; 0x1f00 ] ~f:(fun word ->
     let t = run_words [ word ] in
-    check_fault t Control_execution.Fault.invalid_base ~instruction_slot:0 ~address:0;
+    check_fault t Execution_unit.Fault.invalid_base ~instruction_slot:0 ~address:0;
     let o = outputs t in
     [%test_result: int] (int o.fetch_cycles_o) ~expect:1;
     [%test_result: int] (int o.execute_cycles_o) ~expect:0;
@@ -55,7 +55,7 @@ let%test_unit "invalid and truncated extensions fault without partial commit" =
   let invalid = run_words [ base; 0x0100 ] in
   check_fault
     invalid
-    Control_execution.Fault.invalid_extension
+    Execution_unit.Fault.invalid_extension
     ~instruction_slot:0
     ~address:1;
   [%test_result: int] (int (outputs invalid).fetch_cycles_o) ~expect:2;
@@ -63,7 +63,7 @@ let%test_unit "invalid and truncated extensions fault without partial commit" =
   let truncated = run_words [ base ] in
   check_fault
     truncated
-    Control_execution.Fault.truncated_extension
+    Execution_unit.Fault.truncated_extension
     ~instruction_slot:0
     ~address:1;
   [%test_result: int] (int (outputs truncated).fetch_cycles_o) ~expect:1;
@@ -75,7 +75,7 @@ let%test_unit "negative, oversized, and loaded-image targets never wrap" =
   let negative = run_words [ negative_jump ] in
   check_fault
     negative
-    Control_execution.Fault.target_unrepresentable
+    Execution_unit.Fault.target_unrepresentable
     ~instruction_slot:0
     ~address:(-1 land 0x1ffff);
   [%test_result: int] (int (outputs negative).instruction_count_o) ~expect:1;
@@ -87,7 +87,7 @@ let%test_unit "negative, oversized, and loaded-image targets never wrap" =
   in
   check_fault
     oversized
-    Control_execution.Fault.target_unrepresentable
+    Execution_unit.Fault.target_unrepresentable
     ~instruction_slot:2
     ~address:0xffff;
   let physical =
@@ -98,7 +98,7 @@ let%test_unit "negative, oversized, and loaded-image targets never wrap" =
   in
   check_fault
     physical
-    Control_execution.Fault.fetch_bounds
+    Execution_unit.Fault.fetch_bounds
     ~instruction_slot:2
     ~address:256
 ;;
@@ -106,7 +106,7 @@ let%test_unit "negative, oversized, and loaded-image targets never wrap" =
 let%test_unit "sequential fallthrough beyond the verified image becomes a fetch fault" =
   let words = encode (Instruction.Mov { rd = 0; rs = 0 }) in
   let t = run_words words in
-  check_fault t Control_execution.Fault.fetch_bounds ~instruction_slot:0 ~address:1;
+  check_fault t Execution_unit.Fault.fetch_bounds ~instruction_slot:0 ~address:1;
   [%test_result: int] (int (outputs t).instruction_count_o) ~expect:1
 ;;
 
@@ -143,7 +143,7 @@ let%test_unit "execution halt wins over a simultaneous RUN acceptance" =
   [%test_result: bool] (bool o.execution_fault_o) ~expect:true;
   [%test_result: int]
     (int o.fault_kind_o)
-    ~expect:Control_execution.Fault.unsolicited_completion;
+    ~expect:Execution_unit.Fault.unsolicited_completion;
   ignore (run_until_halted t () : int);
   [%test_result: bool] (bool (outputs t).normal_halt_o) ~expect:true
 ;;

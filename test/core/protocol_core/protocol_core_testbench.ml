@@ -13,10 +13,10 @@ open! Core
 open! Hardcaml
 open! Hardcaml_protemu
 open! Protemu_f_model
-module Sim = Cyclesim.With_interface (Protocol_core.I) (Protocol_core.O)
+module Sim = Cyclesim.With_interface (Program_memory_controller.I) (Program_memory_controller.O)
 
-let width = Protocol_core.Config.program_width
-let depth = Protocol_core.Config.program_depth
+let width = Program_memory_controller.Config.program_width
+let depth = Program_memory_controller.Config.program_depth
 
 module Poison = struct
   type t =
@@ -75,7 +75,7 @@ let set_bool signal value = signal := Bits.of_bool value
 let set_int signal value = signal := Bits.of_int_trunc ~width:(Bits.width !signal) value
 
 let port_of_outputs o : Program_store.Port.t =
-  { enable = bool o.Protocol_core.O.prog_mem_enable_o
+  { enable = bool o.Program_memory_controller.O.prog_mem_enable_o
   ; write_enable = bool o.prog_mem_write_enable_o
   ; address = int o.prog_mem_address_o
   ; write_data = int o.prog_mem_write_data_o
@@ -90,7 +90,7 @@ let check : 'a. int -> string -> 'a -> 'a -> unit =
   fun edge name expected actual -> if not (Poly.equal expected actual) then fail edge name
 ;;
 
-let drive (i : _ Protocol_core.I.t) (input : Program_access.Input.t) =
+let drive (i : _ Program_memory_controller.I.t) (input : Program_access.Input.t) =
   set_bool i.reset_i input.reset;
   set_bool i.en_i input.enable;
   set_bool i.engines_idle_i input.engines_idle;
@@ -227,7 +227,7 @@ let step t input =
 let create ?(poison = Poison.Zero) ?circuit () =
   let sim =
     match circuit with
-    | None -> Sim.create (Protocol_core.create (Scope.create ~flatten_design:true ()))
+    | None -> Sim.create (Program_memory_controller.create (Scope.create ~flatten_design:true ()))
     | Some circuit -> Sim.coerce (Cyclesim.create circuit)
   in
   let store = Program_store_stub.create poison in

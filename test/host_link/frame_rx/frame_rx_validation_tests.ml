@@ -15,7 +15,7 @@
    - tag and command are echoed only when all four bytes through the command arrived.
 
    Command legality, each command's fixed length, and device bounds are dispatch-stage
-   decisions in [Hardware_loader]. Here such frames are [Complete] and the raw fields they
+   decisions in [Host_link]. Here such frames are [Complete] and the raw fields they
    need are retained.
 
    The receiver also maps a declared length above four to [Bad_length] after the header

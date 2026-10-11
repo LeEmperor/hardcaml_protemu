@@ -185,7 +185,7 @@ module Capability = struct
   ;;
 end
 
-(* STATUS fault kind. These are stable wire values. They equal [Control_execution.Fault]
+(* STATUS fault kind. These are stable wire values. They equal [Execution_unit.Fault]
    today, which [Command_dispatch] checks at elaboration; this library does not depend on
    execution-unit code. Values 10 to 255 are undefined in version 1.
 *)
@@ -219,7 +219,7 @@ module Fault_kind = struct
   let of_int code = List.find all ~f:(fun fault -> to_int fault = code)
 end
 
-(* STATUS execution phase, with the same relationship to [Control_execution.Phase] as
+(* STATUS execution phase, with the same relationship to [Execution_unit.Phase] as
    [Fault_kind] has to faults. Value 7 is reserved; 8 to 255 are undefined.
 *)
 module Phase = struct

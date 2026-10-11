@@ -11,12 +11,12 @@
    which offers a legal core command exactly once (INFO, STATUS, and rejected commands
    offer nothing) and either publishes an immediate response or enters a completion wait;
    each wait ends by publishing its response. Publication is combinational, in the cycle
-   the response is decided: [Hardware_loader] stores the frame at that edge, with no
+   the response is decided: [Host_link] stores the frame at that edge, with no
    ready, queue, or pipeline stage. Neither the offers nor the publication are gated by
    reset or disable; the core refuses such an offer and the loader discards such a
    response.
 
-   [busy_o] covers dispatch and both waits. [Hardware_loader] keeps requests ineligible
+   [busy_o] covers dispatch and both waits. [Host_link] keeps requests ineligible
    while [busy_o] is high or a response is retained, so the fields read here hold until
    the response is committed. docs/host_link_hl4b3_record.md records the ownership and
    timing contract. [check_wire_encodings] checks the response and payload layouts built

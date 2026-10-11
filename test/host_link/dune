@@ -1,4 +1,4 @@
-; HL4a serial Cyclesim harness for the unsplit Hardware_loader (host_link_migration.md).
+; HL4a serial Cyclesim harness for the composed Host_link (host_link_migration.md).
 ;
 ; The real loader is driven through its serial pins with the host_link_wire codec, and a
 ; test-only core stub answers its Control_port. This is the acceptance baseline for the

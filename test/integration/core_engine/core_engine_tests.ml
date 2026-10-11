@@ -93,11 +93,11 @@ let%test_unit "prepared P2.6b program reaches the committed pin bank" =
         ~before:(fun edge o ->
           if Option.is_none !decision
              && bool o.mechanism_completion_valid_o
-             && int o.mechanism_kind_o = Control_execution.Mechanism_kind.wait_edge
+             && int o.mechanism_kind_o = Execution_unit.Mechanism_kind.wait_edge
           then decision := Some edge;
           if Option.is_none !bank_request
              && bool o.mechanism_request_valid_o
-             && int o.mechanism_kind_o = Control_execution.Mechanism_kind.write_pins_imm
+             && int o.mechanism_kind_o = Execution_unit.Mechanism_kind.write_pins_imm
              && Option.is_some !decision
           then bank_request := Some edge)
         t
@@ -473,10 +473,10 @@ let%test_unit "engine ownership refuses a conflicting core write without partial
   [%test_result: bool] (bool (outputs t).execution_fault_o) ~expect:true;
   [%test_result: int]
     (int (outputs t).fault_kind_o)
-    ~expect:Control_execution.Fault.mechanism_refused;
+    ~expect:Execution_unit.Fault.mechanism_refused;
   [%test_result: int]
     (int (outputs t).fault_reason_o)
-    ~expect:Core_mechanisms.Reason.pin_conflict;
+    ~expect:Primitive_dispatch.Reason.pin_conflict;
   [%test_result: int] (int (outputs t).software_claim_o) ~expect:0;
   [%test_result: bool] (bool (outputs t).bank_conflict_o) ~expect:false;
   [%test_result: int] (int (outputs t).engine_claim_o land 0x02) ~expect:0x02;
@@ -503,7 +503,7 @@ let%test_unit "external occupancy refuses transfer issue before retirement" =
   [%test_result: bool] (bool (outputs t).execution_fault_o) ~expect:true;
   [%test_result: int]
     (int (outputs t).fault_reason_o)
-    ~expect:Core_mechanisms.Reason.pin_conflict;
+    ~expect:Primitive_dispatch.Reason.pin_conflict;
   [%test_result: int] (int (outputs t).instruction_count_o) ~expect:9;
   [%test_result: int] (int (outputs t).engine_claim_o) ~expect:0;
   [%test_result: int] (int (outputs t).pin_oe_o) ~expect:0

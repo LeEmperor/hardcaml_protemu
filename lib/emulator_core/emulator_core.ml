@@ -1,6 +1,6 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
-(* Module: "integrated_core.ml" *)
+(* Module: "emulator_core.ml" *)
 (* P3.3 production composition of program access, execution, and P2 mechanisms.
 
    Program RAM remains an external latency-one port. STOP pauses only at P3.2's existing
@@ -279,9 +279,9 @@ let create (scope : Scope.t) (i : _ I.t) : _ O.t =
   assign mechanism_descriptor execution.mechanism_descriptor_o;
 
   let mechanisms =
-    Core_mechanisms.create
+    Primitive_dispatch.create
       (Scope.sub_scope scope "mechanisms")
-      { Core_mechanisms.I.clock_i = i.clock_i
+      { Primitive_dispatch.I.clock_i = i.clock_i
       ; reset_i = i.reset_i
       ; en_i = i.en_i
       ; abort_i = abort_accepted

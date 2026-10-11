@@ -2,7 +2,7 @@
 (* Author: Bohdan Purtell *)
 (* Module: "hardware_loader_transaction_tests.ml" *)
 (* HL4a: legal transactions, host timing, pauses, and response replay/commit at the
-   unsplit [Hardware_loader]'s serial pins and [Control_port].
+   composed [Host_link]'s serial pins and [Control_port].
 
    Expected responses are written out from the P3.5 record and the scenario's stub
    configuration, never computed from the offered request or the loader's logic. Each test

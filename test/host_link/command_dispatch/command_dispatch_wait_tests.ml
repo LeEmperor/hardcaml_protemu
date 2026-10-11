@@ -6,7 +6,7 @@
    The contract cases use the stub's contract timing (control_port.ml items 5 and 6): a
    READBACK response two cycles after the offer, and ABORT cleanup visible one cycle after
    it. Tests named "robustness" delay, withhold, stage, or inject completions, which the
-   current [Integrated_core] does not do; they probe the dispatcher's waits, not the core.
+   current [Emulator_core] does not do; they probe the dispatcher's waits, not the core.
 *)
 
 open! Core

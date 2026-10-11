@@ -1,14 +1,14 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
 (* Module: "hardware_loader_cancellation_tests.ml" *)
-(* HL4a: in-flight protection, correlation, and reset/disable cancellation at the unsplit
-   [Hardware_loader]'s serial pins and [Control_port].
+(* HL4a: in-flight protection, correlation, and reset/disable cancellation at the composed
+   [Host_link]'s serial pins and [Control_port].
 
    Early selections here are out-of-contract host traffic that the loader must ignore:
    they cannot shift out, consume, or overwrite the command moving through dispatch or a
    completion wait. Each test says whether its stub follows the [Control_port] contract or
    is a robustness probe of the loader's waits. A robustness probe says nothing about the
-   current [Integrated_core], whose READBACK and ABORT completions are prompt.
+   current [Emulator_core], whose READBACK and ABORT completions are prompt.
 *)
 
 open! Core

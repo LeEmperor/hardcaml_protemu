@@ -64,7 +64,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
   let cases =
     [ ( "read_pins"
       , [ Read_pins { rd = 3 } ]
-      , { kind = Control_execution.Mechanism_kind.read_pins
+      , { kind = Execution_unit.Mechanism_kind.read_pins
         ; arg0 = 3
         ; arg1 = 0
         ; arg2 = 0
@@ -74,7 +74,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
         } )
     ; ( "read_status"
       , [ Read_status { rd = 2 } ]
-      , { kind = Control_execution.Mechanism_kind.read_status
+      , { kind = Execution_unit.Mechanism_kind.read_status
         ; arg0 = 2
         ; arg1 = 0
         ; arg2 = 0
@@ -84,7 +84,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
         } )
     ; ( "ack_status"
       , [ Ack_status { mask = 0x3f } ]
-      , { kind = Control_execution.Mechanism_kind.ack_status
+      , { kind = Execution_unit.Mechanism_kind.ack_status
         ; arg0 = 0x3f
         ; arg1 = 0
         ; arg2 = 0
@@ -94,7 +94,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
         } )
     ; ( "write_pins_imm"
       , [ Write_pins_imm { mode = Open_drain; mask = 0xa5; value = 0x5a } ]
-      , { kind = Control_execution.Mechanism_kind.write_pins_imm
+      , { kind = Execution_unit.Mechanism_kind.write_pins_imm
         ; arg0 = 1
         ; arg1 = 0xa5
         ; arg2 = 0x5a
@@ -107,7 +107,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
         ; Ldi { rd = 1; value = 0x5a }
         ; Write_pins_reg { mode = Push_pull; mask_reg = 0; value_reg = 1 }
         ]
-      , { kind = Control_execution.Mechanism_kind.write_pins_reg
+      , { kind = Execution_unit.Mechanism_kind.write_pins_reg
         ; arg0 = 0
         ; arg1 = 0xa5
         ; arg2 = 0x5a
@@ -117,7 +117,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
         } )
     ; ( "wait_cycles_imm"
       , [ Wait_cycles_imm { delay = 1024 } ]
-      , { kind = Control_execution.Mechanism_kind.wait_cycles_imm
+      , { kind = Execution_unit.Mechanism_kind.wait_cycles_imm
         ; arg0 = 1024
         ; arg1 = 0
         ; arg2 = 0
@@ -127,7 +127,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
         } )
     ; ( "wait_cycles_reg"
       , [ Ldi { rd = 0; value = 7 }; Wait_cycles_reg { rd = 0 } ]
-      , { kind = Control_execution.Mechanism_kind.wait_cycles_reg
+      , { kind = Execution_unit.Mechanism_kind.wait_cycles_reg
         ; arg0 = 7
         ; arg1 = 0
         ; arg2 = 0
@@ -137,7 +137,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
         } )
     ; ( "wait_level"
       , [ Wait_level { pin = 3; level = true; timeout = Some 32 } ]
-      , { kind = Control_execution.Mechanism_kind.wait_level
+      , { kind = Execution_unit.Mechanism_kind.wait_level
         ; arg0 = 3
         ; arg1 = 1
         ; arg2 = 32
@@ -147,7 +147,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
         } )
     ; ( "wait_edge"
       , [ Wait_edge { pin = 2; edge = Kinds.Edge.Either; timeout = Some 16 } ]
-      , { kind = Control_execution.Mechanism_kind.wait_edge
+      , { kind = Execution_unit.Mechanism_kind.wait_edge
         ; arg0 = 2
         ; arg1 = 2
         ; arg2 = 16
@@ -157,7 +157,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
         } )
     ; ( "start_periodic"
       , [ Start_periodic { period = 1024 } ]
-      , { kind = Control_execution.Mechanism_kind.start_periodic
+      , { kind = Execution_unit.Mechanism_kind.start_periodic
         ; arg0 = 1024
         ; arg1 = 0
         ; arg2 = 0
@@ -167,7 +167,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
         } )
     ; ( "stop_periodic"
       , [ Stop_periodic ]
-      , { kind = Control_execution.Mechanism_kind.stop_periodic
+      , { kind = Execution_unit.Mechanism_kind.stop_periodic
         ; arg0 = 0
         ; arg1 = 0
         ; arg2 = 0
@@ -177,7 +177,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
         } )
     ; ( "issue_transfer"
       , [ Config { field = Descriptor.Field.Bit_count; value = 8 }; Issue_transfer ]
-      , { kind = Control_execution.Mechanism_kind.issue_transfer
+      , { kind = Execution_unit.Mechanism_kind.issue_transfer
         ; arg0 = 0
         ; arg1 = 0
         ; arg2 = 0
@@ -190,7 +190,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
         ; Fifo_push
             { fifo = Kinds.Fifo_id.Tx; rs = 0; blocking = Kinds.Blocking.Blocking }
         ]
-      , { kind = Control_execution.Mechanism_kind.fifo_push
+      , { kind = Execution_unit.Mechanism_kind.fifo_push
         ; arg0 = 0
         ; arg1 = 0
         ; arg2 = 0x55
@@ -202,7 +202,7 @@ let%test_unit "every delegated non-branch instruction is issued with retained op
       , [ Fifo_pop
             { fifo = Kinds.Fifo_id.Rx; rd = 4; blocking = Kinds.Blocking.Nonblocking }
         ]
-      , { kind = Control_execution.Mechanism_kind.fifo_pop
+      , { kind = Execution_unit.Mechanism_kind.fifo_pop
         ; arg0 = 1
         ; arg1 = 1
         ; arg2 = 0
@@ -236,7 +236,7 @@ let%test_unit "branch_pin commits its decision only on completion" =
     let t = create () in
     ignore (load_program t (branch_pin_program ()) : Assembler.Assembled.t);
     let expected =
-      { kind = Control_execution.Mechanism_kind.branch_pin
+      { kind = Execution_unit.Mechanism_kind.branch_pin
       ; arg0 = 5
       ; arg1 = 1
       ; arg2 = 0
@@ -279,8 +279,8 @@ let%test_unit "delayed acceptance and completion hold one request without reissu
   [%test_result: (int * int) list]
     (List.rev !request_samples)
     ~expect:
-      [ Control_execution.Mechanism_kind.read_pins, 2
-      ; Control_execution.Mechanism_kind.read_pins, 2
+      [ Execution_unit.Mechanism_kind.read_pins, 2
+      ; Execution_unit.Mechanism_kind.read_pins, 2
       ];
   [%test_result: int] (reg t 2) ~expect:0x77;
   let o = outputs t in
@@ -309,8 +309,8 @@ let faulting_response
 
 let%test_unit "refusal and completion fault are distinct non-retiring boundaries" =
   List.iter
-    [ true, false, Control_execution.Fault.mechanism_refused
-    ; false, true, Control_execution.Fault.mechanism_completion
+    [ true, false, Execution_unit.Fault.mechanism_refused
+    ; false, true, Execution_unit.Fault.mechanism_completion
     ]
     ~f:(fun (refused, completion_fault, fault_kind) ->
       let t = create () in
@@ -346,7 +346,7 @@ let%test_unit "an unsolicited completion faults without consuming a result" =
   [%test_result: bool] (bool o.execution_fault_o) ~expect:true;
   [%test_result: int]
     (int o.fault_kind_o)
-    ~expect:Control_execution.Fault.unsolicited_completion
+    ~expect:Execution_unit.Fault.unsolicited_completion
 ;;
 
 let%test_unit "an unsolicited completion cannot retire a simultaneous local instruction" =
@@ -359,7 +359,7 @@ let%test_unit "an unsolicited completion cannot retire a simultaneous local inst
   let sent = ref false in
   let respond _t (o : _ Executable_core.O.t) =
     if (not !sent)
-       && int o.phase_o = Control_execution.Phase.base_wait
+       && int o.phase_o = Execution_unit.Phase.base_wait
        && bool o.fetch_completion_valid_o
     then (
       sent := true;
@@ -372,7 +372,7 @@ let%test_unit "an unsolicited completion cannot retire a simultaneous local inst
   [%test_result: bool] (bool o.execution_fault_o) ~expect:true;
   [%test_result: int]
     (int o.fault_kind_o)
-    ~expect:Control_execution.Fault.unsolicited_completion;
+    ~expect:Execution_unit.Fault.unsolicited_completion;
   [%test_result: int] (reg t 0) ~expect:0;
   [%test_result: int] (int o.instruction_count_o) ~expect:0;
   [%test_result: bool] (bool o.retired_o) ~expect:false

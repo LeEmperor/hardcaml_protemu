@@ -4,18 +4,18 @@
 (* The core control port: the request, decision, and status records shared by every
    producer of core control.
 
-   [Integrated_core] owns this contract. [Hardware_loader] (over serial) and
+   [Emulator_core] owns this contract. [Host_link] (over serial) and
    [Simulator_backend] (directly in Cyclesim) are two transports over it. The records are
    direction-neutral; a module embeds them with its own [_i] or [_o] suffix, so the fields
    keep the port names they had before the records existed. This module depends only on
-   the width definitions of [Program_memory_controller], [Control_execution], and [Protemu_isa], never
+   the width definitions of [Program_memory_controller], [Execution_unit], and [Protemu_isa], never
    on a consumer.
 
    Step, pin claim/release, queues, pads, and program RAM are not part of this port. They
-   remain separate ports of [Integrated_core], and a transport that does not use them ties
+   remain separate ports of [Emulator_core], and a transport that does not use them ties
    them off.
 
-   Temporal contract. Every statement is derived from [Integrated_core], [Program_memory_controller],
+   Temporal contract. Every statement is derived from [Emulator_core], [Program_memory_controller],
    and both producers as they exist, not from a cleaner handshake.
 
    1. Offers. Each rising edge of the core clock with a [*_valid] field high is one offer
@@ -27,7 +27,7 @@
    2. Operands. An operand is meaningful only in a cycle where its request's valid is
       high. It must be stable before the sampling edge of that cycle. The core consumes it
       then and registers what a later cycle needs (image length, verify flag, expected
-      word), so operands need not stay stable after the offer. [Hardware_loader] drives
+      word), so operands need not stay stable after the offer. [Host_link] drives
       them continuously from its retained request registers; [Simulator_backend] drives
       them only in the offer cycle and zeroes them otherwise.
 
@@ -35,7 +35,7 @@
       is observed in the offer cycle, before the sampling edge. Its effect is visible
       after that edge. Rejection is [valid & ~accepted]: during a valid offer exactly one
       of the pair is high, and with no offer both are low. Both signals are kept even
-      though [Hardware_loader] reads only acceptance.
+      though [Host_link] reads only acceptance.
 
    4. Arbitration. Neither producer offers two requests in one cycle, but the core
       resolves simultaneous offers as follows.
@@ -58,7 +58,7 @@
       and [readback_response_data] and [readback_response_match] are meaningful only then.
       A second READBACK is refused while the response is outstanding. Reset, disable, an
       accepted ABORT, or an accepted LOAD_START in the cycle between E and E+1 cancels the
-      response; it never appears later. [Hardware_loader] waits for the valid pulse with
+      response; it never appears later. [Host_link] waits for the valid pulse with
       no bound. [Simulator_backend] requires it in the next post-edge observation and
       reports its absence as a backend invariant.
 
@@ -66,7 +66,7 @@
       shows [halted], [engines_idle], and zero [pin_oe], [software_claim], and
       [engine_claim]. The core completes cleanup at the accepting edge (P3.3's control
       contract; P3.4's prompt completion boundary), so the first observation after that
-      edge shows it. [Hardware_loader] waits for that condition with no bound before
+      edge shows it. [Host_link] waits for that condition with no bound before
       responding. [Simulator_backend] does not wait: it reports completion only if that
       single observation shows it.
 
@@ -79,11 +79,11 @@
       its accepted signal is low and its rejected signal follows its valid. Either one
       cancels an outstanding READBACK response and any pending STOP. Disable halts
       execution and cancels mechanisms but preserves a completed image; reset also
-      invalidates it. [Hardware_loader] also discards its own dispatch, wait, and response
+      invalidates it. [Host_link] also discards its own dispatch, wait, and response
       state; [Simulator_backend] holds no request across cycles.
 
    9. Status. Every [Status] field is a live observation of core state, not an event, and
-      has no valid qualifier. [Hardware_loader] samples it before an edge: in a command's
+      has no valid qualifier. [Host_link] samples it before an edge: in a command's
       dispatch cycle to classify a refusal or build a STATUS response, and on each cycle
       of an ABORT wait. [Simulator_backend] samples it after an edge, and classifies a
       refusal from the status observed before it drives the offer.

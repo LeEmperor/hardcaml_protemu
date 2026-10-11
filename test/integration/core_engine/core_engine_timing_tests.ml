@@ -9,7 +9,7 @@ open! Core
 open! Hardcaml
 open! Hardcaml_protemu
 module Evsim = Hardcaml_event_driven_sim.Two_state_simulator
-module Circuit = Evsim.With_interface (Integrated_core.I) (Integrated_core.O)
+module Circuit = Evsim.With_interface (Emulator_core.I) (Emulator_core.O)
 module Simulator = Evsim.Simulator
 
 let half_period = 5
@@ -40,7 +40,7 @@ let run external_time =
   let halted = ref None in
   let testbench =
     Circuit.with_processes
-      (Integrated_core.create (Scope.create ~flatten_design:true ()))
+      (Emulator_core.create (Scope.create ~flatten_design:true ()))
       (fun _inputs _outputs -> [])
   in
   let simulator = testbench.simulator in
@@ -99,12 +99,12 @@ let run external_time =
       let data = read outputs.prog_mem_write_data_o.signal in
       if read outputs.mechanism_completion_valid_o.signal <> 0
          && read outputs.mechanism_kind_o.signal
-            = Control_execution.Mechanism_kind.wait_edge
+            = Execution_unit.Mechanism_kind.wait_edge
          && Option.is_none !decision
       then decision := Some time;
       if read outputs.mechanism_request_valid_o.signal <> 0
          && read outputs.mechanism_kind_o.signal
-            = Control_execution.Mechanism_kind.write_pins_imm
+            = Execution_unit.Mechanism_kind.write_pins_imm
          && Option.is_some !decision
          && Option.is_none !bank_request
       then bank_request := Some time;

@@ -12,7 +12,7 @@
    tag, command, length, and payload then hold until the next eligible selection or
    disable.
 
-   [Hardware_loader] supplies eligibility. [Command_dispatch] consumes the handoff and the
+   [Host_link] supplies eligibility. [Command_dispatch] consumes the handoff and the
    retained fields: command legality, fixed lengths and device bounds, dispatch,
    completion waits, and every response. docs/host_link_hl4b2_record.md records the timing
    contract. [check_wire_encodings] checks the request layout and CRC start value this

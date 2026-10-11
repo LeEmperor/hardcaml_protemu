@@ -282,7 +282,7 @@ module Handoff = struct
   ;;
 end
 
-(* Test-only stand-in for [Integrated_core] behind the [Control_port]. It is not a RAM or
+(* Test-only stand-in for [Emulator_core] behind the [Control_port]. It is not a RAM or
    execution model: acceptance comes from [accept], READBACK data from [memory], and
    status from [status], all set by the test. It never inspects the dispatcher's refusal
    or dispatch logic.

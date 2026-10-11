@@ -2,7 +2,7 @@
 ; payloads and CRC, plus the software codec host code uses to build requests and read
 ; responses (host_link_migration.md HL2, p3.5-hardware-loader.md).
 ;
-; Its own library for the same reason isa/ is: lib/'s Hardware_loader and host software
+; Its own library for the same reason isa/ is: lib/'s Host_link and host software
 ; must read the same numbers, and host software must not link Hardcaml to get them. It
 ; sits beside isa/, not inside it, because serial framing is not instruction encoding;
 ; neither library depends on the other.

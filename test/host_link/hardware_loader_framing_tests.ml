@@ -1,8 +1,8 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
 (* Module: "hardware_loader_framing_tests.ml" *)
-(* HL4a: request framing, parser recovery, and device bounds at the unsplit
-   [Hardware_loader]'s serial pins.
+(* HL4a: request framing, parser recovery, and device bounds at the composed
+   [Host_link]'s serial pins.
 
    The stub accepts every offer, so any request that reached the core would show as an
    accepted offer; every malformed case requires none. Malformed frames come from

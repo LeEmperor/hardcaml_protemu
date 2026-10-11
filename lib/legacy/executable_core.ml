@@ -3,8 +3,9 @@
 (* Module: "executable_core.ml" *)
 (* P3.2 composition of program access and minimal control execution.
 
-   The external memory port and all load/readback ownership remain Protocol_core's. The
-   execution client receives only accepted RUN, fetch decisions, and owned completions.
+   The external memory port and all load/readback ownership remain
+   Program_memory_controller's. The execution client receives only accepted RUN, fetch
+   decisions, and owned completions.
    P3.3 supplies the mechanism responder through the exposed command interface.
 *)
 

@@ -66,3 +66,293 @@
     ../src/uart_tx.generated.v
     p2_uart_tb.v)
    (run vvp p2_uart))))
+
+; P2.7's first working slice: the frame through the pin bank and the timer, decoded by an
+; independent receiver written in Verilog, then diffed against the trace the model and the
+; Hardcaml slice agreed on under `dune runtest`.
+
+(rule
+ (alias rtl)
+ (deps
+  p2_uart_slice_tb.v
+  ../src/uart_slice.generated.v
+  ../../test/integration/uart_slice/uart_frame.trace
+  (sandbox always))
+ (action
+  (progn
+   (run
+    iverilog
+    -g2012
+    -Wall
+    -s
+    p2_uart_slice_tb
+    -o
+    p2_uart_slice
+    ../src/uart_slice.generated.v
+    p2_uart_slice_tb.v)
+   (run vvp p2_uart_slice)
+   ; The system diff, not dune's: dune's would make the trace a target of this rule and
+   ; a dependency of its own action, and the whole point of the `rtl` alias is that
+   ; nothing here is built unless the HDL tools are being asked for.
+   (run
+    diff
+    -u
+    ../../test/integration/uart_slice/uart_frame.trace
+    uart_slice_rtl.trace))))
+
+; P3.1a emitted-RTL generation, HDL lint, and generic synthesis smoke. This proves the
+; consumer elaborates without an ASIC-library dependency; behavioral evidence remains in
+; test/core/protocol_core and backend integration remains P3.1b/P0.7.
+
+(rule
+ (alias rtl)
+ (deps ../src/protocol_core.generated.v)
+ (action
+  (progn
+   (run
+    verilator
+    --lint-only
+    --top-module
+    protocol_core
+    -Wno-DECLFILENAME
+    ../src/protocol_core.generated.v)
+   (run
+    yosys
+    -q
+    -p
+    "read_verilog ../src/protocol_core.generated.v; hierarchy -check -top protocol_core; synth -top protocol_core; stat"))))
+
+; P3.2 executable core: lint, generic synthesis, and a behavioral loaded-program run with
+; a latency-one external memory model.
+
+(rule
+ (alias rtl)
+ (deps p3_control_tb.v ../src/executable_core.generated.v)
+ (action
+  (progn
+   (run
+    verilator
+    --lint-only
+    --top-module
+    executable_core
+    -Wno-DECLFILENAME
+    -Wno-COMBDLY
+    ../src/executable_core.generated.v)
+   (run
+    yosys
+    -q
+    -p
+    "read_verilog ../src/executable_core.generated.v; hierarchy -check -top executable_core; synth -top executable_core; stat")
+   (run
+    iverilog
+    -g2012
+    -Wall
+    -s
+    p3_control_tb
+    -o
+    p3_control
+    ../src/executable_core.generated.v
+    p3_control_tb.v)
+   (run vvp p3_control))))
+
+; P3.3 integrated core: real mechanisms, registered pin bank, external latency-one RAM,
+; and a behavioral loaded-program run including delayed completion and ABORT release.
+
+(rule
+ (alias rtl)
+ (deps p3_integration_tb.v ../src/integrated_core.generated.v)
+ (action
+  (progn
+   (run
+    verilator
+    --lint-only
+    --top-module
+    integrated_core
+    -Wno-DECLFILENAME
+    -Wno-COMBDLY
+    ../src/integrated_core.generated.v)
+   (run
+    yosys
+    -q
+    -p
+    "read_verilog ../src/integrated_core.generated.v; hierarchy -check -top integrated_core; synth -top integrated_core; stat")
+   (run
+    iverilog
+    -g2012
+    -Wall
+    -s
+    p3_integration_tb
+    -o
+    p3_integration
+    ../src/integrated_core.generated.v
+    p3_integration_tb.v)
+   (run vvp p3_integration))))
+
+; P3.1b's full-interface verification top uses the same context-registered RAM
+; composition as the backend Cyclesim suite. Compile each emitted source role alone.
+
+(rule
+ (alias rtl)
+ (deps
+  p3_memory_backend_tb.v
+  ../src/program_memory_backend.simulation.generated.v
+  ../src/program_memory_backend.implementation.generated.v)
+ (action
+  (progn
+   (run
+    iverilog
+    -g2012
+    -Wall
+    -Wno-timescale
+    -s
+    p3_memory_backend_tb
+    -DBACKEND_SIMULATION
+    -o
+    p3_memory_backend_simulation
+    ../src/program_memory_backend.simulation.generated.v
+    p3_memory_backend_tb.v)
+   (run vvp p3_memory_backend_simulation)
+   (run
+    iverilog
+    -g2012
+    -Wall
+    -Wno-timescale
+    -s
+    p3_memory_backend_tb
+    -o
+    p3_memory_backend_implementation
+    ../src/program_memory_backend.implementation.generated.v
+    p3_memory_backend_tb.v)
+   (run vvp p3_memory_backend_implementation))))
+
+; P3.5 emitted RTL: an independent physical serial peer drives the real loader and
+; integrated core through asynchronous pins. The testbench supplies the normative
+; latency-one 1RW memory behavior and never bypasses the serial loader to load a program.
+
+(rule
+ (alias loader-core-rtl)
+ (deps p3_loader_tb.v ../src/loader_core.generated.v)
+ (action
+  (progn
+   (run
+    verilator
+    --lint-only
+    --top-module
+    loader_core
+    -Wno-DECLFILENAME
+    -Wno-COMBDLY
+    ../src/loader_core.generated.v)
+   (run
+    yosys
+    -q
+    -p
+    "read_verilog ../src/loader_core.generated.v; hierarchy -check -top loader_core; synth -top loader_core; stat")
+   (with-stdout-to
+    %{null}
+    (setenv
+     MAKEFLAGS
+     -s
+     (run
+      verilator
+      --binary
+      --timing
+      --Mdir
+      p3_loader_obj
+      --top-module
+      p3_loader_tb
+      -Wno-DECLFILENAME
+      -Wno-COMBDLY
+      -Wno-TIMESCALEMOD
+      -Wno-INITIALDLY
+      -Wno-WIDTHTRUNC
+      -Wno-WIDTHEXPAND
+      ../src/loader_core.generated.v
+      p3_loader_tb.v
+      -j
+      1)))
+   (run /bin/sh -c ./p3_loader_obj/Vp3_loader_tb))))
+
+; The same independent peer at the actual Tiny Tapeout wrapper pins, with the adopted
+; behavioral program-memory source role emitted by the production project declaration.
+
+(rule
+ (alias loader-wrapper-rtl)
+ (deps
+  (alias loader-core-rtl)
+  p3_loader_tb.v
+  ../src/loader_wrapper.simulation.generated.v)
+ (action
+  (progn
+   (with-stdout-to
+    %{null}
+    (setenv
+     MAKEFLAGS
+     -s
+     (run
+      verilator
+      --binary
+      --timing
+      --Mdir
+      p3_loader_wrapper_obj
+      --top-module
+      p3_loader_tb
+      -DLOADER_WRAPPER
+      -Wno-DECLFILENAME
+      -Wno-COMBDLY
+      -Wno-TIMESCALEMOD
+      -Wno-INITIALDLY
+      -Wno-WIDTHTRUNC
+      -Wno-WIDTHEXPAND
+      ../src/loader_wrapper.simulation.generated.v
+      p3_loader_tb.v
+      -j
+      1)))
+   (run /bin/sh -c ./p3_loader_wrapper_obj/Vp3_loader_tb))))
+
+; Run the same public-pin behavior against the actual production synthesis source set.
+; The selected explicit-flop RAM is executable RTL; this is behavioral simulation, not
+; mapped synthesis or physical timing evidence.
+
+(rule
+ (alias loader-production-rtl)
+ (deps
+  (alias loader-wrapper-rtl)
+  p3_loader_tb.v
+  ../src/loader_wrapper.synthesis.generated.v)
+ (action
+  (progn
+   (with-stdout-to
+    %{null}
+    (setenv
+     MAKEFLAGS
+     -s
+     (run
+      verilator
+      --binary
+      --timing
+      --Mdir
+      p3_loader_production_obj
+      --top-module
+      p3_loader_tb
+      -DLOADER_WRAPPER
+      -Wno-DECLFILENAME
+      -Wno-COMBDLY
+      -Wno-TIMESCALEMOD
+      -Wno-INITIALDLY
+      -Wno-WIDTHTRUNC
+      -Wno-WIDTHEXPAND
+      ../src/loader_wrapper.synthesis.generated.v
+      p3_loader_tb.v
+      -j
+      1)))
+   (run /bin/sh -c ./p3_loader_production_obj/Vp3_loader_tb))))
+
+(alias
+ (name loader-rtl)
+ (deps
+  (alias loader-production-rtl)))
+
+(alias
+ (name rtl)
+ (deps
+  (alias loader-rtl)))

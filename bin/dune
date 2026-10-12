@@ -37,8 +37,11 @@
   core_unix
   core_unix.command_unix
   core_unix.filename_unix
-  core_unix.sys_unix)
- (modules protemu)
+  core_unix.sys_unix
+  protemu_host
+  protemu_simulator
+  protemu_isa)
+ (modules protemu sim_cli)
  (preprocess
   (pps ppx_jane))
  (lint
@@ -50,6 +53,17 @@
  (name generate_p2)
  (libraries core hardcaml jane_rope hardcaml_protemu)
  (modules generate_p2)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))
+
+; Standalone P3 core/store-consumer emitter. The RAM remains an external port.
+
+(executable
+ (name generate_core)
+ (libraries core hardcaml jane_rope hardcaml_protemu)
+ (modules generate_core)
  (preprocess
   (pps ppx_jane))
  (lint

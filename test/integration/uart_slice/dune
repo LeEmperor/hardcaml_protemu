@@ -1,0 +1,61 @@
+; P2.7's first working slice.  Its directed monitor/model/RTL evidence stays local; the
+; generated property reuses test/common's settings and source-identity record without
+; forcing these purpose-built frame loops through Env.
+
+(library
+ (name protemu_uart_slice_tests)
+ (wrapped false)
+ (modules
+  uart_frame_monitor
+  uart_slice_testbench
+  uart_slice_unit_tests
+  uart_slice_property_tests)
+ ; Keep the ppx_expect source-tree workaround described in test/common/dune.
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries
+  core
+  hardcaml
+  hardcaml_protemu
+  protemu_f_model
+  protemu_test_common
+  base_quickcheck
+  splittable_random)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))
+
+; The saved model/Hardcaml trace P2.7 asks for. [emit_uart_frame_trace] writes it only
+; after the reference machine, the reference transfer engine and the Hardcaml slice have
+; all been decoded to the same frame, so a diff here is a disagreement between them.
+; `dune promote` refreshes the committed copy.
+
+(executable
+ (name emit_uart_frame_trace)
+ (modules emit_uart_frame_trace)
+ (libraries
+  core
+  hardcaml
+  hardcaml_protemu
+  protemu_f_model
+  protemu_uart_slice_tests)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))
+
+(rule
+ (target uart_frame.generated.trace)
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:emit_uart_frame_trace.exe}))))
+
+(rule
+ (alias runtest)
+ (action
+  (diff uart_frame.trace uart_frame.generated.trace)))

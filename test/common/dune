@@ -1,0 +1,69 @@
+(library
+ (name protemu_test_common)
+ (wrapped false)
+ (modules observation replay env)
+ (libraries core hardcaml splittable_random unix base_quickcheck)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))
+
+(library
+ (name protemu_common_tests)
+ (wrapped false)
+ (modules checker_expect_tests replay_expect_tests)
+ ; ppx_expect v0.18~preview drops the directory from a test file's path when registering
+ ; the test, then rebuilds it at exit from the bare filename plus -source-tree-root. The
+ ; trailing `.` points it at the runner's cwd, where dune has copied the sources. Drop
+ ; this if a later ppx_expect fixes the path handling.
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries core unix protemu_test_common protemu_pin_bank_testbench)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))
+
+; This experiment is intentionally separate from protemu_test_common: the established
+; cycle runner must not acquire event-simulator or step-testbench dependencies.
+(library
+ (name protemu_backend_conformance)
+ (wrapped false)
+ (modules backend_conformance)
+ (libraries core hardcaml hardcaml_event_driven_sim hardcaml_step_testbench)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))
+
+(library
+ (name protemu_backend_conformance_tests)
+ (wrapped false)
+ (modules backend_conformance_expect_tests)
+ ; Keep the ppx_expect source-tree workaround described above.
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries core protemu_backend_conformance)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))
+
+(executable
+ (name backend_conformance_bench)
+ (modules backend_conformance_bench)
+ (libraries core core_unix protemu_backend_conformance)
+ (preprocess
+  (pps ppx_jane))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

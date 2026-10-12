@@ -5,3 +5,29 @@
  (_
   (binaries
    (bin/protemu.exe as protemu))))
+
+; The required verification tier is the ordinary bounded regression plus emitted-RTL
+; checks. Longer seed sweeps remain explicit because their purpose is depth, not replacing
+; evidence that must run on every change. The four-state alias is explicit as well even
+; though its recorded bounded property remains part of ordinary @runtest.
+
+(alias
+ (name verification-required)
+ (deps
+  (alias_rec runtest)))
+
+(alias
+ (name verification)
+ (deps
+  (alias verification-required)
+  (alias_rec rtl)))
+
+(rule
+ (alias verification-long)
+ (action
+  (run %{exe:test/verification_sweep.exe} long)))
+
+(rule
+ (alias verification-four-state)
+ (action
+  (run %{exe:test/verification_sweep.exe} four-state)))

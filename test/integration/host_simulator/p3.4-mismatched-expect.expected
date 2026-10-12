@@ -1,0 +1,1 @@
+(protemu-cli(version 1)(line 1)(command"expect-error incompatible_isa check-api 2 0")(status error)(cycle 0)(value(Invalid_argument(operation expect-error)(detail"expected incompatible_isa, got incompatible_api: (Incompatible_api (required ((major 2) (minor 0)))\n (actual ((major 1) (minor 0))))"))))

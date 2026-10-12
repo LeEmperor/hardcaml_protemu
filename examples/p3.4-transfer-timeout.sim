@@ -1,0 +1,6 @@
+# Preserve one received byte in a partial exact-transfer error.
+load examples/p3.4-echo.pimg
+run
+tx 0 0xa5
+wait-halted 32
+expect-error transfer_timeout rx 2 1

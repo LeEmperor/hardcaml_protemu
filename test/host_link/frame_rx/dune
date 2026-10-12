@@ -1,0 +1,27 @@
+; HL4c focused Cyclesim tests for Frame_rx (host_link_migration.md, HL4b2).
+;
+; The receiver is driven through its public ports with explicit PHY-level observations
+; and events, and checked against hand-written results, fields, and cycles. The HL4a
+; loader harness in the parent directory stays the acceptance baseline for the composed
+; loader; this suite does not replace it.
+
+(library
+ (name protemu_frame_rx_tests)
+ (wrapped false)
+ (modules
+  frame_rx_testbench
+  frame_rx_receive_tests
+  frame_rx_validation_tests
+  frame_rx_lifecycle_tests
+  frame_rx_diagnostics_tests)
+ ; Keep the ppx_expect source-tree workaround described in test/common/dune.
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries core hardcaml hardcaml_protemu protemu_host_link_wire)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

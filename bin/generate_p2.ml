@@ -1,8 +1,8 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
 (* Module: "generate_p2.ml" *)
-(* Emit a selected P2 primitive as standalone Verilog for direct RTL simulation and
-   block cost studies. The generated circuit is independent of the P0 TT wrapper. *)
+(* Emit a selected P2 primitive as standalone Verilog for direct RTL simulation and block
+   cost studies. The generated circuit is independent of the P0 TT wrapper. *)
 
 open! Core
 open! Hardcaml
@@ -29,19 +29,26 @@ let circuit block =
   | "observed_transfer" ->
     let module C = Circuit.With_interface (Observed_transfer.I) (Observed_transfer.O) in
     C.create_exn ~name:block (Observed_transfer.create (scope ()))
+  | "observed_transfer_bank" ->
+    let module C =
+      Circuit.With_interface (Observed_transfer_bank.I) (Observed_transfer_bank.O)
+    in
+    C.create_exn ~name:block (Observed_transfer_bank.create (scope ()))
   | "primitive_demo" ->
     let module C = Circuit.With_interface (Primitive_demo.I) (Primitive_demo.O) in
     C.create_exn ~name:block (Primitive_demo.create (scope ()))
   | "uart_tx" ->
     let module C = Circuit.With_interface (Uart_tx.I) (Uart_tx.O) in
     C.create_exn ~name:block (Uart_tx.create (scope ()))
+  | "uart_slice" ->
+    let module C = Circuit.With_interface (Uart_slice.I) (Uart_slice.O) in
+    C.create_exn ~name:block (Uart_slice.create (scope ()))
   | _ -> failwith "unknown P2 block"
 ;;
 
 let () =
   let args = Sys.get_argv () in
-  if Array.length args <> 3
-  then failwith "usage: generate_p2.exe BLOCK OUTPUT.v";
+  if Array.length args <> 3 then failwith "usage: generate_p2.exe BLOCK OUTPUT.v";
   let circuit = circuit args.(1) in
   let rtl = Rtl.create Verilog [ circuit ] |> Rtl.full_hierarchy |> Rope.to_string in
   Out_channel.write_all args.(2) ~data:rtl

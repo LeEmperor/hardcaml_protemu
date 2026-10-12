@@ -1,0 +1,9 @@
+flow: output directory /tmp/opencode/p54-scaf-8d3ada1-20260920/tinytapeout/build/p54-clean-observable-20260920
+
+== build and tests
+
+== summary
+  build                     50s
+  end to end                50s
+
+  exit status 0

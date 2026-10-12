@@ -511,7 +511,7 @@ let reserved_opcodes =
 
 module Word_error = struct
   (* Why a fetched word is not an instruction. [Unspecified] is the program store's own
-     answer (model/program_store.ml) and arrives before decoding; the rest are the
+     answer (f_model/program_store.ml) and arrives before decoding; the rest are the
      decoder's. *)
   type t =
     | Unspecified
@@ -871,7 +871,10 @@ let decode instruction_word =
         enum Pin_mode.all ~what:"mode" Write_pins_imm.mode ~f:(fun mode ->
           Decoded.Needs_extension
             (fun value ->
-              complete (Write_pins_imm { mode; mask = get Write_pins_imm.mask; value })))
+              if value > Pins.all_pins
+              then out_of_range "value"
+              else
+                complete (Write_pins_imm { mode; mask = get Write_pins_imm.mask; value })))
       else if opcode = Write_pins_reg.opcode
       then
         enum Pin_mode.all ~what:"mode" Write_pins_reg.mode ~f:(fun mode ->

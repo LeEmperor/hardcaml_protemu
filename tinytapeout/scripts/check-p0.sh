@@ -14,7 +14,7 @@ acquire_stage_lock "$repo_root" || exit 1
 #          (tinytapeout/src/dune).
 # rtl:     wrapper simulation, Verilator lint, generic Yosys synthesis
 #          (tinytapeout/test/dune).
-dune build @all @runtest @rtl
+dune build @all @runtest @rtl -j 5
 "$repo_root/tinytapeout/scripts/stage-project.sh"
 
 echo "PASS deterministic generation, Hardcaml tests, wrapper RTL simulation, lint, and generic synthesis"

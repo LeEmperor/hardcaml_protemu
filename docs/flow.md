@@ -105,6 +105,7 @@ export PROTEMU_FLOW_OUT="$PWD/tinytapeout/build/my-experiment"
 | `PROTEMU_FLOW_RESULTS` | kept archives, one per run | `./flow_results` |
 | `PROTEMU_ARCHIVE` | exact archive directory for this run | derived from the run |
 | `PROTEMU_STAGE` | `full` or `synthesis`: how far `run` goes | `full` |
+| `PROTEMU_DESIGN` | `observable`, P0.7 `memory`, or P3.5 `loader` bundle | `observable` |
 | `PROTEMU_TT` | tt-support-tools checkout | from bootstrap |
 | `PROTEMU_PDK_ROOT` | PDK root (IHP `sg13cmos5l`) | from bootstrap |
 | `PROTEMU_FLOW_PY` | python of the LibreLane venv | from bootstrap |
@@ -180,6 +181,10 @@ The first adopted physical run is archived at
 [`flow_results/20260918-230920-05f65042`](../flow_results/20260918-230920-05f65042/README.md);
 its experiment record is
 [`2026-09-19-p0.5b-adopted-physical.md`](../tinytapeout/reports/2026-09-19-p0.5b-adopted-physical.md).
+The clean-staging reproduction is archived at
+[`flow_results/20260920-081325-ccecd9ed`](../flow_results/20260920-081325-ccecd9ed/README.md),
+with its complete emitted input bundle; its experiment record is
+[`2026-09-20-p0.5c-clean-staging-physical.md`](../tinytapeout/reports/2026-09-20-p0.5c-clean-staging-physical.md).
 
 ## Checking the flow itself
 
@@ -254,12 +259,17 @@ project, and `dune build @rtl` are otherwise untouched by the adopted path.
 
 ## Verified behavior and known limits
 
-Verified, as of 2026-09-19:
+Verified, as of 2026-09-20:
 
 - **End to end.** A bare `./flow.sh` produced the P0.5b run on 2026-09-18 —
   every stage through `archive`, with LibreLane signoff, TT precheck and
   gate-level simulation passing in one attempt. Evidence is the archive linked
   above.
+- **Clean staging.** Committed protemu `8d3ada1` was restored to a detached
+  worktree and built against locked `hardcaml_asic` `a257424` in an isolated
+  prefix. The observable adoption checker and every stage through archive pass;
+  all declared source inputs are clean, and the complete emitted bundle was
+  restored independently and revalidated. Evidence is the P0.5c archive above.
 - **Orchestration.** `check-flow.sh`: 14 checks, 0 failures. Help without OCaml
   or flow tools (`env -i`); unknown-step and `--full`-with-steps rejection;
   resolution from another working directory; `report`/`collect` refusing to guess
@@ -279,13 +289,13 @@ Not established:
 
 - Reporting on a **failed or interrupted real run** — only the missing-run and
   stub paths have been exercised.
-- `PROTEMU_STAGE=synthesis` is passed through and documented, but has not been
-  run since the migration.
-- Emission is **not reproducible from `source_revision` alone**: the P0.5b bundle
-  was emitted from a tree with modified and untracked inputs. The manifest pins
-  content by hash and records each input's `git_status`, so the bundle is pinned;
-  the recorded revision is not by itself a description of the declaration. See the
-  archive's own limits section.
+- `PROTEMU_STAGE=synthesis` completed for the P0.7 memory bundle; its mapped
+  result is archived at
+  [`flow_results/20260920-071538-a538212c`](../flow_results/20260920-071538-a538212c/README.md).
+- The P0.5b build remains non-restorable from its `source_revision` alone because
+  it used modified and untracked inputs. P0.5c supersedes that limitation for
+  current clean-staging reproduction while preserving P0.5b as historical
+  physical evidence.
 
 ## History
 

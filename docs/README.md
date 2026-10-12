@@ -5,7 +5,23 @@
 | [protemu.pdf](protemu.pdf) | Architecture planning brief: problem framing for the protocol emulator ASIC, proposed cores and primitives, protocol mapping (UART, SPI, I²C, USB, Ethernet), and open architecture questions. Start here for the "why". |
 | [construction-plan.md](construction-plan.md) | Construction plan built on the brief: scope, what exists today, stack ownership, primitive and shared-port memory contracts, ISA study, protocol milestones, host control, ASIC/Workbench integration, build sequence, verification, and open decisions. |
 | [phase_plan.md](phase_plan.md) | Actionable breakdown of the construction plan: stable work-item IDs, phase dependencies, deliverables, completion evidence, the first working UART transmit slice, and the parallel ASIC project/memory adoption track. Use this to select and track implementation work. |
-| [p2-implementation.md](p2-implementation.md) | Phase 2 primitive interfaces, model/RTL evidence, digital latency observations, and remaining verification and physical measurements. |
+| [architecture_migration.md](architecture_migration.md) | Active architecture-first handoff: AM0–AM6 for Host_link/Protemu_top/core renames, memory/controller ownership, protocol/Codec separation, package extraction, grouped interfaces, responsibility-based decomposition, and preservation gates. Implementation is planned. |
+| [p2-implementation.md](p2-implementation.md) | Phase 2 primitive interfaces, functional-model/RTL evidence, digital latency observations, and remaining verification and physical measurements. |
+| [p3.1a-implementation.md](p3.1a-implementation.md) | P3.1a program-store consumer boundary, verified loading decision, independent contract-port evidence, and later-phase handoff. |
+| [p3.1b-verification.md](p3.1b-verification.md) | P3.1a scenario reuse across ASIC memory backends, emitted-RTL acceptance coverage, and mapped-evidence identity comparison. |
+| [p3.2-implementation.md](p3.2-implementation.md) | P3.2 decoder/control implementation, local and delegated instruction boundaries, independent-model and emitted-RTL evidence, and P3.3 handoff. |
+| [p3.3-implementation.md](p3.3-implementation.md) | P3.3 mechanism composition, instruction handshakes, STOP/ABORT/single-step control, real engine-idle gating, emitted RTL, and P2.6b timing evidence. |
+| [p3.4-host-api.md](p3.4-host-api.md) | P3.4 typed host API, simulator session/time contract, image and error rules, bounded trace, CLI workflow, verification evidence, and P3.5/P3.6 handoff. |
+| [p3.5-hardware-loader.md](p3.5-hardware-loader.md) | P3.5 dedicated serial pin map, framing, CRC, command/result semantics, timing envelope, fixed loader implementation, wrapper integration, recovery evidence, and P3.6 device-backend handoff. |
+| [host_link_migration.md](host_link_migration.md) | Completed migration ledger: HL0–HL4 and the exit gate accepted; HL3–HL4 remain uncommitted. Records subsystem organization, pure wire library, typed core-control contract, four-block serial-link decomposition, and acceptance evidence. |
+| [host_link_hl2_record.md](host_link_hl2_record.md) | HL2 implementation record: the `host_link_wire/` library and codec API, hardware adoption and fault/phase mapping, decoder policy decisions, tests, byte-identical RTL checksums, and bundle identity changes. |
+| [host_link_hl3_record.md](host_link_hl3_record.md) | HL3 implementation record: the `Control_port` records and temporal contract, field mapping and RTL-name preservation, adoption in the core, loader, and simulator, test-to-obligation coverage, byte-identical RTL checksums, and bundle identity changes. |
+| [host_link_hl4a_record.md](host_link_hl4a_record.md) | HL4a implementation record: the serial Cyclesim harness for the unsplit loader, its scheduling and sampling contract, the `Control_port` stub and robustness probes, exact cycle observations, the case-to-obligation map against `p3_loader_tb.v`, non-vacuity mutations, and verification. |
+| [host_link_hl4b1_record.md](host_link_hl4b1_record.md) | HL4b1/HL4c1 implementation record: the `Serial_phy` extraction contract and ownership table, PHY interface and reset/disable/qualification semantics, focused tests and mutations, RTL and port comparisons with scoped formal equivalence, generic-synthesis counts and the accepted +84-cell delta, and bundle identity changes. |
+| [host_link_hl4b3_record.md](host_link_hl4b3_record.md) | HL4b3/HL4c3 implementation record: the `Command_dispatch` ownership and timing contract, complete-frame publication and priorities, retained-field lifetime, offers/refusals/waits, focused tests, scoped formal equivalence, and acceptance of the −779-cell delta (−677 cumulative) with 65 fewer mapped flip-flops; bundle identity changes and evidence scripts. |
+| [host_link_hl4b2_record.md](host_link_hl4b2_record.md) | HL4b2/HL4c2 implementation record: the `Frame_rx` ownership and timing contract recorded before editing, eligibility and retained-field lifetime, validation precedence and handoff timing, focused tests and mutations, RTL and port comparisons with scoped formal equivalence, generic-synthesis counts and the accepted +18-cell delta (+102 cumulative), bundle identity changes, and the evidence scripts. |
+| [host_link_hl4b4_record.md](host_link_hl4b4_record.md) | HL4b4/HL4c4 implementation record: `Frame_tx` ownership, timing and priorities, shared CRC and standalone checks, focused tests, scoped equivalence and accepted proof chain, zero incremental synthesis delta, and final migration acceptance. |
+| [organization_migration.md](organization_migration.md) | HL1 procedure: subsystem directories with flat module names, source-path updates, byte-identical RTL/bundle checks, and deferred naming/library changes. |
 | [p1.5-encoding-decision.md](p1.5-encoding-decision.md) | P1.5's recorded architecture decision: the chosen instruction encoding and what it gives up, the call pair and what it was measured to be worth, the deferred memory-word choice, the assembler's refusals, and where the one shared instruction specification lives. Read it before touching `isa/`. |
 | [p1.4-encoding-study.md](p1.4-encoding-study.md) | P1.4 instruction and storage comparison: two encodings in four memory-word combinations, measured program sizes, cycle counts, branch paths, bit-banged timing, and invalid-instruction behaviour, with what they recommend to P1.5. Area columns are unmeasured until P5. |
 | [asic-adoption.md](asic-adoption.md) | P0.6 project declaration, pinned ASIC dependency, bundle emission, and adopted-wrapper checks. |
@@ -13,9 +29,10 @@
 | [tooling_theory1.md](tooling_theory1.md) | Rationale: why the OCaml/Python boundary sits at the emitted bundle, what makes the bundle a good interface, the `reason` field as the answer to batteries-versus-hooks, and the open packaging problem on the Python side. |
 | [flow_migration.md](flow_migration.md) | History: the migration that made `./flow.sh` the one implementation path — the plan as written and what it verified at the time. |
 | [environment.md](environment.md) | Entry points and environment layers: `./bootstrap.sh`, `source env.sh`, `dune exec protemu -- <command>`, and what to run on a new machine, a fresh clone or worktree, a new shell, or after a lockfile change. |
-| [verification.md](verification.md) | P1.6 verification approach and the harness that implements it: cycle-exact model comparison, expect tests and Quickcheck, environment/runner ownership, seed replay, observation validity, and pin-to-item monitors. Section 8 names the modules, what a block has to supply, and the `PROTEMU_*` switches and artifact paths a failure report honours. |
-| [hardcaml_step_testbench_differences.md](hardcaml_step_testbench_differences.md) | How `hardcaml_step_testbench` abstracts over `Cyclesim` and `hardcaml_event_driven_sim`: what a testbench body can share between the two engines and what it cannot, the functional/imperative split, `Simulation_step` and agreeing on a cycle, the two-state limit, and the `@ local` handler in the installed switch. Read before writing the P2.2/P2.6 event-driven harness. |
-| [formatting_guide.md](formatting_guide.md) | Hardware structure: file headers, `_i`/`_o` port naming, module layout, the `I_Regs`/`I_Wires` paradigm, the `Always` vs `Signal` split, and testbench architecture. |
+| [verification.md](verification.md) | Verification authority: current evidence and planned VO0–VO7 overhaul after AM6; reusable agents/models/scoreboards, test-owned environments, endpoint/system/package fixtures, memory strategy, coverage, event/formal/emitted checks, and preservation/replay contracts. |
+| [history/](history/README.md) | Historical-document ownership and navigation. |
+| [history/verification_migration.md](history/verification_migration.md) | Archived previous verification refactor: baseline preservation, `model` → `f_model`, per-block moves, cycle/event conformance, timed/four-state pilots, and recorded checks. Not the active migration checklist. |
+| [formatting_guide.md](formatting_guide.md) | Hardware structure: file headers, `_i`/`_o` port naming, module layout, the `I_Regs`/`I_Wires` paradigm, the `Always` vs `Signal` split, and links to verification conventions. |
 | [comment_guidelines.md](comment_guidelines.md) | Repo-specific examples for explanatory comments and hand formatting in hardware and model source. |
 
 ## Reading order
@@ -26,7 +43,14 @@
 4. **environment.md**, then **flow.md** — to set the environment up and then run
    the flow; `flow.md` is where any question about `./flow.sh` is answered.
 5. **formatting_guide.md** — before writing or editing any Hardcaml module.
-6. **comment_guidelines.md** — for comments and manually aligned source.
+6. **architecture_migration.md** — the naming/composition migration comes first;
+   **verification.md** — verification authority and subsequent VO handoffs.
+7. **comment_guidelines.md** — for comments and manually aligned source.
+
+For current migration work, start with **architecture_migration.md** (AM0–AM6), then
+the overhaul sequence in **verification.md** (VO0–VO7). **host_link_migration.md** and
+**organization_migration.md** retain the completed HL history. The P3.5 record remains
+the protocol authority; these structural migrations do not mark P3.6 complete.
 
 ## Related project authorities
 
@@ -34,7 +58,7 @@
   project/resource/target ownership, generated build bundles, and flow integration.
 - [Program-memory contract](../../hardcaml_asic/docs/program-memory-contract.md):
   authoritative `Single_port_ram` behavior and backend verification obligations.
-- [Workbench architecture](../../workbench/docs/hardcaml_workbench_architecture.md):
+- [Workbench architecture](../../hardcaml_workbench/docs/hardcaml_workbench_architecture.md):
   independent projects, optional versioned driver integration, jobs, and artifacts.
 - [Tiny Tapeout integration guide](../tinytapeout/README.md) and
   [experiment record format](../tinytapeout/reports/README.md): current scripts,

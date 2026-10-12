@@ -1,0 +1,55 @@
+# Discovery and compatibility checks do not advance simulator time.
+discover
+check-api 1 0
+expect-error incompatible_api check-api 2 0
+check-isa protemu-p1.5 1
+expect-error incompatible_isa check-isa incompatible-isa 99
+loaded
+expect-error incompatible_isa load examples/p3.4-bad-isa.pimg
+
+# A complete load is start, ordered writes, hardware readback verification, and complete.
+load examples/p3.4-echo.pimg
+expect-error image_bounds read 0 4
+assert-read 0 0xd400 0xc800 0
+verify examples/p3.4-echo.pimg
+loaded
+pin-claim 1
+pin-release 1
+assert-pins 0 0
+expect-error would_block rx 1 0
+
+# The program blocks on the real RX FIFO. STOP is accepted but cannot complete until data
+# arrives; status and queue traffic remain available while program memory is refused.
+run
+expect-error active_execution read 0 1
+advance 8
+expect-error timeout stop 2
+tx 4 0xa5
+wait-halted 32
+assert-register 0 0xa5
+
+# Resume one real instruction at a time, then consume the echoed DUT TX byte.
+step 32
+assert-rx 0 0xa5
+step 32
+expect-error terminal_halt step 4
+
+# A fresh run can be inspected, refused safely, and promptly aborted without losing image
+# validity. Fill the host-to-device queue to expose nonblocking pressure, then run again.
+run
+expect-error active_execution read 0 1
+abort
+tx 0 1 2 3 4 5 6 7 8
+expect-error would_block tx 0 9
+run
+wait-halted 64
+assert-rx 0 1
+status
+assert-pins 0 0
+
+# Capacity eight guarantees this longer workflow has dropped old records.
+trace-get
+assert-trace-overflow true
+trace-clear
+assert-trace-overflow false
+trace-get

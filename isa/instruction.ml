@@ -13,7 +13,7 @@
 
    WHAT AN INSTRUCTION MAY DO. Anything the mechanism model accepts as an operation, plus
    the register and control-flow work that operations deliberately leave out
-   (model/operation.ml: "Nothing here has an opcode"). Reading a pin into a register is
+   (f_model/operation.ml: "Nothing here has an opcode"). Reading a pin into a register is
    the instruction P1.3 recorded as missing when it had to treat a sample as a trace
    marker; it is [Read_pins].
 
@@ -278,7 +278,7 @@ let range what value ~max =
   check (value >= 0 && value <= max) (Invalid.Immediate_out_of_range { what; value })
 ;;
 
-(* A delay or timeout of zero is refused here for the same reason model/operation.ml
+(* A delay or timeout of zero is refused here for the same reason f_model/operation.ml
    refuses it: a timed command accepted at edge k with delay n fires at k+n, so n must be
    at least one. *)
 let delay what value = check (value >= 1) (Invalid.Immediate_out_of_range { what; value })

@@ -1,0 +1,1 @@
+(protemu-cli(version 1)(line 0)(command session)(status error)(cycle 0)(value(Invalid_argument(operation session)(detail"trace capacity must be positive"))))

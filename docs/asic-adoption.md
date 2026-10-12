@@ -1,7 +1,7 @@
-# P0.6 ASIC bundle adoption
+# P0.6/P0.7 ASIC bundle adoption
 
-`bin/asic_bundle.ml` declares the current P0 observable circuit and its Tiny
-Tapeout wrapper as one `hardcaml_asic.Project.Design`. It preserves the existing
+`bin/asic_bundle.ml` declares selectable `observable`, `memory`, and `loader`
+Tiny Tapeout designs. The observable design preserves the existing
 `tinytapeout/src/project.v` pin map, two-edge reset release, and immediate pad
 release on reset or disable. The Verilog wrapper and hand-maintained
 `tinytapeout/info.yaml` and `src/config.json` remain the legacy P0 path; use an
@@ -22,9 +22,13 @@ when upgrading it. The example commands below assume `hardcaml_asic` is already
 installed or visible through `OCAMLPATH`.
 
 ```sh
-./scripts/with-switch.sh dune build bin/asic_bundle.exe
-./scripts/with-switch.sh dune exec bin/asic_bundle.exe -- \
+./scripts/with-switch.sh dune build bin/asic_bundle.exe -j 5
+./scripts/with-switch.sh dune exec -j 5 bin/asic_bundle.exe -- \
   /tmp/protemu-adopted-bundle "$PWD"
+./scripts/with-switch.sh dune exec -j 5 bin/asic_bundle.exe -- \
+  memory /tmp/protemu-memory-bundle "$PWD"
+./scripts/with-switch.sh dune exec -j 5 bin/asic_bundle.exe -- \
+  loader /tmp/protemu-loader-bundle "$PWD"
 ```
 
 The output directory must be new or empty. The emitter lists its own OCaml,
@@ -53,22 +57,39 @@ them against the actual board and host timing before physical closure.
 ## Checks
 
 ```sh
-./scripts/with-switch.sh dune build bin/asic_bundle.exe
+./scripts/with-switch.sh dune build bin/asic_bundle.exe -j 5
 python3 tinytapeout/scripts/check-adopted-bundle.py
+python3 tinytapeout/scripts/check-adopted-bundle.py --kind memory
+python3 tinytapeout/scripts/check-adopted-bundle.py --kind loader
 ```
 
 The check emits twice, compares manifest identity and bytes, checks source
 copies and hashes, generated metadata/configuration/SDC, rejects conflicting
 `CLOCK_PERIOD`, `VERILOG_FILES`, and `DIE_AREA` overrides, and runs the existing
-`tinytapeout/test/tb.v` wrapper trace on emitted RTL. It also runs Verilator
+the applicable observable or memory wrapper trace on both emitted RTL source
+sets; loader mode uses its dedicated physical serial peer. It also runs Verilator
 lint and generic Yosys synthesis inside the pinned LibreLane Docker image.
 The full check needs an accessible Docker daemon and that image. The consumer
 can populate the image cache independently with
 `docker pull ghcr.io/librelane/librelane:3.1.0.dev3`; the check itself never
 pulls. It does not require the `hardcaml_asic` source checkout or host installs
 of the HDL binaries. `--metadata-only` runs the
-bundle and declaration checks without Docker. Physical flow execution and
-registered program memory remain separate P0.5b/P0.7 work.
+bundle and declaration checks without Docker. Memory mode additionally checks
+the exact RAM identity, 256x16 shape, explicit flop selection,
+behavioral/implementation source roles, and absence of initialization in
+implementation RTL. Its mapped-synthesis evidence is the
+[P0.7 record](../tinytapeout/reports/2026-09-20-p0.7-memory-synthesis.md).
+Loader mode retains that exact RAM resource contract and adds repeatable source/pin
+metadata checks plus the independent serial peer against the actual wrapper's
+behavioral source role. Its framing, timing, malformed-load, and recovery evidence
+is the [P3.5 record](p3.5-hardware-loader.md). The P0.7 mapped report predates the
+loader, integrated execution core, and mechanisms and is historical rather than a
+current production-top area result. No P3.5 physical flow was run.
+The production wrapper trace is intentionally narrower than the complete consumer
+acceptance contract. The [P3.1b verification record](p3.1b-verification.md) supplements it
+with the shared P3.1a directed/generated suite on both elaborated backend circuits and a
+verification-only full-interface HDL top for both emitted source roles; it does not alter
+the production bundle or its physical-flow inputs.
 
 ## Running the flow
 
@@ -78,8 +99,13 @@ resuming rules, failure behavior, archiving, and verification status are in
 **[flow.md](flow.md)**, which is the source of truth for all of it.
 
 The first adopted physical run is archived at
-[`flow_results/20260918-230920-05f65042`](../flow_results/20260918-230920-05f65042/README.md);
-it is the P0.5b record.
+[`flow_results/20260918-230920-05f65042`](../flow_results/20260918-230920-05f65042/README.md).
+The qualifying clean-staging reproduction is
+[`flow_results/20260920-081325-ccecd9ed`](../flow_results/20260920-081325-ccecd9ed/README.md):
+committed source, isolated locked library prefix, complete preserved input
+bundle, full hardening, TT precheck, and observable gate-level simulation all
+pass. Its experiment record is
+[`2026-09-20-p0.5c-clean-staging-physical.md`](../tinytapeout/reports/2026-09-20-p0.5c-clean-staging-physical.md).
 
 Note that `adopted-flow.sh` does not invoke `check-adopted-bundle.py`. A physical
 run is physical evidence only; the adoption invariants above are checked

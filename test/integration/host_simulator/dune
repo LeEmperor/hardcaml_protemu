@@ -1,0 +1,166 @@
+(library
+ (name protemu_host_simulator_tests)
+ (wrapped false)
+ (modules host_simulator_tests)
+ (inline_tests)
+ (libraries core protemu_host protemu_simulator protemu_isa)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))
+
+(rule
+ (target p3.4-echo.generated.pimg)
+ (action
+  (run
+   %{exe:../../../bin/protemu.exe}
+   sim
+   write-echo-image
+   -output
+   %{target})))
+
+(rule
+ (alias runtest)
+ (deps p3.4-echo.generated.pimg ../../../examples/p3.4-echo.pimg)
+ (action
+  (diff ../../../examples/p3.4-echo.pimg p3.4-echo.generated.pimg)))
+
+(rule
+ (targets p3.4-workflow.stdout p3.4-workflow.stderr)
+ (deps
+  ../../../examples/p3.4-workflow.sim
+  ../../../examples/p3.4-echo.pimg
+  ../../../examples/p3.4-bad-isa.pimg)
+ (action
+  (with-stdout-to
+   p3.4-workflow.stdout
+   (with-stderr-to
+    p3.4-workflow.stderr
+    (chdir
+     ../../..
+     (run
+      %{exe:../../../bin/protemu.exe}
+      sim
+      script
+      examples/p3.4-workflow.sim
+      -trace-capacity
+      8))))))
+
+(rule
+ (alias runtest)
+ (deps p3.4-workflow.stdout p3.4-workflow.stderr p3.4-empty.expected)
+ (action
+  (diff p3.4-empty.expected p3.4-workflow.stderr)))
+
+(rule
+ (targets p3.4-failing-workflow.stdout p3.4-failing-workflow.stderr)
+ (deps ../../../examples/p3.4-failing-workflow.sim)
+ (action
+  (with-stdout-to
+   p3.4-failing-workflow.stdout
+   (with-stderr-to
+    p3.4-failing-workflow.stderr
+    (chdir
+     ../../..
+     (with-accepted-exit-codes
+      2
+      (run
+       %{exe:../../../bin/protemu.exe}
+       sim
+       script
+       examples/p3.4-failing-workflow.sim)))))))
+
+(rule
+ (alias runtest)
+ (deps
+  p3.4-failing-workflow.stdout
+  p3.4-failing-workflow.stderr
+  p3.4-failing-workflow.stdout.expected
+  p3.4-failing-workflow.stderr.expected)
+ (action
+  (progn
+   (diff p3.4-failing-workflow.stdout.expected p3.4-failing-workflow.stdout)
+   (diff p3.4-failing-workflow.stderr.expected p3.4-failing-workflow.stderr))))
+
+(rule
+ (targets p3.4-invalid-capacity.stdout p3.4-invalid-capacity.stderr)
+ (action
+  (with-stdout-to
+   p3.4-invalid-capacity.stdout
+   (with-stderr-to
+    p3.4-invalid-capacity.stderr
+    (with-accepted-exit-codes
+     2
+     (run %{exe:../../../bin/protemu.exe} sim info -trace-capacity 0))))))
+
+(rule
+ (alias runtest)
+ (deps
+  p3.4-invalid-capacity.stdout
+  p3.4-invalid-capacity.stderr
+  p3.4-invalid-capacity.expected
+  p3.4-empty.expected)
+ (action
+  (progn
+   (diff p3.4-invalid-capacity.expected p3.4-invalid-capacity.stdout)
+   (diff p3.4-empty.expected p3.4-invalid-capacity.stderr))))
+
+(rule
+ (targets p3.4-mismatched-expect.stdout p3.4-mismatched-expect.stderr)
+ (deps ../../../examples/p3.4-mismatched-expect.sim)
+ (action
+  (with-stdout-to
+   p3.4-mismatched-expect.stdout
+   (with-stderr-to
+    p3.4-mismatched-expect.stderr
+    (with-accepted-exit-codes
+     2
+     (run
+      %{exe:../../../bin/protemu.exe}
+      sim
+      script
+      %{dep:../../../examples/p3.4-mismatched-expect.sim}))))))
+
+(rule
+ (alias runtest)
+ (deps
+  p3.4-mismatched-expect.stdout
+  p3.4-mismatched-expect.stderr
+  p3.4-mismatched-expect.expected
+  p3.4-mismatched-expect.stderr.expected)
+ (action
+  (progn
+   (diff p3.4-mismatched-expect.expected p3.4-mismatched-expect.stdout)
+   (diff
+    p3.4-mismatched-expect.stderr.expected
+    p3.4-mismatched-expect.stderr))))
+
+(rule
+ (targets p3.4-transfer-timeout.stdout p3.4-transfer-timeout.stderr)
+ (deps
+  ../../../examples/p3.4-transfer-timeout.sim
+  ../../../examples/p3.4-echo.pimg)
+ (action
+  (with-stdout-to
+   p3.4-transfer-timeout.stdout
+   (with-stderr-to
+    p3.4-transfer-timeout.stderr
+    (chdir
+     ../../..
+     (run
+      %{exe:../../../bin/protemu.exe}
+      sim
+      script
+      examples/p3.4-transfer-timeout.sim))))))
+
+(rule
+ (alias runtest)
+ (deps
+  p3.4-transfer-timeout.stdout
+  p3.4-transfer-timeout.stderr
+  p3.4-transfer-timeout.expected
+  p3.4-empty.expected)
+ (action
+  (progn
+   (diff p3.4-transfer-timeout.expected p3.4-transfer-timeout.stdout)
+   (diff p3.4-empty.expected p3.4-transfer-timeout.stderr))))

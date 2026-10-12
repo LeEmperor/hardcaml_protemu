@@ -1,0 +1,23 @@
+(library
+ (name protemu_observed_transfer_bank_tests)
+ (wrapped false)
+ (modules
+  observed_transfer_bank_timing_testbench
+  observed_transfer_bank_timing_tests
+  observed_transfer_bank_unit_tests)
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries
+  core
+  hardcaml
+  hardcaml_event_driven_sim
+  hardcaml_protemu
+  protemu_observed_transfer_tests
+  protemu_test_common)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))

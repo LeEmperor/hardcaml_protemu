@@ -1,0 +1,10 @@
+(library
+ (name protemu_host_api_tests)
+ (wrapped false)
+ (modules host_api_tests)
+ (inline_tests)
+ (libraries core protemu_host protemu_isa)
+ (preprocess
+  (pps ppx_jane))
+ (lint
+  (pps ppx_js_style)))

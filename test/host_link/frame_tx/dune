@@ -1,0 +1,27 @@
+; HL4c focused Cyclesim tests for Frame_tx (host_link_migration.md, HL4b4).
+;
+; The transmitter is driven through its public ports with explicit PHY-level events and
+; published frames, and checked against hand-written bits and cycles. The HL4a loader
+; harness in the parent directory stays the acceptance baseline for the composed loader;
+; this suite does not replace it.
+
+(library
+ (name protemu_frame_tx_tests)
+ (wrapped false)
+ (modules
+  frame_tx_testbench
+  frame_tx_publication_tests
+  frame_tx_read_tests
+  frame_tx_lifecycle_tests
+  frame_tx_diagnostics_tests)
+ ; Keep the ppx_expect source-tree workaround described in test/common/dune.
+ (inline_tests
+  (flags
+   (:standard -source-tree-root .)))
+ (libraries core hardcaml hardcaml_protemu protemu_host_link_wire)
+ (preprocess
+  (pps ppx_hardcaml ppx_jane))
+ (lint
+  (pps ppx_js_style))
+ (flags
+  (:standard -w -27-57-33-34-35-40-63-47-26)))
